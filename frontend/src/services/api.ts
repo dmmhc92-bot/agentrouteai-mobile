@@ -23,8 +23,12 @@ class ApiService {
   }
 
   // Auth
-  async register(name: string, email: string, password: string) {
-    const response = await apiClient.post('/auth/register', { name, email, password });
+  async register(name: string, email: string, password: string, role?: string, managerId?: string) {
+    const response = await apiClient.post('/auth/register', { 
+      name, email, password, 
+      role: role || 'agent',
+      manager_id: managerId 
+    });
     return response.data;
   }
 
@@ -48,6 +52,37 @@ class ApiService {
     return response.data;
   }
 
+  async updateProfile(data: { name?: string; phone?: string; profile_image?: string }) {
+    const response = await apiClient.put('/auth/profile', data);
+    return response.data;
+  }
+
+  async deleteAccount() {
+    const response = await apiClient.delete('/auth/account');
+    return response.data;
+  }
+
+  // Team/Hierarchy
+  async getDownline() {
+    const response = await apiClient.get('/team/downline');
+    return response.data;
+  }
+
+  async getDownlineUserStats(userId: string) {
+    const response = await apiClient.get(`/team/downline/${userId}/stats`);
+    return response.data;
+  }
+
+  async getTeamStats() {
+    const response = await apiClient.get('/team/stats');
+    return response.data;
+  }
+
+  async assignAgentToManager(agentId: string, managerId: string) {
+    const response = await apiClient.post(`/team/assign-agent?agent_id=${agentId}&manager_id=${managerId}`);
+    return response.data;
+  }
+
   // Leads
   async getLeads() {
     const response = await apiClient.get('/leads');
@@ -59,12 +94,12 @@ class ApiService {
     return response.data;
   }
 
-  async createLead(data: { name: string; phone?: string; email?: string; address?: string; notes?: string }) {
+  async createLead(data: { name: string; phone?: string; email?: string; address?: string; notes?: string; source?: string; status?: string }) {
     const response = await apiClient.post('/leads', data);
     return response.data;
   }
 
-  async updateLead(id: string, data: Partial<{ name: string; phone: string; email: string; address: string; notes: string }>) {
+  async updateLead(id: string, data: Partial<{ name: string; phone: string; email: string; address: string; notes: string; status: string }>) {
     const response = await apiClient.put(`/leads/${id}`, data);
     return response.data;
   }
@@ -126,9 +161,45 @@ class ApiService {
     return response.data;
   }
 
+  // Production
+  async createProduction(data: { lead_id?: string; policy_type: string; premium: number; commission: number; carrier: string; policy_number?: string; status?: string; notes?: string }) {
+    const response = await apiClient.post('/production', data);
+    return response.data;
+  }
+
+  async getProduction() {
+    const response = await apiClient.get('/production');
+    return response.data;
+  }
+
+  async getProductionSummary(period: 'day' | 'week' | 'month' = 'month') {
+    const response = await apiClient.get(`/production/summary?period=${period}`);
+    return response.data;
+  }
+
+  async getProductionDashboard() {
+    const response = await apiClient.get('/production/dashboard');
+    return response.data;
+  }
+
+  // Activity
+  async getActivity(limit: number = 50) {
+    const response = await apiClient.get(`/activity?limit=${limit}`);
+    return response.data;
+  }
+
   // AI Coach
-  async sendChatMessage(message: string, leadContext?: string) {
-    const response = await apiClient.post('/ai-coach/chat', { message, lead_context: leadContext });
+  async sendChatMessage(message: string, leadContext?: string, leadId?: string) {
+    const response = await apiClient.post('/ai-coach/chat', { 
+      message, 
+      lead_context: leadContext,
+      lead_id: leadId
+    });
+    return response.data;
+  }
+
+  async getLeadSuggestions(leadId: string) {
+    const response = await apiClient.post(`/ai-coach/lead-suggestions/${leadId}`);
     return response.data;
   }
 
@@ -181,6 +252,22 @@ class ApiService {
 
   async batchGeocodeLeads() {
     const response = await apiClient.post('/routes/batch-geocode');
+    return response.data;
+  }
+
+  // Legal/Compliance
+  async getPrivacyPolicy() {
+    const response = await apiClient.get('/legal/privacy-policy');
+    return response.data;
+  }
+
+  async getTermsOfUse() {
+    const response = await apiClient.get('/legal/terms');
+    return response.data;
+  }
+
+  async getDataDisclosure() {
+    const response = await apiClient.get('/legal/data-disclosure');
     return response.data;
   }
 }
