@@ -1,4 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import { api } from '../services/api';
 
@@ -23,6 +25,30 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Platform-aware storage
+const storage = {
+  async getItem(key: string): Promise<string | null> {
+    if (Platform.OS === 'web') {
+      return AsyncStorage.getItem(key);
+    }
+    return SecureStore.getItemAsync(key);
+  },
+  async setItem(key: string, value: string): Promise<void> {
+    if (Platform.OS === 'web') {
+      await AsyncStorage.setItem(key, value);
+    } else {
+      await SecureStore.setItemAsync(key, value);
+    }
+  },
+  async removeItem(key: string): Promise<void> {
+    if (Platform.OS === 'web') {
+      await AsyncStorage.removeItem(key);
+    } else {
+      await SecureStore.deleteItemAsync(key);
+    }
+  },
+};
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
@@ -34,7 +60,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const loadStoredAuth = async () => {
     try {
-      const storedToken = await SecureStore.getItemAsync('auth_token');
+      const storedToken = await storage.getItem('auth_token');
       if (storedToken) {
         setToken(storedToken);
         api.setAuthToken(storedToken);
@@ -43,7 +69,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.log('Auth load error:', error);
-      await SecureStore.deleteItemAsync('auth_token');
+      try {
+        await storage.removeItem('auth_token');
+      } catch (e) {
+        // Ignore cleanup errors
+      }
     } finally {
       setIsLoading(false);
     }
@@ -51,7 +81,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = async (email: string, password: string) => {
     const response = await api.login(email, password);
-    await SecureStore.setItemAsync('auth_token', response.access_token);
+    await storage.setItem('auth_token', response.access_token);
     setToken(response.access_token);
     api.setAuthToken(response.access_token);
     setUser(response.user);
@@ -59,14 +89,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signUp = async (name: string, email: string, password: string) => {
     const response = await api.register(name, email, password);
-    await SecureStore.setItemAsync('auth_token', response.access_token);
+    await storage.setItem('auth_token', response.access_token);
     setToken(response.access_token);
     api.setAuthToken(response.access_token);
     setUser(response.user);
   };
 
   const signOut = async () => {
-    await SecureStore.deleteItemAsync('auth_token');
+    await storage.removeItem('auth_token');
     setToken(null);
     setUser(null);
     api.setAuthToken(null);
