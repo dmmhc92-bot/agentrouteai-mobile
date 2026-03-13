@@ -62,6 +62,8 @@ class APITester:
             headers = {"Authorization": f"Bearer {self.auth_token}"}
         elif self.auth_token and headers:
             headers["Authorization"] = f"Bearer {self.auth_token}"
+        elif headers is None:
+            headers = {}
             
         try:
             if method.upper() == "GET":
