@@ -166,6 +166,12 @@ export default function DashboardScreen() {
               </View>
               <Text style={styles.actionText}>Schedule</Text>
             </TouchableOpacity>
+            <TouchableOpacity style={styles.actionButton} onPress={() => router.push('/routes')}>
+              <View style={[styles.actionIcon, { backgroundColor: '#EF444420' }]}>
+                <Ionicons name="map" size={24} color="#EF4444" />
+              </View>
+              <Text style={styles.actionText}>Route</Text>
+            </TouchableOpacity>
             <TouchableOpacity style={styles.actionButton} onPress={() => router.push('/(tabs)/coach')}>
               <View style={[styles.actionIcon, { backgroundColor: '#8B5CF620' }]}>
                 <Ionicons name="chatbubbles" size={24} color="#8B5CF6" />
@@ -174,6 +180,25 @@ export default function DashboardScreen() {
             </TouchableOpacity>
           </View>
         </View>
+
+        {/* Today's Route */}
+        {upcomingAppointments.length > 0 && (
+          <TouchableOpacity 
+            style={styles.routeBanner}
+            onPress={() => router.push('/routes')}
+          >
+            <View style={styles.routeBannerIcon}>
+              <Ionicons name="navigate" size={24} color="#FFFFFF" />
+            </View>
+            <View style={styles.routeBannerContent}>
+              <Text style={styles.routeBannerTitle}>Today's Route</Text>
+              <Text style={styles.routeBannerSubtitle}>
+                {upcomingAppointments.length} stop{upcomingAppointments.length !== 1 ? 's' : ''} scheduled
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#FFFFFF" />
+          </TouchableOpacity>
+        )}
 
         {/* Upcoming Appointments */}
         <View style={styles.section}>
