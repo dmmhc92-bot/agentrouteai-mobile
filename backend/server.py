@@ -959,6 +959,302 @@ async def restore_purchases(current_user: dict = Depends(get_current_user)):
     # Mock restore - in production this would verify with App Store
     return {"message": "No purchases to restore", "status": current_user.get("subscription_status", "trial")}
 
+# ==================== ROUTE PLANNING ROUTES ====================
+
+def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Calculate the distance between two points on Earth in kilometers."""
+    R = 6371  # Earth's radius in kilometers
+    
+    lat1_rad = math.radians(lat1)
+    lat2_rad = math.radians(lat2)
+    delta_lat = math.radians(lat2 - lat1)
+    delta_lon = math.radians(lon2 - lon1)
+    
+    a = math.sin(delta_lat/2)**2 + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(delta_lon/2)**2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+    
+    return R * c
+
+def nearest_neighbor_route(stops: List[dict], start_lat: float = None, start_lng: float = None) -> List[dict]:
+    """Order stops using nearest neighbor algorithm for route optimization."""
+    if len(stops) <= 1:
+        return stops
+    
+    # Filter stops with valid coordinates
+    valid_stops = [s for s in stops if s.get('latitude') and s.get('longitude')]
+    invalid_stops = [s for s in stops if not s.get('latitude') or not s.get('longitude')]
+    
+    if not valid_stops:
+        return stops
+    
+    # Start from the first stop or provided start location
+    if start_lat and start_lng:
+        current_lat, current_lng = start_lat, start_lng
+    else:
+        current_lat = valid_stops[0]['latitude']
+        current_lng = valid_stops[0]['longitude']
+    
+    unvisited = valid_stops.copy()
+    ordered = []
+    
+    while unvisited:
+        # Find nearest unvisited stop
+        nearest_idx = 0
+        nearest_dist = float('inf')
+        
+        for i, stop in enumerate(unvisited):
+            dist = haversine_distance(current_lat, current_lng, stop['latitude'], stop['longitude'])
+            if dist < nearest_dist:
+                nearest_dist = dist
+                nearest_idx = i
+        
+        # Move to nearest stop
+        nearest_stop = unvisited.pop(nearest_idx)
+        ordered.append(nearest_stop)
+        current_lat = nearest_stop['latitude']
+        current_lng = nearest_stop['longitude']
+    
+    # Add invalid stops at the end
+    ordered.extend(invalid_stops)
+    
+    # Assign order numbers
+    for i, stop in enumerate(ordered):
+        stop['order'] = i + 1
+    
+    return ordered
+
+@api_router.post("/routes/daily", response_model=DailyRouteResponse)
+async def get_daily_route(route_req: DailyRouteRequest, current_user: dict = Depends(get_current_user)):
+    """Get optimized daily route for scheduled appointments."""
+    
+    # Get all appointments for the specified date
+    appointments = await db.appointments.find({
+        "created_by_user": current_user["id"],
+        "appointment_date": route_req.date,
+        "status": "scheduled"
+    }).to_list(100)
+    
+    if not appointments:
+        return DailyRouteResponse(
+            date=route_req.date,
+            stops=[],
+            total_distance_km=0,
+            estimated_duration_mins=0,
+            optimized=True
+        )
+    
+    # Build stops list with lead information
+    stops = []
+    for apt in appointments:
+        lead = await db.leads.find_one({"id": apt["lead_id"]})
+        if lead:
+            # Check if lead has geocoded coordinates stored
+            lead_geocode = await db.lead_geocodes.find_one({"lead_id": lead["id"]})
+            
+            stop = {
+                "lead_id": lead["id"],
+                "lead_name": lead["name"],
+                "address": lead.get("address", ""),
+                "appointment_id": apt["id"],
+                "appointment_time": apt["appointment_time"],
+                "latitude": lead_geocode["latitude"] if lead_geocode else None,
+                "longitude": lead_geocode["longitude"] if lead_geocode else None,
+                "order": 0
+            }
+            stops.append(stop)
+    
+    # Sort by appointment time first, then optimize route
+    stops.sort(key=lambda x: x["appointment_time"] or "23:59")
+    
+    # Optimize route using nearest neighbor if we have coordinates
+    has_coords = any(s.get('latitude') and s.get('longitude') for s in stops)
+    if has_coords:
+        stops = nearest_neighbor_route(
+            stops, 
+            start_lat=route_req.start_lat,
+            start_lng=route_req.start_lng
+        )
+    else:
+        # Just assign order based on appointment time
+        for i, stop in enumerate(stops):
+            stop['order'] = i + 1
+    
+    # Calculate total distance
+    total_distance = 0
+    for i in range(len(stops) - 1):
+        if stops[i].get('latitude') and stops[i+1].get('latitude'):
+            total_distance += haversine_distance(
+                stops[i]['latitude'], stops[i]['longitude'],
+                stops[i+1]['latitude'], stops[i+1]['longitude']
+            )
+    
+    # Estimate duration (assume 50 km/h average speed + 30 mins per stop)
+    drive_time = (total_distance / 50) * 60  # Convert to minutes
+    stop_time = len(stops) * 30
+    estimated_duration = int(drive_time + stop_time)
+    
+    return DailyRouteResponse(
+        date=route_req.date,
+        stops=[RouteStop(**s) for s in stops],
+        total_distance_km=round(total_distance, 2),
+        estimated_duration_mins=estimated_duration,
+        optimized=has_coords
+    )
+
+@api_router.post("/routes/geocode")
+async def geocode_lead_address(lead_id: str, current_user: dict = Depends(get_current_user)):
+    """Geocode a lead's address and store coordinates for route planning."""
+    
+    lead = await db.leads.find_one({"id": lead_id, "created_by_user": current_user["id"]})
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    
+    if not lead.get("address"):
+        raise HTTPException(status_code=400, detail="Lead has no address")
+    
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        
+        api_key = os.environ.get("EMERGENT_LLM_KEY")
+        if not api_key:
+            raise HTTPException(status_code=500, detail="Geocoding service not configured")
+        
+        # Use AI to estimate coordinates from address
+        chat = LlmChat(
+            api_key=api_key,
+            session_id=f"geocode_{lead_id}",
+            system_message="""You are a geocoding assistant. Given an address, provide approximate latitude and longitude coordinates.
+Return ONLY a JSON object with 'latitude' and 'longitude' as numbers.
+Example: {"latitude": 40.7128, "longitude": -74.0060}
+If you cannot determine coordinates, return {"latitude": null, "longitude": null}"""
+        ).with_model("openai", "gpt-4.1")
+        
+        user_message = UserMessage(text=f"Geocode this address: {lead['address']}")
+        response = await chat.send_message(user_message)
+        
+        import json
+        try:
+            if "{" in response and "}" in response:
+                json_str = response[response.find("{"):response.rfind("}")+1]
+                coords = json.loads(json_str)
+                lat = coords.get("latitude")
+                lng = coords.get("longitude")
+                
+                if lat and lng:
+                    # Store geocoded coordinates
+                    await db.lead_geocodes.update_one(
+                        {"lead_id": lead_id},
+                        {"$set": {
+                            "lead_id": lead_id,
+                            "address": lead["address"],
+                            "latitude": lat,
+                            "longitude": lng,
+                            "updated_at": datetime.utcnow()
+                        }},
+                        upsert=True
+                    )
+                    
+                    return {"success": True, "latitude": lat, "longitude": lng}
+        except:
+            pass
+        
+        return {"success": False, "error": "Could not geocode address"}
+        
+    except Exception as e:
+        logger.error(f"Geocoding error: {e}")
+        raise HTTPException(status_code=500, detail=f"Geocoding error: {str(e)}")
+
+@api_router.get("/routes/leads-with-coordinates")
+async def get_leads_with_coordinates(current_user: dict = Depends(get_current_user)):
+    """Get all leads with their geocoded coordinates."""
+    
+    leads = await db.leads.find({"created_by_user": current_user["id"]}).to_list(1000)
+    
+    result = []
+    for lead in leads:
+        geocode = await db.lead_geocodes.find_one({"lead_id": lead["id"]})
+        result.append({
+            "id": lead["id"],
+            "name": lead["name"],
+            "address": lead.get("address", ""),
+            "latitude": geocode["latitude"] if geocode else None,
+            "longitude": geocode["longitude"] if geocode else None,
+            "has_coordinates": geocode is not None
+        })
+    
+    return result
+
+@api_router.post("/routes/batch-geocode")
+async def batch_geocode_leads(current_user: dict = Depends(get_current_user)):
+    """Geocode all leads that have addresses but no coordinates."""
+    
+    leads = await db.leads.find({
+        "created_by_user": current_user["id"],
+        "address": {"$ne": ""}
+    }).to_list(100)
+    
+    geocoded_count = 0
+    failed_count = 0
+    
+    for lead in leads:
+        # Check if already geocoded
+        existing = await db.lead_geocodes.find_one({"lead_id": lead["id"]})
+        if existing:
+            continue
+        
+        try:
+            from emergentintegrations.llm.chat import LlmChat, UserMessage
+            
+            api_key = os.environ.get("EMERGENT_LLM_KEY")
+            if not api_key:
+                continue
+            
+            chat = LlmChat(
+                api_key=api_key,
+                session_id=f"geocode_{lead['id']}",
+                system_message="""You are a geocoding assistant. Given an address, provide approximate latitude and longitude coordinates.
+Return ONLY a JSON object with 'latitude' and 'longitude' as numbers.
+Example: {"latitude": 40.7128, "longitude": -74.0060}"""
+            ).with_model("openai", "gpt-4.1")
+            
+            user_message = UserMessage(text=f"Geocode this address: {lead['address']}")
+            response = await chat.send_message(user_message)
+            
+            import json
+            if "{" in response and "}" in response:
+                json_str = response[response.find("{"):response.rfind("}")+1]
+                coords = json.loads(json_str)
+                lat = coords.get("latitude")
+                lng = coords.get("longitude")
+                
+                if lat and lng:
+                    await db.lead_geocodes.update_one(
+                        {"lead_id": lead["id"]},
+                        {"$set": {
+                            "lead_id": lead["id"],
+                            "address": lead["address"],
+                            "latitude": lat,
+                            "longitude": lng,
+                            "updated_at": datetime.utcnow()
+                        }},
+                        upsert=True
+                    )
+                    geocoded_count += 1
+                else:
+                    failed_count += 1
+            else:
+                failed_count += 1
+                
+        except Exception as e:
+            logger.error(f"Batch geocode error for lead {lead['id']}: {e}")
+            failed_count += 1
+    
+    return {
+        "geocoded": geocoded_count,
+        "failed": failed_count,
+        "message": f"Geocoded {geocoded_count} leads, {failed_count} failed"
+    }
+
 # ==================== HEALTH CHECK ====================
 
 @api_router.get("/")
