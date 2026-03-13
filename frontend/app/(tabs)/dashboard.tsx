@@ -462,4 +462,33 @@ const styles = StyleSheet.create({
     color: '#94A3B8',
     fontSize: 12,
   },
+  routeBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#3B82F6',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 24,
+  },
+  routeBannerIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  routeBannerContent: {
+    flex: 1,
+  },
+  routeBannerTitle: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  routeBannerSubtitle: {
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 14,
+  },
 });
