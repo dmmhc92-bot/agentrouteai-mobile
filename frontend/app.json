@@ -25,8 +25,8 @@
       "edgeToEdgeEnabled": true,
       "package": "com.agentroute.ai",
       "permissions": [
-        "CAMERA", 
-        "READ_EXTERNAL_STORAGE", 
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
         "WRITE_EXTERNAL_STORAGE",
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION"
@@ -47,7 +47,8 @@
           "resizeMode": "contain",
           "backgroundColor": "#000"
         }
-      ]
+      ],
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true
