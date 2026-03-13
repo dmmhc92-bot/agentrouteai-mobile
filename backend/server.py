@@ -977,7 +977,11 @@ def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> fl
 
 def nearest_neighbor_route(stops: List[dict], start_lat: float = None, start_lng: float = None) -> List[dict]:
     """Order stops using nearest neighbor algorithm for route optimization."""
-    if len(stops) <= 1:
+    if len(stops) == 0:
+        return stops
+    
+    if len(stops) == 1:
+        stops[0]['order'] = 1
         return stops
     
     # Filter stops with valid coordinates
@@ -985,6 +989,9 @@ def nearest_neighbor_route(stops: List[dict], start_lat: float = None, start_lng
     invalid_stops = [s for s in stops if not s.get('latitude') or not s.get('longitude')]
     
     if not valid_stops:
+        # Just assign order if no valid coordinates
+        for i, stop in enumerate(stops):
+            stop['order'] = i + 1
         return stops
     
     # Start from the first stop or provided start location
