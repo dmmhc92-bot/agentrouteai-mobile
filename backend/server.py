@@ -598,56 +598,200 @@ async def get_scope_pdf(scope_id: str, current_user: dict = Depends(get_current_
     # Get lead info
     lead = await db.leads.find_one({"id": scope["lead_id"]})
     lead_name = lead["name"] if lead else "Unknown"
+    lead_phone = lead.get("phone", "") if lead else ""
+    lead_address = lead.get("address", "") if lead else ""
     
-    # Generate PDF
+    # Get agent info
+    agent = await db.users.find_one({"id": current_user["id"]})
+    agent_name = agent["name"] if agent else "Unknown"
+    
+    # Generate Professional PDF
     buffer = BytesIO()
     p = canvas.Canvas(buffer, pagesize=letter)
     width, height = letter
     
-    # Title
-    p.setFont("Helvetica-Bold", 18)
-    p.drawString(50, height - 50, "Scope of Appointment")
-    
-    # Lead info
-    p.setFont("Helvetica-Bold", 12)
-    p.drawString(50, height - 90, f"Client: {lead_name}")
-    p.drawString(50, height - 110, f"Date: {scope['created_date'].strftime('%Y-%m-%d %H:%M')}")
-    
-    # Form fields
-    p.setFont("Helvetica", 10)
-    y_position = height - 150
-    
     form_fields = scope.get("form_fields", {})
-    for key, value in form_fields.items():
-        if y_position < 100:
-            p.showPage()
-            y_position = height - 50
-        p.drawString(50, y_position, f"{key}: {value}")
-        y_position -= 20
     
-    # Typed name
-    y_position -= 30
+    # Header with border
+    p.setStrokeColor(colors.HexColor("#1E40AF"))
+    p.setLineWidth(2)
+    p.rect(30, height - 100, width - 60, 70, stroke=1, fill=0)
+    
+    # Company/Form Title
+    p.setFillColor(colors.HexColor("#1E40AF"))
+    p.setFont("Helvetica-Bold", 22)
+    p.drawCentredString(width/2, height - 55, "SCOPE OF APPOINTMENT")
+    
+    p.setFillColor(colors.HexColor("#475569"))
+    p.setFont("Helvetica", 10)
+    p.drawCentredString(width/2, height - 75, "Medicare Sales Appointment Confirmation Document")
+    
+    # Document ID and Date
+    p.setFillColor(colors.black)
+    p.setFont("Helvetica", 8)
+    p.drawString(40, height - 95, f"Document ID: {scope_id[:8].upper()}")
+    p.drawRightString(width - 40, height - 95, f"Date: {scope['created_date'].strftime('%B %d, %Y')}")
+    
+    y = height - 130
+    
+    # Section 1: Beneficiary Information
+    p.setFillColor(colors.HexColor("#1E40AF"))
     p.setFont("Helvetica-Bold", 12)
-    p.drawString(50, y_position, f"Signed by: {scope['typed_name']}")
+    p.drawString(40, y, "SECTION 1: BENEFICIARY INFORMATION")
+    y -= 5
+    p.setStrokeColor(colors.HexColor("#1E40AF"))
+    p.setLineWidth(1)
+    p.line(40, y, width - 40, y)
+    y -= 20
     
-    # Signature
+    p.setFillColor(colors.black)
+    p.setFont("Helvetica", 10)
+    
+    beneficiary_name = form_fields.get("beneficiary_name", lead_name)
+    beneficiary_phone = form_fields.get("beneficiary_phone", lead_phone)
+    
+    p.drawString(40, y, f"Beneficiary Name: {beneficiary_name}")
+    p.drawString(300, y, f"Phone: {beneficiary_phone}")
+    y -= 18
+    p.drawString(40, y, f"Address: {lead_address}")
+    y -= 30
+    
+    # Section 2: Agent Information
+    p.setFillColor(colors.HexColor("#1E40AF"))
+    p.setFont("Helvetica-Bold", 12)
+    p.drawString(40, y, "SECTION 2: AGENT/BROKER INFORMATION")
+    y -= 5
+    p.line(40, y, width - 40, y)
+    y -= 20
+    
+    p.setFillColor(colors.black)
+    p.setFont("Helvetica", 10)
+    agent_form_name = form_fields.get("agent_name", agent_name)
+    agent_license = form_fields.get("agent_license", "")
+    
+    p.drawString(40, y, f"Agent/Broker Name: {agent_form_name}")
+    p.drawString(300, y, f"License #: {agent_license}")
+    y -= 30
+    
+    # Section 3: Products to be Discussed
+    p.setFillColor(colors.HexColor("#1E40AF"))
+    p.setFont("Helvetica-Bold", 12)
+    p.drawString(40, y, "SECTION 3: PRODUCTS TO BE DISCUSSED")
+    y -= 5
+    p.line(40, y, width - 40, y)
+    y -= 15
+    
+    p.setFillColor(colors.black)
+    p.setFont("Helvetica", 9)
+    p.drawString(40, y, "Please indicate the type(s) of product(s) you want the agent/broker to discuss:")
+    y -= 20
+    
+    products = [
+        ("medicare_advantage", "Medicare Advantage Plans (Part C) - HMO, PPO, PFFS, SNP"),
+        ("medicare_supplement", "Medicare Supplement (Medigap) Insurance"),
+        ("prescription_drug", "Medicare Prescription Drug Plans (Part D)"),
+        ("dental_vision", "Dental, Vision, and/or Hearing Products"),
+    ]
+    
+    p.setFont("Helvetica", 10)
+    for key, label in products:
+        checked = form_fields.get(key, False)
+        # Draw checkbox
+        p.rect(50, y - 2, 12, 12, stroke=1, fill=0)
+        if checked:
+            p.setFillColor(colors.HexColor("#1E40AF"))
+            p.drawString(53, y, "X")
+            p.setFillColor(colors.black)
+        p.drawString(70, y, label)
+        y -= 20
+    
+    # Other products
+    other = form_fields.get("other_products", "")
+    p.rect(50, y - 2, 12, 12, stroke=1, fill=0)
+    if other:
+        p.drawString(53, y, "X")
+    p.drawString(70, y, f"Other: {other if other else '_' * 50}")
+    y -= 35
+    
+    # Section 4: Consent
+    p.setFillColor(colors.HexColor("#1E40AF"))
+    p.setFont("Helvetica-Bold", 12)
+    p.drawString(40, y, "SECTION 4: BENEFICIARY CONSENT AND ACKNOWLEDGMENT")
+    y -= 5
+    p.line(40, y, width - 40, y)
+    y -= 15
+    
+    p.setFillColor(colors.black)
+    p.setFont("Helvetica", 9)
+    consent_text = [
+        "By signing this form, I agree to a meeting with a sales agent to discuss the types of products I",
+        "have selected above. I understand that this is not an enrollment form and that I am under no",
+        "obligation to enroll in any plan. The agent may only discuss the products I have indicated above.",
+        "",
+        "I understand that the Centers for Medicare & Medicaid Services (CMS) requires agents to document",
+        "the specific product types I want to discuss prior to any appointment for Medicare sales."
+    ]
+    
+    for line in consent_text:
+        p.drawString(40, y, line)
+        y -= 12
+    
+    y -= 20
+    
+    # Signature Section
+    p.setFillColor(colors.HexColor("#1E40AF"))
+    p.setFont("Helvetica-Bold", 12)
+    p.drawString(40, y, "SECTION 5: SIGNATURE")
+    y -= 5
+    p.line(40, y, width - 40, y)
+    y -= 25
+    
+    p.setFillColor(colors.black)
+    p.setFont("Helvetica", 10)
+    
+    # Signature image or line
     if scope.get("signature"):
-        y_position -= 100
         try:
             sig_data = scope["signature"]
             if sig_data.startswith("data:"):
                 sig_data = sig_data.split(",")[1]
             sig_bytes = base64.b64decode(sig_data)
             sig_image = ImageReader(BytesIO(sig_bytes))
-            p.drawImage(sig_image, 50, y_position, width=200, height=80, preserveAspectRatio=True)
+            p.drawImage(sig_image, 40, y - 60, width=180, height=60, preserveAspectRatio=True)
         except Exception as e:
             logger.error(f"Error adding signature to PDF: {e}")
+            p.line(40, y - 40, 220, y - 40)
+    else:
+        p.line(40, y - 40, 220, y - 40)
+    
+    p.drawString(40, y - 55, "Beneficiary Signature")
+    
+    # Date
+    p.line(280, y - 40, 420, y - 40)
+    p.drawString(280, y - 55, "Date")
+    p.setFont("Helvetica-Bold", 10)
+    p.drawString(280, y - 35, scope['created_date'].strftime('%m/%d/%Y'))
+    
+    # Typed name
+    p.setFont("Helvetica", 10)
+    p.line(450, y - 40, width - 40, y - 40)
+    p.drawString(450, y - 55, "Printed Name")
+    p.setFont("Helvetica-Bold", 10)
+    p.drawString(450, y - 35, scope['typed_name'])
+    
+    y -= 80
+    
+    # Footer
+    p.setFont("Helvetica", 8)
+    p.setFillColor(colors.HexColor("#64748B"))
+    p.drawCentredString(width/2, 40, "This document is valid for the appointment date listed above.")
+    p.drawCentredString(width/2, 28, f"Generated by AgentRoute AI - Document ID: {scope_id}")
     
     p.save()
     buffer.seek(0)
     
     pdf_base64 = base64.b64encode(buffer.read()).decode()
-    return {"pdf_base64": pdf_base64, "filename": f"scope_{scope_id}.pdf"}
+    return {"pdf_base64": pdf_base64, "filename": f"SOA_{lead_name.replace(' ', '_')}_{scope['created_date'].strftime('%Y%m%d')}.pdf"}
 
 # ==================== AI COACH ROUTES ====================
 
