@@ -185,6 +185,35 @@ class SubscriptionStatus(BaseModel):
     expires_at: Optional[datetime] = None
     is_trial: bool
 
+# Route Planning Models
+class RouteStop(BaseModel):
+    lead_id: str
+    lead_name: str
+    address: str
+    appointment_id: Optional[str] = None
+    appointment_time: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    order: int
+
+class DailyRouteRequest(BaseModel):
+    date: str  # YYYY-MM-DD format
+    start_address: Optional[str] = None
+    start_lat: Optional[float] = None
+    start_lng: Optional[float] = None
+
+class DailyRouteResponse(BaseModel):
+    date: str
+    stops: List[RouteStop]
+    total_distance_km: float
+    estimated_duration_mins: int
+    optimized: bool
+
+class GeocodedAddress(BaseModel):
+    address: str
+    latitude: float
+    longitude: float
+
 # ==================== HELPER FUNCTIONS ====================
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
