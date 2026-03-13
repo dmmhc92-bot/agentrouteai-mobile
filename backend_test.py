@@ -482,6 +482,8 @@ class APITester:
         unauthorized_count = 0
         for method, endpoint in protected_endpoints:
             response = self.make_request(method, endpoint, {})
+            status_code = response.status_code if response else 0
+            print(f"  {method} {endpoint}: {status_code}")
             if response and response.status_code in [401, 403]:
                 unauthorized_count += 1
         
