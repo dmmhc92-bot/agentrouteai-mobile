@@ -467,11 +467,7 @@ class APITester:
         """Test that protected endpoints require authentication"""
         print("=== UNAUTHORIZED ACCESS TESTS ===")
         
-        # Temporarily remove auth token
-        original_token = self.auth_token
-        self.auth_token = None
-        
-        # Test protected endpoints without auth
+        # Test protected endpoints without auth using direct requests
         protected_endpoints = [
             ("GET", "/auth/me"),
             ("GET", "/leads"),
@@ -483,14 +479,21 @@ class APITester:
         
         unauthorized_count = 0
         for method, endpoint in protected_endpoints:
-            response = self.make_request(method, endpoint, {}, headers={})  # Explicitly pass empty headers
-            status_code = response.status_code if response else 0
-            print(f"  {method} {endpoint}: {status_code}")
-            if response and response.status_code in [401, 403]:
-                unauthorized_count += 1
-        
-        # Restore auth token
-        self.auth_token = original_token
+            url = f"{BASE_URL}{endpoint}"
+            try:
+                if method == "GET":
+                    response = requests.get(url, headers={}, timeout=30)
+                elif method == "POST":
+                    response = requests.post(url, json={}, headers={}, timeout=30)
+                else:
+                    response = requests.request(method, url, headers={}, timeout=30)
+                
+                status_code = response.status_code
+                print(f"  {method} {endpoint}: {status_code}")
+                if status_code in [401, 403]:
+                    unauthorized_count += 1
+            except Exception as e:
+                print(f"  {method} {endpoint}: ERROR - {e}")
         
         self.log_result("Unauthorized access protection", 
                        unauthorized_count == len(protected_endpoints),
