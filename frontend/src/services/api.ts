@@ -158,6 +158,31 @@ class ApiService {
     const response = await apiClient.post('/subscription/restore');
     return response.data;
   }
+
+  // Route Planning
+  async getDailyRoute(date: string, startLat?: number, startLng?: number) {
+    const response = await apiClient.post('/routes/daily', { 
+      date, 
+      start_lat: startLat, 
+      start_lng: startLng 
+    });
+    return response.data;
+  }
+
+  async geocodeLeadAddress(leadId: string) {
+    const response = await apiClient.post(`/routes/geocode?lead_id=${leadId}`);
+    return response.data;
+  }
+
+  async getLeadsWithCoordinates() {
+    const response = await apiClient.get('/routes/leads-with-coordinates');
+    return response.data;
+  }
+
+  async batchGeocodeLeads() {
+    const response = await apiClient.post('/routes/batch-geocode');
+    return response.data;
+  }
 }
 
 export const api = new ApiService();
