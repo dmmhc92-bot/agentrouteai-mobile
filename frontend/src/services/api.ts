@@ -371,6 +371,27 @@ class ApiService {
     const response = await apiClient.get(`/commissions/agent/${agentId}`);
     return response.data;
   }
+
+  // Command Center (Admin/Manager)
+  async getTeamAgents() {
+    const response = await apiClient.get('/team/agents');
+    return response.data;
+  }
+
+  async getAgentDetails(agentId: string) {
+    const response = await apiClient.get(`/team/agents/${agentId}/details`);
+    return response.data;
+  }
+
+  async getTeamSnapshot() {
+    const response = await apiClient.get('/team/snapshot');
+    return response.data;
+  }
+
+  async getTeamLeaderboard(period: 'day' | 'week' | 'month' = 'month') {
+    const response = await apiClient.get(`/team/leaderboard?period=${period}`);
+    return response.data;
+  }
 }
 
 export const api = new ApiService();
