@@ -234,9 +234,19 @@ export default function NewScopeScreen() {
         agent_signature: agentSignature,
       });
 
-      // Verify PDF was generated
-      if (!scope.pdf_base64) {
+      // Check if PDF was generated successfully
+      if (scope.pdf_error) {
+        console.warn('PDF generation issue:', scope.pdf_error);
+        // Still continue - PDF can be regenerated later
+        Alert.alert(
+          'Document Saved',
+          'Your Scope of Appointment was saved, but there was an issue generating the PDF. The PDF will be available when you view the document.',
+          [{ text: 'OK' }]
+        );
+      } else if (!scope.pdf_base64) {
         console.warn('PDF not generated during save, will be generated on view');
+      } else {
+        console.log('SOA saved successfully with PDF');
       }
 
       setStep('complete');
@@ -248,7 +258,7 @@ export default function NewScopeScreen() {
     } catch (error: any) {
       console.error('Save error:', error);
       const message = error.response?.data?.detail || 'Failed to save document. Please try again.';
-      Alert.alert('Save Failed', message);
+      Alert.alert('Save Failed', message, [{ text: 'OK' }]);
     } finally {
       setIsSaving(false);
     }
