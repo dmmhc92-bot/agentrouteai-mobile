@@ -220,15 +220,22 @@ export default function SignatureCapture({
     }
 
     setIsSaving(true);
+    console.log('=== SAVING SIGNATURE ===');
+    console.log('Paths count:', paths.length);
+    console.log('Total points:', totalPoints);
+    console.log('Has uploaded image:', !!signatureImage);
 
     try {
       // If we have an uploaded/existing image and no new drawing, use it
       if (signatureImage && paths.length === 0) {
+        console.log('Using uploaded/existing image');
+        console.log('Image data length:', signatureImage.length);
         onSave(signatureImage);
         return;
       }
 
       // Capture the canvas as PNG
+      console.log('Capturing canvas as PNG...');
       const uri = await captureRef(canvasRef, {
         format: 'png',
         quality: 1,
@@ -236,15 +243,22 @@ export default function SignatureCapture({
       });
 
       const dataUri = `data:image/png;base64,${uri}`;
+      console.log('Signature captured successfully');
+      console.log('Data URI length:', dataUri.length);
+      console.log('Data URI prefix:', dataUri.substring(0, 50));
+      
       setSignatureImage(dataUri);
       onSave(dataUri);
+      
+      console.log('Signature saved and callback invoked');
     } catch (error) {
-      console.error('Error capturing signature:', error);
+      console.error('=== SIGNATURE CAPTURE ERROR ===');
+      console.error('Error:', error);
       Alert.alert('Error', 'Failed to capture signature. Please try again.');
     } finally {
       setIsSaving(false);
     }
-  }, [hasValidSignature, signatureImage, paths.length, onSave]);
+  }, [hasValidSignature, signatureImage, paths.length, totalPoints, onSave]);
 
   // Upload signature image from device
   const handleUploadImage = useCallback(async () => {
