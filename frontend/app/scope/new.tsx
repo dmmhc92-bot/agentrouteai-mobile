@@ -802,6 +802,7 @@ export default function NewScopeScreen() {
         title="Beneficiary Signature"
         subtitle="Sign to confirm products to discuss"
         signerName={formData.beneficiary_name || formData.auth_rep_name}
+        existingSignature={beneficiarySignature}
       />
 
       <SignatureCapture
@@ -814,6 +815,7 @@ export default function NewScopeScreen() {
         title="Agent Signature"
         subtitle="Confirm appointment scope"
         signerName={formData.agent_name}
+        existingSignature={agentSignature}
       />
 
       {/* Date Pickers */}
