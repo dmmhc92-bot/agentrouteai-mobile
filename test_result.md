@@ -152,6 +152,9 @@ backend:
         - working: true
           agent: "testing"
           comment: "Scope functionality fully working: POST /scope (200), GET /scope/{id} (200), GET /scope/lead/{lead_id} (200), GET /scope/{id}/pdf (200). PDF generation working correctly with proper formatting and base64 encoding."
+        - working: true
+          agent: "testing"
+          comment: "SOA workflow re-tested and confirmed fully working. Fixed ObjectId serialization issue in GET endpoints. All 9 SOA-specific tests passed (100% success rate). Dual signature support verified - both beneficiary and agent signatures properly stored and retrieved. PDF generation working with proper base64 encoding. Admin endpoint working with enriched data. All endpoints: POST /api/scope (200 - creates SOA with dual signatures), GET /api/scope/{id} (200 - retrieves SOA with all fields), GET /api/scope/lead/{lead_id} (200 - gets all SOAs for lead), GET /api/scope/{id}/pdf (200 - generates/retrieves PDF), GET /api/scope/admin/all (200 - admin view with enriched data). Test credentials working: demo@agentroute.com with admin role access."
 
   - task: "Route Planning"
     implemented: true
