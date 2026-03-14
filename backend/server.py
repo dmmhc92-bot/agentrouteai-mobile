@@ -1144,8 +1144,9 @@ async def scan_document(request: dict, current_user: dict = Depends(get_current_
     Scan a business card image and extract contact information.
     Returns: name, phone, email, company, address, job_title
     """
+    import tempfile
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
+        from emergentintegrations.llm.chat import LlmChat, UserMessage, FileContentWithMimeType
         api_key = os.environ.get("EMERGENT_LLM_KEY")
         if not api_key:
             raise HTTPException(status_code=500, detail="OCR not configured - EMERGENT_LLM_KEY not set")
@@ -1154,19 +1155,41 @@ async def scan_document(request: dict, current_user: dict = Depends(get_current_
         if not image_base64:
             raise HTTPException(status_code=400, detail="No image provided")
         
-        # Strip data URL prefix if present
+        # Strip data URL prefix if present and detect mime type
+        mime_type = "image/jpeg"
         if image_base64.startswith("data:"):
             parts = image_base64.split(",")
             if len(parts) == 2:
+                header = parts[0]
                 image_base64 = parts[1]
+                if "image/png" in header:
+                    mime_type = "image/png"
+                elif "image/webp" in header:
+                    mime_type = "image/webp"
         
-        # Enhanced system prompt for comprehensive business card extraction
-        system_prompt = """You are an expert OCR system specialized in extracting contact information from business cards.
+        # Determine file extension
+        ext = ".jpg"
+        if mime_type == "image/png":
+            ext = ".png"
+        elif mime_type == "image/webp":
+            ext = ".webp"
+        
+        # Write image to temporary file (Gemini requires file path)
+        import base64
+        image_bytes = base64.b64decode(image_base64)
+        
+        with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp_file:
+            tmp_file.write(image_bytes)
+            tmp_path = tmp_file.name
+        
+        try:
+            # Enhanced system prompt for comprehensive business card extraction
+            system_prompt = """You are an expert OCR system specialized in extracting contact information from business cards.
 
 Extract ALL available information from the business card image and return ONLY a valid JSON object with these fields:
 {
   "name": "Full name of the person (first and last name)",
-  "phone": "Primary phone number (include country code if visible, format: +1-XXX-XXX-XXXX or (XXX) XXX-XXXX)",
+  "phone": "Primary phone number (include country code if visible)",
   "email": "Email address",
   "company": "Company or organization name",
   "job_title": "Job title or position",
@@ -1181,63 +1204,69 @@ Rules:
 - Clean up phone numbers to a consistent format
 - Preserve the exact email address
 - For addresses, include all parts visible (street, suite, city, state, zip)
-- If multiple phone numbers exist, put the main one in "phone" and mobile in "mobile"
 """
-        
-        chat = LlmChat(
-            api_key=api_key,
-            session_id=f"ocr_{uuid.uuid4().hex[:8]}",
-            system_message=system_prompt
-        ).with_model("gemini", "gemini-2.0-flash")
-        
-        # Create ImageContent for the image (correct approach for vision)
-        image_content = ImageContent(
-            image_base64=image_base64
-        )
-        
-        # Send message with image
-        response = await chat.send_message(UserMessage(
-            text="Extract all contact information from this business card image. Return only JSON, no markdown formatting.",
-            file_contents=[image_content]
-        ))
-        
-        logger.info(f"OCR raw response: {response[:500] if response else 'empty'}")
-        
-        import json
-        extracted = {}
-        try:
-            # Remove any markdown formatting
-            clean_response = response.strip()
-            if clean_response.startswith("```"):
-                # Remove markdown code blocks
-                lines = clean_response.split("\n")
-                clean_lines = [l for l in lines if not l.startswith("```")]
-                clean_response = "\n".join(clean_lines).strip()
             
-            # Find JSON in response
-            if "{" in clean_response and "}" in clean_response:
-                json_start = clean_response.find("{")
-                json_end = clean_response.rfind("}") + 1
-                json_str = clean_response[json_start:json_end]
-                extracted = json.loads(json_str)
-        except json.JSONDecodeError as je:
-            logger.error(f"JSON parse error: {je}, response: {response[:200]}")
+            chat = LlmChat(
+                api_key=api_key,
+                session_id=f"ocr_{uuid.uuid4().hex[:8]}",
+                system_message=system_prompt
+            ).with_model("gemini", "gemini-2.0-flash")
+            
+            # Use FileContentWithMimeType for Gemini (uses file path)
+            file_content = FileContentWithMimeType(
+                file_path=tmp_path,
+                mime_type=mime_type
+            )
+            
+            # Send message with image
+            response = await chat.send_message(UserMessage(
+                text="Extract all contact information from this business card image. Return only JSON, no markdown.",
+                file_contents=[file_content]
+            ))
+            
+            logger.info(f"OCR raw response: {response[:500] if response else 'empty'}")
+            
+            import json
             extracted = {}
-        
-        # Normalize and clean the extracted data
-        result = {
-            "name": (extracted.get("name") or "").strip(),
-            "phone": (extracted.get("phone") or extracted.get("mobile") or "").strip(),
-            "email": (extracted.get("email") or "").strip().lower() if extracted.get("email") else "",
-            "company": (extracted.get("company") or "").strip(),
-            "job_title": (extracted.get("job_title") or "").strip(),
-            "address": (extracted.get("address") or "").strip(),
-            "website": (extracted.get("website") or "").strip(),
-            "raw_text": response
-        }
-        
-        logger.info(f"OCR extracted: name={result['name']}, company={result['company']}, email={result['email']}")
-        return result
+            try:
+                # Remove any markdown formatting
+                clean_response = response.strip()
+                if clean_response.startswith("```"):
+                    lines = clean_response.split("\n")
+                    clean_lines = [l for l in lines if not l.startswith("```")]
+                    clean_response = "\n".join(clean_lines).strip()
+                
+                # Find JSON in response
+                if "{" in clean_response and "}" in clean_response:
+                    json_start = clean_response.find("{")
+                    json_end = clean_response.rfind("}") + 1
+                    json_str = clean_response[json_start:json_end]
+                    extracted = json.loads(json_str)
+            except json.JSONDecodeError as je:
+                logger.error(f"JSON parse error: {je}, response: {response[:200]}")
+                extracted = {}
+            
+            # Normalize and clean the extracted data
+            result = {
+                "name": (extracted.get("name") or "").strip(),
+                "phone": (extracted.get("phone") or extracted.get("mobile") or "").strip(),
+                "email": (extracted.get("email") or "").strip().lower() if extracted.get("email") else "",
+                "company": (extracted.get("company") or "").strip(),
+                "job_title": (extracted.get("job_title") or "").strip(),
+                "address": (extracted.get("address") or "").strip(),
+                "website": (extracted.get("website") or "").strip(),
+                "raw_text": response
+            }
+            
+            logger.info(f"OCR extracted: name={result['name']}, company={result['company']}, email={result['email']}")
+            return result
+            
+        finally:
+            # Clean up temp file
+            try:
+                os.unlink(tmp_path)
+            except:
+                pass
         
     except HTTPException:
         raise
