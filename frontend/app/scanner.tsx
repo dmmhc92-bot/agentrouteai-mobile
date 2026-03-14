@@ -18,6 +18,16 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import { api } from '../src/services/api';
 
+interface ScanResult {
+  name: string;
+  phone: string;
+  email: string;
+  company: string;
+  job_title: string;
+  address: string;
+  website: string;
+}
+
 export default function ScannerScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -25,18 +35,15 @@ export default function ScannerScreen() {
 
   const [permission, requestPermission] = useCameraPermissions();
   const [isScanning, setIsScanning] = useState(false);
-  const [scanResult, setScanResult] = useState<{
-    name: string;
-    phone: string;
-    email: string;
-    address: string;
-  } | null>(null);
+  const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
   // Editable fields for confirmation
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
+  const [company, setCompany] = useState('');
+  const [jobTitle, setJobTitle] = useState('');
   const [address, setAddress] = useState('');
 
   useEffect(() => {
@@ -44,6 +51,8 @@ export default function ScannerScreen() {
       setName(scanResult.name || '');
       setPhone(scanResult.phone || '');
       setEmail(scanResult.email || '');
+      setCompany(scanResult.company || '');
+      setJobTitle(scanResult.job_title || '');
       setAddress(scanResult.address || '');
     }
   }, [scanResult]);
@@ -55,7 +64,7 @@ export default function ScannerScreen() {
     try {
       const photo = await cameraRef.current.takePictureAsync({
         base64: true,
-        quality: 0.7,
+        quality: 0.8,
       });
 
       if (photo?.base64) {
@@ -64,12 +73,16 @@ export default function ScannerScreen() {
           name: result.name || '',
           phone: result.phone || '',
           email: result.email || '',
+          company: result.company || '',
+          job_title: result.job_title || '',
           address: result.address || '',
+          website: result.website || '',
         });
       }
     } catch (error: any) {
       console.log('Scan error:', error);
-      Alert.alert('Scan Error', 'Failed to scan business card. Please try again.');
+      const message = error.response?.data?.detail || 'Failed to scan business card. Please try again.';
+      Alert.alert('Scan Error', message);
     } finally {
       setIsScanning(false);
     }
@@ -79,22 +92,26 @@ export default function ScannerScreen() {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
-      quality: 0.7,
+      quality: 0.8,
       base64: true,
     });
 
     if (!result.canceled && result.assets[0].base64) {
       setIsScanning(true);
       try {
-        const scanResult = await api.scanBusinessCard(result.assets[0].base64);
+        const scanData = await api.scanBusinessCard(result.assets[0].base64);
         setScanResult({
-          name: scanResult.name || '',
-          phone: scanResult.phone || '',
-          email: scanResult.email || '',
-          address: scanResult.address || '',
+          name: scanData.name || '',
+          phone: scanData.phone || '',
+          email: scanData.email || '',
+          company: scanData.company || '',
+          job_title: scanData.job_title || '',
+          address: scanData.address || '',
+          website: scanData.website || '',
         });
-      } catch (error) {
-        Alert.alert('Scan Error', 'Failed to scan business card');
+      } catch (error: any) {
+        const message = error.response?.data?.detail || 'Failed to scan business card';
+        Alert.alert('Scan Error', message);
       } finally {
         setIsScanning(false);
       }
@@ -109,19 +126,35 @@ export default function ScannerScreen() {
 
     setIsSaving(true);
     try {
+      // Build comprehensive notes from scanned data
+      const noteParts: string[] = [];
+      noteParts.push('📇 Created from business card scan');
+      if (company.trim()) {
+        noteParts.push(`🏢 Company: ${company.trim()}`);
+      }
+      if (jobTitle.trim()) {
+        noteParts.push(`💼 Title: ${jobTitle.trim()}`);
+      }
+      if (scanResult?.website) {
+        noteParts.push(`🌐 Website: ${scanResult.website}`);
+      }
+      
       const lead = await api.createLead({
         name: name.trim(),
         phone: phone.trim(),
         email: email.trim(),
         address: address.trim(),
-        notes: 'Created from business card scan',
+        notes: noteParts.join('\n'),
+        source: 'business_card_scan',
       });
-      Alert.alert('Success', 'Lead created successfully', [
+      
+      Alert.alert('Success', 'Lead created successfully!', [
         { text: 'View Lead', onPress: () => router.replace(`/lead/${lead.id}`) },
-        { text: 'Scan Another', onPress: () => setScanResult(null) },
+        { text: 'Scan Another', onPress: () => handleRescan() },
       ]);
-    } catch (error) {
-      Alert.alert('Error', 'Failed to save lead');
+    } catch (error: any) {
+      const message = error.response?.data?.detail || 'Failed to save lead';
+      Alert.alert('Error', message);
     } finally {
       setIsSaving(false);
     }
@@ -132,6 +165,8 @@ export default function ScannerScreen() {
     setName('');
     setPhone('');
     setEmail('');
+    setCompany('');
+    setJobTitle('');
     setAddress('');
   };
 
