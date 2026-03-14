@@ -1,226 +1,223 @@
 <analysis>
-<original_problem_statement>
-Build a production-ready iOS mobile SaaS app called AgentRoute AI for field sales agents.
 
-**PRODUCT REQUIREMENTS (based on user requests during this and previous sessions):**
-*   **Core App & Auth:** JWT-based auth, CRUD for Users, Leads, Appointments, and Scope of Appointment (SOA). A dashboard overview.
-*   **Role-Based Login Routing:** After a user logs in, they should be routed to a specific dashboard based on their role (Admin, Manager, Agent).
-*   **Lead Scanner (OCR):** A high-speed workflow to scan business cards, contact sheets, and handwritten notes to auto-populate lead fields with OCR, allow for review, and provide quick actions (Scan Next) after saving.
-*   **AI Assistant & Daily Planner:** An OpenAI-based sales coach and a system to generate a prioritized daily action plan for agents.
-*   **Agency Command Center:** A mobile-first admin dashboard providing a real-time view of agency performance, activity, and pipeline health with drill-down capabilities.
-*   **Needs Attention & Coaching Alerts Dashboard:** A leadership dashboard that automatically identifies agents, leads, and cases that require intervention.
-*   **Role-Based Hierarchy & Command Center:** Admin, Manager, and Agent roles with specific data visibility. A command center for managers/admins to view team activity and a visual team hierarchy tree.
-*   **Policy Sales Pipeline:** A visual system to track leads through stages.
-*   **Scope of Appointment (SOA) Workflow:** A professional, mobile-first fillable form with a native, finger-touch dual signature capture solution. It must generate a clean, official-looking PDF that can be saved, printed, or shared and is stored with the lead record.
-*   **Commission Tracking:** A system to track estimated, pending, and paid commissions with split logic.
-*   **Lead Distribution & Territory Management:** A system for admins/managers to assign leads manually or automatically based on territory rules.
-*   **Bug Fix - Appointment Navigation:** Fix a bug where tapping an appointment in the Upcoming Appointments list leads to an Appointment not found screen.
-*   **Future/Backlog Features:** Advanced route planner, production/commission tracking dashboards, agent productivity tools, training library, and App Store compliance pages.
-</original_problem_statement>
+**original_problem_statement**: Build a production-ready iOS mobile SaaS app called AgentRoute AI for field sales agents.
+
+**PRODUCT REQUIREMENTS (based on user requests):**
+*   **Core App & Auth:** JWT-based auth, CRUD for Users, Leads, Appointments, and Scope of Appointment (SOA).
+*   **Role-Based Access & Dashboards:** Admin, Manager, and Agent roles with specific dashboards and data visibility.
+*   **Lead Scanner (OCR):** A workflow to scan contact info and create leads.
+*   **Scope of Appointment (SOA) Workflow:** A mobile-first form with dual signature capture that generates a clean, shareable PDF. The signature must render correctly on the final document, and PDF actions (View, Print, Save, Share) must work natively on iOS.
+*   **Smart Lead Distribution System:** Admins/Managers can assign leads (manually or automatically based on rules). The system must track lead history, a full pipeline status (New, Contacted, Won, Lost, etc.), and agent performance metrics on dashboards.
+*   **Medicare Compliance Tracking System:** For every lead/appointment, track SOA status (missing, signed, pending, etc.). Dashboards must provide a clear overview of compliance health (e.g., leads missing SOA, compliant appointments).
+*   **Tester Access:** Provide stable, seeded test accounts for Admin, Manager, and Agent roles, each with enough sample data to fully test their respective features and visibility rules.
+
 **User's preferred language**: English
 
 **what currently exists?**
-The application is in a fairly advanced state. A major finding in this session was that the previous handoff summary was incorrect; UIs reported as missing were in fact fully implemented.
+The application is in an advanced state. In this session, the agent successfully fixed a multi-faceted issue with the Scope of Appointment (SOA) workflow. This involved:
+1.  Fixing the signature capture component to save the signature as a PNG instead of SVG.
+2.  Updating the backend PDF generation to correctly embed the PNG signature.
+3.  Replacing the broken web-based PDF preview with a platform-aware solution that uses native iOS sharing/printing capabilities and opens a new tab on the web.
 
-The agent successfully verified and fixed an issue with the  page. Following that, several new, complex features were built from scratch (backend and frontend):
-1.  **Agency Command Center:** A multi-tab dashboard for admins.
-2.  **Needs Attention Dashboard:** An alert system for leadership.
-3.  **Lead Scanner Upgrade:** The UI/UX and backend were overhauled for a high-speed workflow (core camera function remains untested).
-4.  **Scope of Appointment (SOA) Overhaul:** A first version of a professional form with a custom signature component was built.
-5.  **Appointment Navigation Bug Fix:** A critical bug preventing users from viewing appointment details was identified (missing backend endpoint) and fixed.
+Following this, the agent implemented the backend and frontend for two major new features as requested:
+1.  **Smart Lead Distribution System:** New pipeline statuses, data models, and API endpoints were added to the backend.
+2.  **Medicare Compliance Tracking System:** A full-featured compliance dashboard was created at , along with new backend models and API endpoints. Compliance indicators were also added to the lead detail page and the main admin dashboard.
 
-The agent was in the process of a second-pass fix on the Scope of Appointment signature component when the session ended.
+A significant amount of debugging was performed to resolve a race condition and a data validation error to make the new compliance dashboard functional.
 
 **Last working item**:
-    - Last item agent was working: Fixing the custom Scope of Appointment (SOA) signature component (). The user reported the signature field was not working. The agent identified the root cause as a stale closure within the 's event handlers, which prevented the drawing path from updating correctly. A new version of the component was written to fix this, and the agent was about to begin testing the fix.
+    - Last item agent was working: Fulfilling the user's critical requirement to create stable, seeded test accounts for Admin, Manager, and Agent roles. The agent created a Python script () to register new users but discovered that the newly created Manager and Agent accounts could not log in, even though the users exist in the database. The Admin account login continued to work.
     - Status: IN PROGRESS
-    - Agent Testing Done: N
-    - Which testing method agent to use? screenshot tool
+    - Agent Testing Done: Y (The agent confirmed the login failure via a test script)
+    - Which testing method agent to use? manual testing by python -c
     - User Testing Done: N
 
 **All Pending/In progress Issue list**:
-  - Issue 1: Scope of Appointment signature capture needs verification (P0)
-  - Issue 2: Monolithic backend server file (P2)
-  - Issue 3: Lead Scanner OCR functionality is unverified (P2)
+  - Issue 1: Newly seeded Manager and Agent test accounts cannot log in. (P0)
+  - Issue 2: Monolithic backend server file (). (P2)
+  - Issue 3: Lead Scanner OCR functionality remains unverified on a real device. (P2)
   
   Issues Detail:
   - Issue 1: 
-     - Attempted fixes: The agent correctly identified that the  in the custom  component was using stale state setters. It rewrote the component using a  to hold the latest path data, which the  callbacks can then access, avoiding the stale closure problem. The new code is in place but has not been tested.
+     - Attempted fixes: A seeding script was created to register users. When logins failed, the script was modified to update passwords directly in the database, but this also failed. The agent has verified that the user records are being created correctly in the database.
      - Next debug checklist: 
-       1. Navigate to the Scope of Appointment creation screen for any lead.
-       2. Scroll to the signature sections (Beneficiary and Representative).
-       3. Attempt to draw a signature in the box with the mouse/touch. Verify that a path is drawn.
-       4. Use the Clear button and verify the signature disappears.
-       5. Draw a signature, save the form, and reopen the SOA to ensure the signature image persists.
-       6. Generate the PDF and verify the signature is embedded correctly.
-     - Why fix this issue and what will be achieved with the fix?: This is a critical workflow for insurance agents. A working signature is required for the SOA to be legally compliant and for the feature to be usable.
+       1. Examine the password hashing function () in  used during user creation.
+       2. Examine the password verification function () in the  (login) endpoint.
+       3. Compare the structure and value of the  field in the database for the non-working  user versus the working  user.
+       4. Manually test the  function with a known password and the hash stored in the database.
+     - Why fix this issue and what will be achieved with the fix?: This is a **critical blocker**. The user cannot test the extensive role-based features (Lead Distribution, Compliance Tracking, Manager hierarchy) without functional test accounts for each role.
      - Status:  IN PROGRESS
-     - Is recurring issue? Y
-     - Should Test frontend/backend/both after fix?: frontend
-     - Blocked on other issue: None
-
-  - Issue 2:
-     - Description: The file  contains all API routes, models, and logic. After this session's feature additions, it has grown from ~3800 lines to over 5,000 lines, making it extremely difficult to maintain.
-     - Next debug checklist: Propose a refactoring plan to the user. Split routes into separate files (e.g., , ) using FastAPI's . Include these routers in the main  file.
-     - Why fix this issue and what will be achieved with this?: Refactoring will significantly improve code organization, maintainability, and reduce the risk of introducing bugs.
-     - Status:  NOT STARTED
      - Is recurring issue? N
      - Should Test frontend/backend/both after fix?: backend
      - Blocked on other issue: None
 
+  - Issue 2:
+     - Description: The backend file  is a monolith that has grown to over 6,000 lines. It contains all API routes, models, and logic, making it extremely difficult to maintain and debug.
+     - Next debug checklist: Propose and execute a refactoring plan. Split routes into logical groups (e.g., , , ) inside a new  directory using FastAPI's .
+     - Why fix this issue and what will be achieved with this?: Refactoring will significantly improve code organization, maintainability, and reduce the risk of introducing new bugs.
+     - Status:  NOT STARTED
+     - Is recurring issue? Y
+     - Should Test frontend/backend/both after fix?: backend
+     - Blocked on other issue: None
+
   - Issue 3: 
-     - Description: The agent implemented a new UI and backend logic for an enhanced Lead Scanner workflow. However, due to the limitations of the web preview environment, the core functionality of using the device camera for OCR could not be tested.
-     - Next debug checklist: Once a QR code for Expo Go is available, a manual test on a physical device is required to verify the camera permission flow and the OCR accuracy with a real business card.
-     - Why fix this issue and what will be achieved with this?: The Lead Scanner is a key feature for agent productivity. Its core function must be verified before it can be considered complete.
+     - Description: The core functionality of using the device camera for OCR in the Lead Scanner workflow has not been tested on a physical device. While the backend endpoint was improved and verified with test data, the full end-to-end camera flow is unconfirmed.
+     - Next debug checklist: Once a QR code for Expo Go is available, a manual test on a physical device is required to verify camera permissions and OCR accuracy with a real business card.
+     - Why fix this issue and what will be achieved with this?: The Lead Scanner is a key productivity feature. Its core function must be verified before it can be considered complete.
      - Status:  NOT STARTED
      - Is recurring issue? N
      - Should Test frontend/backend/both after fix?: frontend
      - Blocked on other issue: None
 
 **In progress Task List**:
-  - Task 1: Complete and Verify the Scope of Appointment Signature Fix (P0)
-     - Where to resume: The agent has just overwritten  with the fix. The next step is to restart the frontend and begin testing the signature functionality using the  or by navigating through the app.
-     - What will be achieved with this?: A fully functional, professional, and compliant Scope of Appointment workflow with native signature capture.
+  - Task 1: Provide stable, seeded test accounts for all roles (Admin, Manager, Agent) (P0)
+     - Where to resume: Debugging the password verification logic. The immediate next step is to investigate the  function in  to understand why it's failing for the newly created accounts.
+     - What will be achieved with this?: This will unblock the user's request for a full end-to-end, role-based audit of the newly implemented Lead Distribution and Compliance systems.
      - Status:  IN PROGRESS
-     - Should Test frontend/backend/both after fix?: frontend
-     - Blocked on something: None
+     - Should Test frontend/backend/both after fix?: backend
+     - Blocked on something: The underlying password hashing/verification bug.
 
 **Upcoming and Future Tasks**
 - **Upcoming Tasks:**
-    - **P1: Refactor Backend ()**: Propose and execute a plan to split the monolithic  file into multiple  files for better maintainability.
-    - **P2: Advanced Route Planner**: Implement a visual route planner using .
-    - **P3: Enhanced AI Assistant**: Build out the AI coach functionality beyond the daily planner.
-
+    - **P1: Full End-to-End Audit:** Once test accounts are working, perform a comprehensive audit of the app from each role's perspective (Admin, Manager, Agent), focusing on the new Lead Distribution and Compliance features.
+    - **P1: Refactor Backend ()**: Propose and execute the plan to split the monolithic  file.
 - **Future Tasks:**
-    - Underwriting & Commission Tracking Dashboards (UI portion)
+    - Advanced Route Planner
+    - Enhanced AI Sales Coach
+    - Underwriting & Commission Tracking Dashboards
     - Agent Productivity Tools (Task Reminders, Push Notifications)
     - In-app Training Library
-    - App Store Compliance (Privacy Policy, Terms of Use, Account Deletion flow)
-    - Add push notifications for critical alerts from the Needs Attention dashboard.
-    - Implement manager-specific views for Command Center and Needs Attention dashboards.
+    - App Store Compliance Pages (Privacy Policy, Terms of Use, Account Deletion)
 
 **Completed work in this session**
-- **Initial State Verification (DONE)**
-  - Disproved the previous handoff summary; confirmed that frontend UIs for Commissions, Command Center, etc., were already implemented and functional.
-- **Team Tree Rendering Fix (DONE)**
-  - Fixed a rendering bug on the Team Tree page caused by an auth context timing issue. The  dependency array was updated to correctly re-trigger data loading.
-- **Agency Command Center (DONE)**
-  - Backend: Added new endpoints in  () for summary, team, and pipeline data.
-  - Frontend: Created  with a multi-tab interface and drill-down modals.
-- **Needs Attention Dashboard (DONE)**
-  - Backend: Added  endpoint in  to identify actionable alerts.
-  - Frontend: Created  to display alerts by category with drill-down views.
-- **Lead Scanner Upgrade (UI/UX DONE, Core Functionality UNTESTED)**
-  - Backend: Enhanced  in  to provide OCR confidence scores.
-  - Frontend: Overhauled  for a high-speed, multi-scan workflow.
-- **Scope of Appointment Overhaul (V1 DONE, V2 IN PROGRESS)**
-  - Backend: Updated the PDF generation logic in  to create a more professional document.
-  - Frontend: Created a custom native signature component at  and completely rewrote the form at .
-- **Appointment Navigation Bug (DONE)**
-  - Backend: Added the missing  endpoint in .
-  - Frontend: No changes were needed; the existing code in  started working once the backend was fixed.
+- **SOA Signature & PDF Flow Fix (DONE)**
+  - Rewrote  to convert the signature to a PNG using .
+  - Updated the backend PDF generation in  to correctly handle and embed the PNG image.
+  - Replaced the broken  PDF preview in  with a platform-specific solution using  for native iOS and opening a new tab for web.
+- **Comprehensive App Audit (DONE)**
+  - Performed a manual audit of all core flows using a mobile viewport, verifying auth, dashboards, and the complete Lead-to-Appointment-to-SOA cycle.
+  - Identified and fixed a minor bug where an incorrect route was used to navigate to the calendar.
+- **OCR Endpoint Enhancement (DONE)**
+  - Verified the  endpoint was functional and improved it with robust input validation and clearer error messages for invalid images.
+- **Role-Based Access Verification (DONE)**
+  - Confirmed that existing admin-level endpoints were already correctly protected with  dependencies.
+- **Smart Lead Distribution System (V1 Backend DONE)**
+  - Updated the  enum and added a  model in .
+  - Added new API endpoints:  and .
+- **Medicare Compliance Tracking System (V1 Backend & Frontend DONE)**
+  - Backend: Added ,  and other models, plus new API endpoints () in .
+  - Frontend: Created a new dashboard page at .
+  - Frontend: Added compliance summary cards to the main admin dashboard ().
+  - Frontend: Added a compliance status indicator to the lead detail page ().
+  - Debugged and fixed a Pydantic validation error () in the compliance API.
 
 **Earlier issues found/mentioned but not fixed**
-   - Issue 1: The backend file  is a monolith and has grown significantly, making it hard to maintain. The agent did not address this technical debt.
+   - Issue 1: The backend file  is a monolith. This technical debt was noted in the previous handoff and has worsened in this session, growing from ~5000 to over 6000 lines.
      - Debug checklist: Plan a refactor to move routes into  using FastAPI's .
      - Why to solve this issue and what will be achieved with this?: To improve code quality, maintainability, and developer velocity.
      - Should Test frontend/backend/both after fix: backend
      - Is recurring issue? Y
 
 **Known issue recurrence from previous fork**
-  - **Issue recurrence in this session**: The Scope of Appointment signature functionality was addressed twice. The first implementation was a major overhaul, but the user made a subsequent, more specific request to fix the signature capture itself, indicating the first pass was not sufficient. The agent then diagnosed and fixed a subtle bug (stale closures) in its own custom component.
+  - **Issue recurrence in this session**: The SOA signature functionality required multiple passes. The first fix in this session (making the signature draw/save) was successful, but a new user request revealed a deeper issue (signature not appearing on the PDF), requiring a more substantial architectural change (SVG to PNG conversion).
   - Recurrence count: 1
-  - Status: IN PROGRESS
+  - Status: RESOLVED
 
 **Code Architecture**
 
 
 **Key Technical Concepts**
-*   **Frontend:** React Native, Expo, Expo Router, , .
-*   **Backend:** Python, FastAPI, MongoDB (), Pydantic, JWT.
-*   **Debugging:** The agent successfully debugged complex frontend and backend issues:
-    *   **Frontend:** Identified and fixed a React state/timing issue in the  component related to  and .
-    *   **Frontend:** Diagnosed and fixed a stale closure bug in a custom  implementation for the signature pad.
-    *   **Backend:** Identified a missing API endpoint as the root cause of a navigation bug and fixed a subsequent Pydantic model validation error.
+*   **Frontend:** React Native, Expo, Expo Router,  (for PNG conversion), / (for native file handling).
+*   **Backend:** Python, FastAPI, MongoDB (), Pydantic, ReportLab.
+*   **Debugging:**
+    *   Successfully diagnosed and fixed a complex PDF generation issue by changing the image format from SVG to PNG.
+    *   Implemented a platform-aware solution for a feature (PDF viewing) that behaved differently on web vs. native.
+    *   Traced and fixed a  caused by a Pydantic  validation mismatch with database  values.
+    *   Currently debugging a password hashing/verification issue for user authentication.
 
 **key DB schema**
-  - No new tables were added, but existing models (User, Lead, Appointment, ScopeOfAppointment, Commission) were queried in new, more complex ways for the dashboard features.
+  - **Lead:** (modified) -  field now uses an expanded  enum. Implicitly tracks  and .
+  - **New Models (in ):**
+    - : {{lead_id, user_id, activity_type, timestamp, details}}
+    - : {{lead_id, lead_name, agent_name, appointment_date, compliance_status, soa_id}}
+    - : {{missing_soa, signed_soa, pending_appointments, compliant_appointments}}
 
 **changes in tech stack**
-  -  was added to support the custom signature component.
-  -  was added to capture the signature drawing as an image.
-  -  was added for the SOA form.
+  - No new packages were installed, but the usage of , , and  was central to fixing the SOA/PDF workflow.
 
 **All files of reference**
-*   **/app/backend/server.py**: **CRITICAL**. This file was modified for every new feature and bug fix. It is now over 5000 lines long.
-*   **/app/frontend/src/services/api.ts**: **CRITICAL**. This file was updated with new API service functions for all new features.
-*   **/app/frontend/src/components/SignatureCapture.tsx**: **CRITICAL / IN PROGRESS**. This custom component was created and then rewritten to fix a signature drawing bug. Its functionality must be verified.
-*   **/app/frontend/app/scope/new.tsx**: Overwritten with a new professional SOA form layout.
-*   **/app/frontend/app/agency-command-center/index.tsx**: New file for the admin dashboard.
-*   **/app/frontend/app/needs-attention/index.tsx**: New file for the leadership alerts dashboard.
-*   **/app/frontend/app/scanner.tsx**: Overwritten with the new high-speed scanning workflow UI.
-*   **/app/frontend/app/appointment/[id].tsx**: This file was not changed, but its functionality was restored by a backend fix.
-*   **/app/frontend/app/team-tree/index.tsx**: Modified to fix a rendering bug.
+*   **/app/backend/server.py**: **CRITICAL**. Heavily modified to add new models and endpoints for Lead Distribution and Compliance. Grew from ~5,200 to >6,200 lines. It's the location of the current password verification bug.
+*   **/app/frontend/src/services/api.ts**: **CRITICAL**. Updated with many new API service functions for all new features.
+*   **/app/frontend/app/compliance/index.tsx**: **NEW**. A completely new screen for the Medicare Compliance dashboard.
+*   **/app/frontend/app/(tabs)/dashboard.tsx**: Modified to include conditional rendering of new Admin/Manager dashboard cards.
+*   **/app/frontend/app/lead/[id].tsx**: Modified to fetch and display the new compliance status for a lead.
+*   **/app/frontend/app/scope/[id].tsx**: Rewritten to handle PDF actions (View, Print, Save, Share) in a platform-specific way.
+*   **/app/frontend/src/components/SignatureCapture.tsx**: Modified to capture the signature as a base64 PNG instead of an SVG.
+*   **/app/backend/seed_data.py**: **NEW/BROKEN**. A script created to seed test data, which is currently at the center of the login issue.
 
 **Areas that need refactoring**:
-*   **/app/backend/server.py**: Urgently needs to be broken down into smaller, feature-specific router files (e.g., , ) to improve maintainability and reduce complexity.
+*   **/app/backend/server.py**: Urgently needs to be broken down into smaller, feature-specific router files. The file's size is a major source of technical debt and is hindering development.
 
 **key api endpoints**
-*   
-*   
-*   
-*   
-*   
-*    (Updated)
-*    (Newly Added)
-*    (Updated PDF generation logic)
+*   **New Endpoints Added:**
+    *   
+    *   
+    *   
+    *   
+    *   
+*   **Modified Endpoints:**
+    *   : PDF generation logic updated for PNG signatures.
+    *   : Improved input validation and error handling.
 
 **Critical Info for New Agent**
-*   **Your immediate priority is to test the fix for the Scope of Appointment signature.** The previous agent rewrote the  component but did not verify if the finger-drawing works now. Follow the test plan in Issue 1 to confirm.
-*   The initial handoff summary for this job was **incorrect**. The frontend UIs for most features were already built. You should trust your own file exploration over the initial summary.
-*   The backend file  is now over 5000 lines long and is becoming a significant source of technical debt. After fixing the signature, you should propose a refactoring plan to the user.
-*   The core OCR function of the Lead Scanner has not been tested on a real device. This is a pending verification task.
+*   **Your immediate priority (P0) is to fix the login issue for the newly created test accounts.** The user cannot perform the required end-to-end testing without functional Manager and Agent accounts. Start by examining the  and  functions in .
+*   After fixing the test accounts, you must seed the database with enough sample data (leads, appointments, SOAs) for each role to enable a thorough audit, as requested by the user.
+*   Once data is seeded, perform the full end-to-end audit from the perspective of an Admin, a Manager, and an Agent to verify the new Lead Distribution and Compliance systems work as expected.
+*   The monolithic nature of  is a significant problem. After unblocking the user with test accounts and the audit, you should strongly prioritize proposing and executing a refactoring plan for this file.
 
 **documents created in this job**
-  - None
+  - /app/backend/seed_data.py
 
 **Last 10 User Messages and any pending HUMAN messages** 
-1.  **Request**: Fix the SOA signature system again, focusing on the drawing part. (IN PROGRESS)
-2.  **Request**: Fix the appointment navigation bug. (COMPLETED)
-3.  **Request**: Overhaul the Scope of Appointment (SOA) workflow. (COMPLETED, but led to the recurring signature issue)
-4.  **Request**: Upgrade the Lead Scanner system. (COMPLETED, but untested)
-5.  **Request**: Build a Needs Attention dashboard. (COMPLETED)
-6.  **Request**: Build an Agency Command Center. (COMPLETED)
-7.  **User Confirmation**: I cofirm ths plan (Confirmed the agent's initial plan)
-8.  **System Message**: Please use ask_human tool and confirm your plan now.
-9.  **User Request**: (initial list of requirements)
-10. **System Message**: (initial system prompt)
+1.  **Request (LATEST)**: Re-iteration of the request to build the Lead Distribution and Compliance systems, with a very strong emphasis on providing stable, seeded test accounts for Admin, Manager, and Agent roles to allow for a full audit. (IN PROGRESS)
+2.  **Summary from Agent**: Agent summarized that the two audit issues (OCR & Auth) were fixed.
+3.  **Request**: Fix the two issues from the audit report: OCR endpoint returning 400, and tightening role-based auth. (COMPLETED)
+4.  **Summary from Agent**: Agent provided a detailed end-to-end audit report of the mobile runtime, finding only one minor navigation bug.
+5.  **Request**: Proceed with the frontend iOS mobile runtime testing, focusing on the SOA flow. (COMPLETED)
+6.  **Summary from Agent**: Backend testing agent reported a successful audit with some warnings.
+7.  **Request**: Run a complete end-to-end audit of the app in the real mobile runtime for all three roles. (COMPLETED)
+8.  **Summary from Agent**: Agent summarized the fix for the PDF signature rendering and native iOS actions.
+9.  **Request**: Fix the SOA signature so it renders on the final PDF and replace the broken PDF preview with a native iOS solution. (COMPLETED)
+10. **Summary from Agent**: Agent summarized that the initial signature drawing bug was fixed and verified.
 
 **Project Health Check:**
 *   **Broken:**
-    - : The fix is in place but unverified. The component is considered broken until testing passes.
+    - The user seeding script () and/or the login authentication logic for new users is broken. Manager and Agent accounts cannot log in.
 *   **Mocked:**
-    - Lead Scanner: The camera/OCR part is effectively mocked/untestable in the preview environment.
+    - Lead Scanner: The camera/OCR part is untested on a real device.
 
 **3rd Party Integrations**
-*   **Gemini Pro Vision:** Used for OCR via . Uses Emergent LLM Key.
-*   **OpenAI GPT-4/4o:** Configured in backend for AI features. Uses Emergent LLM Key.
-*   **ReportLab:** Used for PDF generation.
-*   **react-native-svg:** Used for custom UI, specifically the new signature component.
-*   **react-native-view-shot:** Used to capture the signature component's view into an image.
-*   **@react-native-community/datetimepicker:** Used for date selection in forms.
+*   **Gemini Pro Vision:** Used for OCR. Uses Emergent LLM Key.
+*   **OpenAI GPT-4/4o:** Used for AI features. Uses Emergent LLM Key.
+*   **ReportLab:** Used for PDF generation in the backend.
+*   **react-native-svg:** Used for rendering the signature canvas.
+*   **react-native-view-shot:** Used to capture the signature SVG as a PNG image.
+*   **expo-sharing / expo-print:** Used for native iOS file handling (View, Print, Save, Share).
 
 **Testing status**
-  - Testing agent used after significant changes: NO (Agent used  and  for manual testing).
+  - Testing agent used after significant changes: YES (Backend and frontend testing agents were used for a full audit).
   - Troubleshoot agent used after agent stuck in loop: NO
-  - Test files created: None.
+  - Test files created:
+    -  (for creating test users, currently buggy)
   - Known regressions: None.
 
 **Credentials to test flow:**
-*   **Admin:**  / 
-*   **Agent:**  / 
+*   **Admin:**  /  (Working)
+*   **Manager:**  /  (NOT WORKING - Login fails)
+*   **Agent:**  /  (NOT WORKING - Login fails)
 
 **What agent forgot to execute**
-- The agent did not address the growing technical debt in  as pointed out in the initial handoff summary. It continued to add more code to the monolithic file.
-- The agent did not perform a final verification of the  component after rewriting it a second time.
+- The agent has not yet addressed the critical technical debt of the monolithic  file, which was noted in the initial handoff and has since grown larger.
+- The agent has not yet performed the final end-to-end audit with the (currently non-functional) seeded test accounts as requested by the user.
+
 </analysis>

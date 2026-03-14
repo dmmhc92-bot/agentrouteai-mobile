@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL || 'https://insurance-crm-12.preview.emergentagent.com';
+const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL || 'https://lead-scanner-ocr.preview.emergentagent.com';
 
 const apiClient = axios.create({
   baseURL: `${BACKEND_URL}/api`,

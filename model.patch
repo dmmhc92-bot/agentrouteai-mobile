@@ -29,7 +29,7 @@ index 7e744f8..e69de29 100644
 -+import time
 -+
 -+# Configuration
--+BASE_URL = "https://insurance-crm-12.preview.emergentagent.com/api"
+-+BASE_URL = "https://lead-scanner-ocr.preview.emergentagent.com/api"
 -+TIMEOUT = 30
 -+
 -+# Test credentials from review request
@@ -681,7 +681,7 @@ index 7e744f8..e69de29 100644
 -+import time
 -+
 -+# Configuration
--+BASE_URL = "https://insurance-crm-12.preview.emergentagent.com/api"
+-+BASE_URL = "https://lead-scanner-ocr.preview.emergentagent.com/api"
 -+TIMEOUT = 30
 -+
 -+# Test credentials from review request
@@ -1498,7 +1498,7 @@ index 7e744f8..e69de29 100644
 -----------+#!/usr/bin/env python3
 -----------+import requests
 -----------+
------------+BASE_URL = "https://insurance-crm-12.preview.emergentagent.com/api"
+-----------+BASE_URL = "https://lead-scanner-ocr.preview.emergentagent.com/api"
 -----------+
 -----------+# Test without auth
 -----------+response = requests.get(f"{BASE_URL}/auth/me", headers={})
@@ -1673,7 +1673,7 @@ index 7e744f8..e69de29 100644
 ---------+import time
 ---------+
 ---------+# Configuration
----------+BASE_URL = "https://insurance-crm-12.preview.emergentagent.com/api"
+---------+BASE_URL = "https://lead-scanner-ocr.preview.emergentagent.com/api"
 ---------+TEST_EMAIL = "demo@agentroute.com"
 ---------+TEST_PASSWORD = "Demo1234!"
 ---------+
@@ -2084,7 +2084,7 @@ index 7e744f8..e69de29 100644
 ---------+from datetime import datetime
 ---------+
 ---------+# Configuration
----------+BASE_URL = "https://insurance-crm-12.preview.emergentagent.com/api"
+---------+BASE_URL = "https://lead-scanner-ocr.preview.emergentagent.com/api"
 ---------+
 ---------+class RoleBasedTester:
 ---------+    def __init__(self):
@@ -2281,7 +2281,7 @@ index 7e744f8..e69de29 100644
 -------+import os
 -------+
 -------+# Get backend URL from environment
--------+BACKEND_URL = os.environ.get('EXPO_PUBLIC_BACKEND_URL', 'https://insurance-crm-12.preview.emergentagent.com')
+-------+BACKEND_URL = os.environ.get('EXPO_PUBLIC_BACKEND_URL', 'https://lead-scanner-ocr.preview.emergentagent.com')
 -------+API_BASE = f"{BACKEND_URL}/api"
 -------+
 -------+class SOAWorkflowTester:

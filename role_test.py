@@ -10,7 +10,7 @@ import uuid
 from datetime import datetime
 
 # Configuration
-BASE_URL = "https://insurance-crm-12.preview.emergentagent.com/api"
+BASE_URL = "https://lead-scanner-ocr.preview.emergentagent.com/api"
 
 class RoleBasedTester:
     def __init__(self):
