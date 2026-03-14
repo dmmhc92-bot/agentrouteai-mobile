@@ -213,8 +213,10 @@ export default function TeamTreeScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      loadData();
-    }, [])
+      if (!authLoading && isManagerOrAdmin) {
+        loadData();
+      }
+    }, [authLoading, isManagerOrAdmin])
   );
 
   const onRefresh = () => {
