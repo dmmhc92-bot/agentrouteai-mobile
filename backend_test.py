@@ -633,6 +633,191 @@ class APITester:
             self.log_result("SOA Invalid Scope ID Test", False, "No response received")
         
         return True
+
+    def test_commission_tracking(self):
+        """Test Commission Tracking API endpoints"""
+        print("=== COMMISSION TRACKING TESTS ===")
+        
+        if not self.lead_id:
+            self.log_result("Commission Tracking", False, "No lead available for testing")
+            return False
+        
+        commission_ids = []
+        
+        # Test 1: Create commission records with different statuses
+        commission_records = [
+            {
+                "lead_id": self.lead_id,
+                "policy_type": "Medicare Advantage",
+                "carrier": "Humana",
+                "premium": 1200.00,
+                "estimated_commission": 600.00,
+                "commission_status": "estimated",
+                "notes": "Initial estimate for Medicare Advantage plan"
+            },
+            {
+                "lead_id": self.lead_id,
+                "policy_type": "Medicare Supplement",
+                "carrier": "Aetna",
+                "premium": 800.00,
+                "estimated_commission": 400.00,
+                "commission_status": "pending",
+                "notes": "Application submitted, awaiting approval"
+            },
+            {
+                "lead_id": self.lead_id,
+                "policy_type": "Prescription Drug Plan",
+                "carrier": "UnitedHealth",
+                "premium": 500.00,
+                "estimated_commission": 250.00,
+                "commission_status": "approved",
+                "notes": "Policy approved, ready for payment"
+            }
+        ]
+        
+        # Create commission records and verify split calculations (60/20/20%)
+        for i, record in enumerate(commission_records):
+            response = self.make_request("POST", "/commissions", record)
+            if not response or response.status_code != 200:
+                self.log_result(f"Create Commission Record {i+1}", False, 
+                               f"Status: {response.status_code if response else 'No response'}")
+                continue
+            
+            data = response.json()
+            commission_id = data.get("id")
+            commission_ids.append(commission_id)
+            
+            # Verify split calculations (60/20/20%)
+            expected_agent = record["estimated_commission"] * 0.6
+            expected_manager = record["estimated_commission"] * 0.2
+            expected_agency = record["estimated_commission"] * 0.2
+            
+            actual_agent = data.get("agent_commission", 0)
+            actual_manager = data.get("manager_override", 0)
+            actual_agency = data.get("agency_share", 0)
+            
+            splits_correct = (
+                abs(actual_agent - expected_agent) < 0.01 and
+                abs(actual_manager - expected_manager) < 0.01 and
+                abs(actual_agency - expected_agency) < 0.01
+            )
+            
+            self.log_result(f"Create Commission Record {i+1}", True, 
+                           f"{record['policy_type']} - ID: {commission_id[:8]}...")
+            
+            self.log_result(f"Commission Split Calculation {i+1}", splits_correct,
+                           f"Agent: ${actual_agent:.2f}, Manager: ${actual_manager:.2f}, Agency: ${actual_agency:.2f}")
+        
+        if not commission_ids:
+            self.log_result("Commission Tracking", False, "No commission records created")
+            return False
+        
+        # Test 2: List all commissions
+        response = self.make_request("GET", "/commissions")
+        if not response or response.status_code != 200:
+            self.log_result("List All Commissions", False, 
+                           f"Status: {response.status_code if response else 'No response'}")
+        else:
+            data = response.json()
+            self.log_result("List All Commissions", True, f"Retrieved {len(data)} commission records")
+        
+        # Test 3: Filter commissions by status
+        for status in ["estimated", "pending", "approved", "paid"]:
+            response = self.make_request("GET", "/commissions", params={"status": status})
+            if not response or response.status_code != 200:
+                self.log_result(f"Filter by Status '{status}'", False, 
+                               f"Status: {response.status_code if response else 'No response'}")
+                continue
+            
+            data = response.json()
+            all_correct_status = all(record.get("commission_status") == status for record in data)
+            self.log_result(f"Filter by Status '{status}'", all_correct_status, 
+                           f"Retrieved {len(data)} records, all have correct status: {all_correct_status}")
+        
+        # Test 4: Get single commission
+        if commission_ids:
+            commission_id = commission_ids[0]
+            response = self.make_request("GET", f"/commissions/{commission_id}")
+            if not response or response.status_code != 200:
+                self.log_result("Get Single Commission", False, 
+                               f"Status: {response.status_code if response else 'No response'}")
+            else:
+                data = response.json()
+                required_fields = [
+                    "id", "policy_type", "carrier", "premium", "estimated_commission",
+                    "agent_commission", "manager_override", "agency_share", "commission_status"
+                ]
+                has_required_fields = all(field in data for field in required_fields)
+                self.log_result("Get Single Commission", has_required_fields, 
+                               f"Commission {commission_id[:8]}... has all required fields: {has_required_fields}")
+        
+        # Test 5: Update commission status to paid
+        if len(commission_ids) >= 3:
+            commission_id = commission_ids[2]  # The approved one
+            update_data = {
+                "commission_status": "paid",
+                "paid_amount": 350.00,
+                "payment_date": "2026-03-15T00:00:00Z"
+            }
+            
+            response = self.make_request("PUT", f"/commissions/{commission_id}", update_data)
+            if not response or response.status_code != 200:
+                self.log_result("Update Commission to Paid", False, 
+                               f"Status: {response.status_code if response else 'No response'}")
+            else:
+                # Verify the update
+                get_response = self.make_request("GET", f"/commissions/{commission_id}")
+                if get_response and get_response.status_code == 200:
+                    data = get_response.json()
+                    status_updated = data.get("commission_status") == "paid"
+                    paid_amount_correct = data.get("paid_amount") == 350.00
+                    payment_date_set = data.get("payment_date") is not None
+                    
+                    all_correct = status_updated and paid_amount_correct and payment_date_set
+                    self.log_result("Update Commission to Paid", all_correct, 
+                                   f"Status updated: {status_updated}, Amount correct: {paid_amount_correct}, Date set: {payment_date_set}")
+                else:
+                    self.log_result("Update Commission to Paid", False, "Failed to verify update")
+        
+        # Test 6: Get commission summary
+        response = self.make_request("GET", "/commissions/summary/totals")
+        if not response or response.status_code != 200:
+            self.log_result("Commission Summary", False, 
+                           f"Status: {response.status_code if response else 'No response'}")
+        else:
+            data = response.json()
+            required_fields = [
+                "total_estimated", "total_pending", "total_approved", "total_paid",
+                "records_count", "by_status", "by_carrier", "by_policy_type"
+            ]
+            has_all_fields = all(field in data for field in required_fields)
+            self.log_result("Commission Summary", has_all_fields, 
+                           f"Records: {data.get('records_count')}, Total Estimated: ${data.get('total_estimated')}")
+        
+        # Test 7: Get agent commissions
+        if self.user_id:
+            response = self.make_request("GET", f"/commissions/agent/{self.user_id}")
+            if not response or response.status_code != 200:
+                self.log_result("Agent Commissions", False, 
+                               f"Status: {response.status_code if response else 'No response'}")
+            else:
+                data = response.json()
+                if isinstance(data, list):
+                    all_belong_to_agent = all(record.get("created_by_user") == self.user_id for record in data)
+                    self.log_result("Agent Commissions", all_belong_to_agent, 
+                                   f"Retrieved {len(data)} agent-specific commissions, all belong to agent: {all_belong_to_agent}")
+                else:
+                    self.log_result("Agent Commissions", False, "Response is not a list")
+        
+        # Test 8: Team view parameter
+        response = self.make_request("GET", "/commissions", params={"team_view": "true"})
+        if not response or response.status_code != 200:
+            self.log_result("Team View Parameter", False, 
+                           f"Status: {response.status_code if response else 'No response'}")
+        else:
+            self.log_result("Team View Parameter", True, "Team view parameter accepted")
+        
+        return True
     
     def cleanup_test_data(self):
         """Clean up test data"""
