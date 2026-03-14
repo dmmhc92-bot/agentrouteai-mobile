@@ -1244,6 +1244,9 @@ async def get_scope(scope_id: str, current_user: dict = Depends(get_current_user
     if not scope:
         raise HTTPException(status_code=404, detail="Scope not found")
     
+    # Remove MongoDB ObjectId to prevent serialization issues
+    scope.pop("_id", None)
+    
     # Ensure all fields exist
     scope.setdefault("agent_typed_name", "")
     scope.setdefault("agent_signature", "")
