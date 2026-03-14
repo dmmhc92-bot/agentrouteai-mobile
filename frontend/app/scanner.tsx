@@ -614,6 +614,18 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
   },
+  addressInputContainer: {
+    height: 80,
+    alignItems: 'flex-start',
+    paddingVertical: 12,
+  },
+  addressIcon: {
+    marginTop: 2,
+  },
+  addressInput: {
+    textAlignVertical: 'top',
+    height: 56,
+  },
   rescanButton: {
     flexDirection: 'row',
     alignItems: 'center',
