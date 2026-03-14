@@ -3300,6 +3300,381 @@ async def reassign_lead(request: dict, current_user: dict = Depends(require_mana
         "new_agent": new_agent["name"]
     }
 
+# ==================== AI DAILY PLANNER ROUTES ====================
+
+@api_router.get("/daily-planner")
+async def get_daily_planner(current_user: dict = Depends(get_current_user)):
+    """
+    Generate an AI-powered daily action plan for the agent.
+    Analyzes leads, appointments, follow-ups, pipeline stages, and geography
+    to create a prioritized list of actions.
+    """
+    user_id = current_user["id"]
+    today = datetime.utcnow()
+    today_str = today.strftime("%Y-%m-%d")
+    tomorrow = today + timedelta(days=1)
+    
+    actions = []
+    
+    # 1. Get today's appointments - HIGHEST PRIORITY
+    appointments_today = await db.appointments.find({
+        "created_by_user": user_id,
+        "date": {"$gte": today_str, "$lt": tomorrow.strftime("%Y-%m-%d")},
+        "status": {"$in": ["scheduled", "confirmed"]}
+    }).sort("time", 1).to_list(50)
+    
+    for apt in appointments_today:
+        lead = await db.leads.find_one({"id": apt.get("lead_id")})
+        lead_name = lead.get("name") if lead else "Unknown"
+        actions.append({
+            "id": str(uuid.uuid4()),
+            "type": "appointment",
+            "priority": 1,
+            "priority_label": "High",
+            "title": f"Appointment with {lead_name}",
+            "description": apt.get("notes") or f"Scheduled for {apt.get('time', 'TBD')}",
+            "time": apt.get("time"),
+            "icon": "calendar",
+            "color": "#3B82F6",
+            "action_text": "View Appointment",
+            "record_type": "appointment",
+            "record_id": apt.get("id"),
+            "lead_id": apt.get("lead_id"),
+            "lead_name": lead_name,
+            "address": lead.get("address") if lead else None,
+            "reason": "Scheduled appointment today"
+        })
+    
+    # 2. Get overdue follow-ups - HIGH PRIORITY
+    overdue_tasks = await db.tasks.find({
+        "created_by_user": user_id,
+        "status": "pending",
+        "due_date": {"$lt": today_str}
+    }).sort("due_date", 1).to_list(20)
+    
+    for task in overdue_tasks:
+        lead = await db.leads.find_one({"id": task.get("lead_id")}) if task.get("lead_id") else None
+        lead_name = lead.get("name") if lead else "Unknown"
+        days_overdue = (today - datetime.strptime(task.get("due_date", today_str), "%Y-%m-%d")).days
+        actions.append({
+            "id": str(uuid.uuid4()),
+            "type": "follow_up",
+            "priority": 2,
+            "priority_label": "High",
+            "title": f"Overdue: {task.get('title', 'Follow-up')}",
+            "description": f"{days_overdue} day(s) overdue" + (f" - {lead_name}" if lead_name != "Unknown" else ""),
+            "icon": "alert-circle",
+            "color": "#EF4444",
+            "action_text": "Complete Task",
+            "record_type": "task",
+            "record_id": task.get("id"),
+            "lead_id": task.get("lead_id"),
+            "lead_name": lead_name,
+            "reason": f"Follow-up is {days_overdue} day(s) overdue"
+        })
+    
+    # 3. Leads needing follow-up (no contact in 7+ days) - MEDIUM-HIGH PRIORITY
+    seven_days_ago = today - timedelta(days=7)
+    stale_leads = await db.leads.find({
+        "$or": [{"created_by_user": user_id}, {"assigned_to_user": user_id}],
+        "stage": {"$in": ["new_lead", "appointment_scheduled", "application_submitted"]},
+        "$or": [
+            {"last_contact_date": {"$lt": seven_days_ago}},
+            {"last_contact_date": None},
+            {"last_contact_date": {"$exists": False}}
+        ]
+    }).limit(10).to_list(10)
+    
+    for lead in stale_leads:
+        last_contact = lead.get("last_contact_date")
+        if last_contact:
+            days_since = (today - last_contact).days
+            desc = f"No contact in {days_since} days"
+        else:
+            desc = "Never contacted"
+        
+        actions.append({
+            "id": str(uuid.uuid4()),
+            "type": "call_follow_up",
+            "priority": 3,
+            "priority_label": "Medium",
+            "title": f"Call {lead.get('name')}",
+            "description": desc,
+            "phone": lead.get("phone"),
+            "icon": "call",
+            "color": "#F59E0B",
+            "action_text": "View Lead",
+            "record_type": "lead",
+            "record_id": lead.get("id"),
+            "lead_id": lead.get("id"),
+            "lead_name": lead.get("name"),
+            "address": lead.get("address"),
+            "reason": desc
+        })
+    
+    # 4. Leads requiring application submission - MEDIUM PRIORITY
+    appointment_completed_leads = await db.leads.find({
+        "$or": [{"created_by_user": user_id}, {"assigned_to_user": user_id}],
+        "stage": "appointment_scheduled"
+    }).limit(10).to_list(10)
+    
+    # Check for completed appointments without application
+    for lead in appointment_completed_leads:
+        completed_apt = await db.appointments.find_one({
+            "lead_id": lead.get("id"),
+            "status": "completed"
+        })
+        if completed_apt:
+            actions.append({
+                "id": str(uuid.uuid4()),
+                "type": "submit_application",
+                "priority": 4,
+                "priority_label": "Medium",
+                "title": f"Submit application for {lead.get('name')}",
+                "description": "Appointment completed, ready for submission",
+                "icon": "document-text",
+                "color": "#8B5CF6",
+                "action_text": "Submit Application",
+                "record_type": "lead",
+                "record_id": lead.get("id"),
+                "lead_id": lead.get("id"),
+                "lead_name": lead.get("name"),
+                "reason": "Appointment completed - submit application"
+            })
+    
+    # 5. Underwriting requirements - MEDIUM PRIORITY
+    underwriting_leads = await db.leads.find({
+        "$or": [{"created_by_user": user_id}, {"assigned_to_user": user_id}],
+        "stage": "additional_requirements"
+    }).to_list(20)
+    
+    for lead in underwriting_leads:
+        actions.append({
+            "id": str(uuid.uuid4()),
+            "type": "resolve_underwriting",
+            "priority": 4,
+            "priority_label": "Medium",
+            "title": f"Resolve requirements for {lead.get('name')}",
+            "description": lead.get("underwriting_notes") or "Additional documentation needed",
+            "icon": "clipboard",
+            "color": "#F97316",
+            "action_text": "View Requirements",
+            "record_type": "lead",
+            "record_id": lead.get("id"),
+            "lead_id": lead.get("id"),
+            "lead_name": lead.get("name"),
+            "reason": "Underwriting requires additional information"
+        })
+    
+    # 6. New leads to visit - MEDIUM-LOW PRIORITY (with geographic clustering)
+    new_leads = await db.leads.find({
+        "$or": [{"created_by_user": user_id}, {"assigned_to_user": user_id}],
+        "stage": "new_lead"
+    }).limit(10).to_list(10)
+    
+    # Group by zip code for geographic proximity
+    leads_by_area = {}
+    for lead in new_leads:
+        address = lead.get("address", "")
+        # Extract zip code (simple extraction)
+        import re
+        zip_match = re.search(r'\b\d{5}\b', address)
+        area = zip_match.group() if zip_match else "unknown"
+        if area not in leads_by_area:
+            leads_by_area[area] = []
+        leads_by_area[area].append(lead)
+    
+    # Prioritize areas with multiple leads
+    sorted_areas = sorted(leads_by_area.items(), key=lambda x: len(x[1]), reverse=True)
+    
+    for area, area_leads in sorted_areas:
+        for lead in area_leads[:3]:  # Limit per area
+            actions.append({
+                "id": str(uuid.uuid4()),
+                "type": "visit_lead",
+                "priority": 5,
+                "priority_label": "Normal",
+                "title": f"Visit {lead.get('name')}",
+                "description": lead.get("address") or "No address",
+                "icon": "location",
+                "color": "#22C55E",
+                "action_text": "View Lead",
+                "record_type": "lead",
+                "record_id": lead.get("id"),
+                "lead_id": lead.get("id"),
+                "lead_name": lead.get("name"),
+                "address": lead.get("address"),
+                "area": area if area != "unknown" else None,
+                "reason": f"New lead in area {area}" if area != "unknown" else "New lead to visit"
+            })
+    
+    # 7. Upcoming appointments to confirm - LOW PRIORITY
+    upcoming_appointments = await db.appointments.find({
+        "created_by_user": user_id,
+        "date": {"$gte": today_str, "$lt": (today + timedelta(days=3)).strftime("%Y-%m-%d")},
+        "status": "scheduled"
+    }).sort("date", 1).limit(5).to_list(5)
+    
+    for apt in upcoming_appointments:
+        if apt.get("date") != today_str:  # Skip today's (already high priority)
+            lead = await db.leads.find_one({"id": apt.get("lead_id")})
+            lead_name = lead.get("name") if lead else "Unknown"
+            actions.append({
+                "id": str(uuid.uuid4()),
+                "type": "confirm_appointment",
+                "priority": 6,
+                "priority_label": "Low",
+                "title": f"Confirm appointment with {lead_name}",
+                "description": f"Scheduled for {apt.get('date')} at {apt.get('time', 'TBD')}",
+                "icon": "checkmark-circle",
+                "color": "#64748B",
+                "action_text": "View Appointment",
+                "record_type": "appointment",
+                "record_id": apt.get("id"),
+                "lead_id": apt.get("lead_id"),
+                "lead_name": lead_name,
+                "reason": "Upcoming appointment - confirm attendance"
+            })
+    
+    # Sort by priority and limit total actions
+    actions.sort(key=lambda x: (x["priority"], x.get("time") or "99:99"))
+    actions = actions[:15]  # Limit to 15 actions per day
+    
+    # Calculate summary stats
+    summary = {
+        "total_actions": len(actions),
+        "high_priority": len([a for a in actions if a["priority"] <= 2]),
+        "medium_priority": len([a for a in actions if 3 <= a["priority"] <= 4]),
+        "low_priority": len([a for a in actions if a["priority"] >= 5]),
+        "appointments_today": len([a for a in actions if a["type"] == "appointment"]),
+        "overdue_items": len([a for a in actions if a["type"] == "follow_up"]),
+        "date": today_str,
+        "greeting": get_time_greeting()
+    }
+    
+    return {
+        "plan_date": today_str,
+        "generated_at": datetime.utcnow().isoformat(),
+        "agent_id": user_id,
+        "agent_name": current_user.get("name"),
+        "summary": summary,
+        "actions": actions
+    }
+
+def get_time_greeting():
+    """Get appropriate greeting based on time of day"""
+    hour = datetime.utcnow().hour
+    if hour < 12:
+        return "Good morning"
+    elif hour < 17:
+        return "Good afternoon"
+    else:
+        return "Good evening"
+
+@api_router.post("/daily-planner/complete-action")
+async def complete_planner_action(request: dict, current_user: dict = Depends(get_current_user)):
+    """Mark a daily planner action as completed"""
+    action_type = request.get("action_type")
+    record_id = request.get("record_id")
+    notes = request.get("notes", "")
+    
+    # Log the completion
+    await log_activity(
+        current_user["id"],
+        "planner_action_completed",
+        f"Completed {action_type}: {notes}" if notes else f"Completed {action_type}",
+        request.get("lead_id")
+    )
+    
+    # Update relevant records based on action type
+    if action_type == "follow_up" and record_id:
+        await db.tasks.update_one(
+            {"id": record_id},
+            {"$set": {"status": "completed", "completed_at": datetime.utcnow()}}
+        )
+    
+    return {"message": "Action completed", "action_type": action_type}
+
+@api_router.get("/daily-planner/team-summary")
+async def get_team_planner_summary(current_user: dict = Depends(require_manager_or_admin)):
+    """
+    Get summary of daily planner actions for all team members.
+    Only available to managers and admins.
+    """
+    user_role = current_user.get("role", "agent")
+    today = datetime.utcnow()
+    today_str = today.strftime("%Y-%m-%d")
+    
+    # Get team members
+    if user_role == "admin":
+        agents = await db.users.find({"role": "agent", "deleted_at": None}).to_list(100)
+    else:
+        agents = await db.users.find({
+            "manager_id": current_user["id"],
+            "deleted_at": None
+        }).to_list(100)
+    
+    team_summary = []
+    
+    for agent in agents:
+        agent_id = agent["id"]
+        
+        # Count key metrics
+        appointments_today = await db.appointments.count_documents({
+            "created_by_user": agent_id,
+            "date": today_str,
+            "status": {"$in": ["scheduled", "confirmed"]}
+        })
+        
+        overdue_tasks = await db.tasks.count_documents({
+            "created_by_user": agent_id,
+            "status": "pending",
+            "due_date": {"$lt": today_str}
+        })
+        
+        leads_to_contact = await db.leads.count_documents({
+            "$or": [{"created_by_user": agent_id}, {"assigned_to_user": agent_id}],
+            "stage": {"$in": ["new_lead", "appointment_scheduled"]},
+            "$or": [
+                {"last_contact_date": {"$lt": today - timedelta(days=7)}},
+                {"last_contact_date": None}
+            ]
+        })
+        
+        underwriting_pending = await db.leads.count_documents({
+            "$or": [{"created_by_user": agent_id}, {"assigned_to_user": agent_id}],
+            "stage": "additional_requirements"
+        })
+        
+        # Calculate activity score (simple heuristic)
+        activity_score = min(100, max(0, 100 - (overdue_tasks * 10) - (leads_to_contact * 5)))
+        
+        team_summary.append({
+            "agent_id": agent_id,
+            "agent_name": agent.get("name"),
+            "agent_email": agent.get("email"),
+            "appointments_today": appointments_today,
+            "overdue_tasks": overdue_tasks,
+            "leads_to_contact": leads_to_contact,
+            "underwriting_pending": underwriting_pending,
+            "total_action_items": appointments_today + overdue_tasks + leads_to_contact + underwriting_pending,
+            "activity_score": activity_score,
+            "last_login": agent.get("last_login"),
+            "needs_attention": overdue_tasks > 3 or leads_to_contact > 5
+        })
+    
+    # Sort by needs_attention and then by total_action_items
+    team_summary.sort(key=lambda x: (-int(x["needs_attention"]), -x["total_action_items"]))
+    
+    return {
+        "date": today_str,
+        "total_agents": len(agents),
+        "agents_needing_attention": len([a for a in team_summary if a["needs_attention"]]),
+        "total_appointments_today": sum(a["appointments_today"] for a in team_summary),
+        "total_overdue_tasks": sum(a["overdue_tasks"] for a in team_summary),
+        "team_summary": team_summary
+    }
+
 # ==================== SUBSCRIPTION ROUTES ====================
 
 @api_router.get("/subscription/status")
