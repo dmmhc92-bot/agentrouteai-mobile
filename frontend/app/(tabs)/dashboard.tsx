@@ -31,6 +31,15 @@ interface Appointment {
   status: string;
 }
 
+interface ComplianceCards {
+  missing_soa: { count: number; label: string; color: string; icon: string };
+  signed_soa: { count: number; label: string; color: string; icon: string };
+  pending_no_soa: { count: number; label: string; color: string; icon: string };
+  compliant_appointments: { count: number; label: string; color: string; icon: string };
+  total_leads: number;
+  total_upcoming_appointments: number;
+}
+
 export default function DashboardScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -38,8 +47,11 @@ export default function DashboardScreen() {
 
   const [leads, setLeads] = useState<Lead[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [complianceCards, setComplianceCards] = useState<ComplianceCards | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+
+  const isAdminOrManager = user?.role === 'admin' || user?.role === 'manager';
 
   const loadData = async () => {
     try {
@@ -49,6 +61,16 @@ export default function DashboardScreen() {
       ]);
       setLeads(leadsData);
       setAppointments(appointmentsData);
+      
+      // Load compliance cards for admin/manager
+      if (isAdminOrManager) {
+        try {
+          const complianceData = await api.getComplianceDashboardCards();
+          setComplianceCards(complianceData);
+        } catch (e) {
+          console.log('Compliance cards not available');
+        }
+      }
     } catch (error) {
       console.log('Error loading dashboard data:', error);
     } finally {
