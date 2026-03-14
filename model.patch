@@ -7,7 +7,7 @@ index 0000000..15a3069
 +#!/usr/bin/env python3
 +import requests
 +
-+BASE_URL = "https://sales-agent-app-1.preview.emergentagent.com/api"
++BASE_URL = "https://agentrouteai.preview.emergentagent.com/api"
 +
 +# Test without auth
 +response = requests.get(f"{BASE_URL}/auth/me", headers={})
