@@ -229,6 +229,35 @@ export default function LeadDetailScreen() {
           </Text>
         </View>
 
+        {/* Pipeline Stage Card */}
+        <TouchableOpacity style={styles.pipelineCard} onPress={openStageModal}>
+          <View style={styles.pipelineCardLeft}>
+            <View style={[
+              styles.pipelineIcon, 
+              { backgroundColor: STAGE_CONFIG[lead.stage]?.color || '#6B7280' }
+            ]}>
+              <Ionicons 
+                name={(STAGE_CONFIG[lead.stage]?.icon || 'help-circle') as any} 
+                size={20} 
+                color="#FFFFFF" 
+              />
+            </View>
+            <View style={styles.pipelineInfo}>
+              <Text style={styles.pipelineLabel}>Pipeline Stage</Text>
+              <Text style={[
+                styles.pipelineStage, 
+                { color: STAGE_CONFIG[lead.stage]?.color || '#6B7280' }
+              ]}>
+                {STAGE_CONFIG[lead.stage]?.label || lead.stage}
+              </Text>
+            </View>
+          </View>
+          <View style={styles.pipelineCardRight}>
+            <Text style={styles.pipelineUpdateText}>Update</Text>
+            <Ionicons name="chevron-forward" size={18} color="#64748B" />
+          </View>
+        </TouchableOpacity>
+
         {/* Quick Actions */}
         <View style={styles.quickActions}>
           {lead.phone && (
