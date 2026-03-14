@@ -5563,7 +5563,7 @@ async def get_agent_performance_metrics(current_user: dict = Depends(require_man
             "deleted_at": None
         })
         
-        soas_completed = await db.scopes.count_documents({
+        soas_completed = await db.scope_forms.count_documents({
             "created_by_user": agent_id
         })
         
@@ -5860,7 +5860,7 @@ async def get_compliance_summary(current_user: dict = Depends(require_manager_or
     lead_ids = [l["id"] for l in leads]
     
     # Get all SOAs for these leads
-    soas = await db.scopes.find({
+    soas = await db.scope_forms.find({
         "lead_id": {"$in": lead_ids}
     }).to_list(10000)
     
@@ -5948,7 +5948,7 @@ async def get_compliance_records(
         }).to_list(100)
         
         # Get SOAs for this lead
-        soas = await db.scopes.find({
+        soas = await db.scope_forms.find({
             "lead_id": lead["id"]
         }).to_list(100)
         
@@ -6028,7 +6028,7 @@ async def get_lead_compliance_status(lead_id: str, current_user: dict = Depends(
     }).to_list(100)
     
     # Get SOAs
-    soas = await db.scopes.find({
+    soas = await db.scope_forms.find({
         "lead_id": lead_id
     }).to_list(100)
     
@@ -6103,7 +6103,7 @@ async def get_appointment_compliance_status(appointment_id: str, current_user: d
     lead = await db.leads.find_one({"id": lead_id})
     
     # Get SOAs for the lead
-    soas = await db.scopes.find({
+    soas = await db.scope_forms.find({
         "lead_id": lead_id
     }).to_list(100)
     
@@ -6168,7 +6168,7 @@ async def get_compliance_dashboard_cards(current_user: dict = Depends(get_curren
     lead_ids = [l["id"] for l in leads]
     
     # Get SOAs
-    soas = await db.scopes.find({
+    soas = await db.scope_forms.find({
         "lead_id": {"$in": lead_ids}
     }).to_list(10000)
     
