@@ -367,6 +367,14 @@ export default function ScopeDetailScreen() {
   const handleEmailDocument = async () => {
     setActionLoading('share');
     try {
+      // On web, open in new tab and let user share from there
+      if (isWeb) {
+        await openPdfInBrowser();
+        Alert.alert('Email', 'To email the document, save it from the browser and attach to an email.');
+        setActionLoading(null);
+        return;
+      }
+      
       const fileUri = await savePdfToTempFile();
       if (!fileUri) {
         Alert.alert('Error', 'Could not generate PDF');
