@@ -2190,33 +2190,7 @@ async def get_all_scopes(
         "limit": limit
     }
 
-async def generate_scope_pdf(scope: dict, lead: dict, agent: dict) -> dict:
-    """Generate SOA PDF using exact carrier form template with signatures overlaid - single render pass"""
-    from reportlab.lib.pagesizes import letter
-    from reportlab.pdfgen import canvas
-    from reportlab.lib.utils import ImageReader
-    from io import BytesIO
-    import base64
-    import os
-    
-    lead_name = lead.get("name", "Unknown") if lead else "Unknown"
-    scope_id = scope.get("id", "")
-    form_fields = scope.get("form_fields", {})
-    
-    # Debug: Log signature payloads
-    beneficiary_sig = scope.get("signature", "")
-    agent_sig = scope.get("agent_signature", "")
-    logger.info(f"[SOA Render] Signature payload present - Beneficiary: {bool(beneficiary_sig)} ({len(beneficiary_sig) if beneficiary_sig else 0} chars), Agent: {bool(agent_sig)} ({len(agent_sig) if agent_sig else 0} chars)")
-    
-    buffer = BytesIO()
-    p = canvas.Canvas(buffer, pagesize=letter)
-    width, height = letter  # 612 x 792 points
-    
-    # =========================================================================
-    # STEP 1: LOAD BASE TEMPLATE
-    # =========================================================================
-    template_path = '/app/backend/soa_template.jpg'
-    logger.info(f"[SOA Render] Loading base template: {template_path}")
+# ==================== SOA DELIVERY LOGGING ====================
     
     if not os.path.exists(template_path):
         logger.error(f"[SOA Render] Template not found at {template_path}")
