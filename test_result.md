@@ -231,6 +231,18 @@ backend:
           agent: "testing"
           comment: "SOA Delivery Logging feature tested successfully. All core functionality working correctly: ✅ POST /api/scope/{scope_id}/log-delivery (200) - Successfully logs email, share, and SMS deliveries with proper data structure. ✅ GET /api/scope/{scope_id}/delivery-history (200) - Retrieves complete delivery history with all 3 test entries. ✅ GET /api/scope/{scope_id} (200) - SOA document properly includes delivery_history field with all logged entries. ✅ Invalid scope ID handling (404) - Correctly returns 404 for non-existent scope IDs. All delivery methods (email, share, sms) tested and working. Delivery logs properly store: delivery_method, recipient_contact, notes, delivered_at timestamp, and delivered_by_user. Data persistence verified across all endpoints. 6/7 SOA delivery tests passed (85.7% success rate). Minor: One test had intermittent connection timeout but backend logs confirm 404 response was correctly returned."
 
+  - task: "Commission Tracking API"
+    implemented: true
+    working: "NA"
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "Implemented comprehensive Commission Tracking system with: 1) POST /api/commissions - Create commission records with automatic split calculation (agent_rate, manager_override, agency_share), 2) GET /api/commissions - List commissions with role-based access (agents see own, managers see downline, admins see all), 3) GET /api/commissions/{id} - Get single commission, 4) PUT /api/commissions/{id} - Update commission status (estimated/pending/approved/paid), paid amount, payment date, 5) GET /api/commissions/summary/totals - Summary with totals by status, carrier, policy type, 6) GET /api/commissions/agent/{agent_id} - Get agent-specific commissions with summary. Manual curl tests show all endpoints working with correct split calculations (60% agent, 20% manager, 20% agency). Status updates working including paid amount and payment date tracking."
+
 frontend:
   # No frontend testing performed as per instructions
 
