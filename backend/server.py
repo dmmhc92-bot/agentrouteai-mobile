@@ -1563,38 +1563,243 @@ async def get_scope(scope_id: str, current_user: dict = Depends(get_current_user
     scope.setdefault("delivery_history", [])
     return scope
 
-@api_router.get("/soa-template")
-async def get_soa_template():
+@api_router.post("/scope/{scope_id}/generate-pdf")
+async def generate_stamped_pdf(scope_id: str, current_user: dict = Depends(get_current_user)):
     """
-    Get the ORIGINAL uploaded SOA form image as base64.
-    This returns the exact uploaded JPEG file - no conversion, no recreation.
-    Frontend will use pdf-lib to embed this exact image as the PDF background.
+    Generate a stamped PDF using the EXACT ORIGINAL PDF form.
+    
+    This endpoint:
+    1. Loads the original PDF form (original_soa_form.pdf)
+    2. Fills the form fields with scope data
+    3. Stamps signature images onto the PDF
+    4. Returns the final PDF as base64
+    
+    The returned PDF is the ONLY source document - no substitutes.
     """
     import os
+    from pypdf import PdfReader, PdfWriter
+    from reportlab.pdfgen import canvas as rl_canvas
+    from reportlab.lib.pagesizes import letter
+    from reportlab.lib.utils import ImageReader
+    from PIL import Image
+    from io import BytesIO
     import base64
     
-    # Use the ORIGINAL uploaded form file - DO NOT convert or recreate
-    original_form_path = '/app/backend/soa_user_template.jpg'
+    logger.info(f"[PDF Stamp] Generating stamped PDF for scope: {scope_id}")
     
-    if not os.path.exists(original_form_path):
-        logger.error("[SOA Template] Original form file not found at: " + original_form_path)
-        raise HTTPException(status_code=404, detail="Original SOA form not found")
+    # Get scope data
+    scope = await db.scope_forms.find_one({"id": scope_id})
+    if not scope:
+        raise HTTPException(status_code=404, detail="Scope not found")
     
-    with open(original_form_path, 'rb') as f:
-        form_bytes = f.read()
+    # Check authorization
+    user_id = current_user.get("id")
+    user_role = current_user.get("role")
+    if user_role not in ["admin", "manager"]:
+        lead = await db.leads.find_one({"id": scope.get("lead_id")})
+        if lead and lead.get("assigned_agent_id") != user_id:
+            raise HTTPException(status_code=403, detail="Access denied")
     
-    form_base64 = base64.b64encode(form_bytes).decode()
+    # Path to the ORIGINAL PDF form
+    original_pdf_path = '/app/backend/original_soa_form.pdf'
     
-    logger.info(f"[SOA Template] Serving ORIGINAL form: {len(form_bytes)} bytes")
+    if not os.path.exists(original_pdf_path):
+        logger.error("[PDF Stamp] Original PDF form not found!")
+        raise HTTPException(status_code=500, detail="Original PDF form not found on server")
     
-    # Return the original image with metadata
-    return {
-        "form_base64": form_base64,
-        "format": "jpeg",
-        "width": 1167,
-        "height": 1463,
-        "note": "This is the exact uploaded form file - no conversion applied"
-    }
+    logger.info(f"[PDF Stamp] Loading original PDF: {original_pdf_path}")
+    
+    # Read the original PDF
+    with open(original_pdf_path, 'rb') as f:
+        reader = PdfReader(f)
+        writer = PdfWriter()
+        
+        # Copy all pages
+        for page in reader.pages:
+            writer.add_page(page)
+        
+        # Get form field mapping from scope data
+        # Map our scope fields to the PDF form field names
+        field_mapping = {
+            'Name': scope.get('beneficiary_name', '') or scope.get('typed_name', ''),
+            'Phone': scope.get('beneficiary_phone', ''),
+            'Address': scope.get('beneficiary_address', ''),
+            'Agent Name': scope.get('agent_name', ''),
+            'Agent Phone': scope.get('agent_phone', ''),
+            'Date Appointment Completed': scope.get('appointment_date', ''),
+            'If you are the authorized representative please sign above and print below': scope.get('auth_rep_name', ''),
+            'Your Relationship to the Beneficiary': scope.get('auth_rep_relationship', ''),
+            'Initial Method of Contact Indicate here if beneficiary was a walkin': scope.get('initial_contact_method', ''),
+            'Plans the agent represented during this meeting': scope.get('plans_to_represent', ''),
+        }
+        
+        # Product checkboxes - mark with X if selected
+        products = scope.get('products_to_discuss', [])
+        if 'prescription_drug' in products:
+            field_mapping['provides all Original Medicare Part A and Part B health coverage and includes Part D prescription'] = 'X'
+        if 'medicare_advantage' in products:
+            field_mapping['provides all Original Medicare Part A and Part B health coverage and includes Part D prescription_2'] = 'X'
+        if 'medicare_supplement' in products:
+            field_mapping['Medicare Supplement Medigap Products'] = 'X'
+        if 'dental_vision_hearing' in products:
+            field_mapping['DentalVision'] = 'X'
+        if 'hospital_indemnity' in products:
+            field_mapping['coverage to Original Medicare some Medicare Cost Plans some Medicare PrivateFeeforService'] = 'X'
+        
+        logger.info(f"[PDF Stamp] Filling form fields: {list(field_mapping.keys())}")
+        
+        # Fill form fields
+        writer.update_page_form_field_values(writer.pages[0], field_mapping)
+        
+        # Now we need to add signature images as overlays
+        # Create a signature overlay PDF
+        sig_overlay = BytesIO()
+        c = rl_canvas.Canvas(sig_overlay, pagesize=letter)
+        
+        # Page dimensions
+        page_width, page_height = letter  # 612 x 792 points
+        
+        # Beneficiary signature position (adjust based on form layout)
+        # These coordinates are for the signature line on the form
+        beneficiary_sig_x = 72  # ~1 inch from left
+        beneficiary_sig_y = 445  # Position on signature line
+        beneficiary_sig_width = 200
+        beneficiary_sig_height = 40
+        
+        # Agent signature position
+        agent_sig_x = 72
+        agent_sig_y = 195  # Lower on the page
+        agent_sig_width = 250
+        agent_sig_height = 35
+        
+        # Process beneficiary signature
+        beneficiary_signature = scope.get('signature', '')
+        if beneficiary_signature and len(beneficiary_signature) > 100:
+            logger.info("[PDF Stamp] Processing beneficiary signature...")
+            try:
+                # Extract base64 data
+                if ',' in beneficiary_signature:
+                    sig_data = beneficiary_signature.split(',')[1]
+                else:
+                    sig_data = beneficiary_signature
+                
+                sig_bytes = base64.b64decode(sig_data)
+                sig_image = Image.open(BytesIO(sig_bytes))
+                
+                # Convert to RGBA if needed
+                if sig_image.mode != 'RGBA':
+                    sig_image = sig_image.convert('RGBA')
+                
+                # Save to buffer for ReportLab
+                sig_buffer = BytesIO()
+                sig_image.save(sig_buffer, format='PNG')
+                sig_buffer.seek(0)
+                
+                # Draw on canvas
+                img_reader = ImageReader(sig_buffer)
+                c.drawImage(img_reader, beneficiary_sig_x, beneficiary_sig_y, 
+                           width=beneficiary_sig_width, height=beneficiary_sig_height,
+                           mask='auto', preserveAspectRatio=True, anchor='sw')
+                logger.info(f"[PDF Stamp] Beneficiary signature added at ({beneficiary_sig_x}, {beneficiary_sig_y})")
+            except Exception as e:
+                logger.error(f"[PDF Stamp] Failed to add beneficiary signature: {e}")
+        
+        # Process agent signature
+        agent_signature = scope.get('agent_signature', '')
+        if agent_signature and len(agent_signature) > 100:
+            logger.info("[PDF Stamp] Processing agent signature...")
+            try:
+                if ',' in agent_signature:
+                    sig_data = agent_signature.split(',')[1]
+                else:
+                    sig_data = agent_signature
+                
+                sig_bytes = base64.b64decode(sig_data)
+                sig_image = Image.open(BytesIO(sig_bytes))
+                
+                if sig_image.mode != 'RGBA':
+                    sig_image = sig_image.convert('RGBA')
+                
+                sig_buffer = BytesIO()
+                sig_image.save(sig_buffer, format='PNG')
+                sig_buffer.seek(0)
+                
+                img_reader = ImageReader(sig_buffer)
+                c.drawImage(img_reader, agent_sig_x, agent_sig_y,
+                           width=agent_sig_width, height=agent_sig_height,
+                           mask='auto', preserveAspectRatio=True, anchor='sw')
+                logger.info(f"[PDF Stamp] Agent signature added at ({agent_sig_x}, {agent_sig_y})")
+            except Exception as e:
+                logger.error(f"[PDF Stamp] Failed to add agent signature: {e}")
+        
+        c.save()
+        sig_overlay.seek(0)
+        
+        # Merge signature overlay with first page
+        if beneficiary_signature or agent_signature:
+            overlay_reader = PdfReader(sig_overlay)
+            if len(overlay_reader.pages) > 0:
+                writer.pages[0].merge_page(overlay_reader.pages[0])
+                logger.info("[PDF Stamp] Signature overlay merged with first page")
+        
+        # Write final PDF to buffer
+        output = BytesIO()
+        writer.write(output)
+        output.seek(0)
+        
+        # Convert to base64
+        pdf_bytes = output.read()
+        pdf_base64 = base64.b64encode(pdf_bytes).decode()
+        
+        logger.info(f"[PDF Stamp] Final PDF generated: {len(pdf_bytes)} bytes")
+        
+        # Also save to database for future retrieval
+        await db.scope_forms.update_one(
+            {"id": scope_id},
+            {"$set": {"stamped_pdf_base64": pdf_base64, "pdf_generated_at": datetime.utcnow().isoformat()}}
+        )
+        
+        return {
+            "pdf_base64": pdf_base64,
+            "filename": f"SOA_{scope.get('beneficiary_name', 'Document')}_{scope_id[:8]}.pdf",
+            "size_bytes": len(pdf_bytes),
+            "generated_at": datetime.utcnow().isoformat()
+        }
+
+
+@api_router.get("/scope/{scope_id}/pdf")
+async def get_scope_pdf(scope_id: str, current_user: dict = Depends(get_current_user)):
+    """
+    Get the stamped PDF for a scope.
+    If not yet generated, generates it first.
+    Returns the exact same PDF for View/Share/Print/Save.
+    """
+    # Check if we have a cached stamped PDF
+    scope = await db.scope_forms.find_one({"id": scope_id})
+    if not scope:
+        raise HTTPException(status_code=404, detail="Scope not found")
+    
+    # Check authorization
+    user_id = current_user.get("id")
+    user_role = current_user.get("role")
+    if user_role not in ["admin", "manager"]:
+        lead = await db.leads.find_one({"id": scope.get("lead_id")})
+        if lead and lead.get("assigned_agent_id") != user_id:
+            raise HTTPException(status_code=403, detail="Access denied")
+    
+    # If we have a cached PDF, return it
+    if scope.get('stamped_pdf_base64'):
+        logger.info(f"[PDF Get] Returning cached PDF for scope: {scope_id}")
+        return {
+            "pdf_base64": scope['stamped_pdf_base64'],
+            "filename": f"SOA_{scope.get('beneficiary_name', 'Document')}_{scope_id[:8]}.pdf",
+            "generated_at": scope.get('pdf_generated_at'),
+            "cached": True
+        }
+    
+    # Otherwise, generate it
+    logger.info(f"[PDF Get] No cached PDF, generating for scope: {scope_id}")
+    return await generate_stamped_pdf(scope_id, current_user)
 
 @api_router.get("/scope/lead/{lead_id}")
 async def get_lead_scopes(lead_id: str, current_user: dict = Depends(get_current_user)):
