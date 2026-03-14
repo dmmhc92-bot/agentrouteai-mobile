@@ -4506,6 +4506,540 @@ async def get_agency_command_center_full(current_user: dict = Depends(require_ma
         "activity_tracking": activity_tracking
     }
 
+# ==================== NEEDS ATTENTION / COACHING ALERTS ====================
+
+class AlertItem(BaseModel):
+    id: str
+    alert_type: str
+    severity: str  # critical, warning, info
+    title: str
+    subtitle: str
+    details: Dict[str, Any]
+    related_id: str
+    related_type: str  # user, lead, appointment, commission
+    created_at: Optional[datetime] = None
+
+class AlertCategory(BaseModel):
+    category: str
+    title: str
+    icon: str
+    count: int
+    severity: str
+    alerts: List[AlertItem]
+
+class NeedsAttentionResponse(BaseModel):
+    total_alerts: int
+    critical_count: int
+    warning_count: int
+    categories: List[AlertCategory]
+
+@api_router.get("/needs-attention")
+async def get_needs_attention_alerts(current_user: dict = Depends(require_manager_or_admin)):
+    """Get all needs attention alerts for leadership dashboard"""
+    user_ids = await get_user_accessible_ids(current_user["id"], current_user.get("role", "agent"))
+    
+    today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    yesterday = today - timedelta(days=1)
+    three_days_ago = today - timedelta(days=3)
+    seven_days_ago = today - timedelta(days=7)
+    fourteen_days_ago = today - timedelta(days=14)
+    thirty_days_ago = today - timedelta(days=30)
+    today_str = today.strftime("%Y-%m-%d")
+    
+    categories = []
+    total_critical = 0
+    total_warning = 0
+    
+    # ==================== AGENT ALERTS ====================
+    
+    # 1. Agents not logged in recently (3+ days)
+    not_logged_agents = await db.users.find({
+        "id": {"$in": user_ids},
+        "role": {"$in": ["agent", "manager"]},
+        "deleted_at": None,
+        "$or": [
+            {"last_login": {"$lt": three_days_ago}},
+            {"last_login": None}
+        ]
+    }).to_list(100)
+    
+    not_logged_alerts = []
+    for agent in not_logged_agents:
+        days_since = (today - agent.get("last_login", today - timedelta(days=999))).days if agent.get("last_login") else 999
+        severity = "critical" if days_since >= 7 else "warning"
+        if severity == "critical":
+            total_critical += 1
+        else:
+            total_warning += 1
+        
+        not_logged_alerts.append(AlertItem(
+            id=f"not_logged_{agent['id']}",
+            alert_type="not_logged_in",
+            severity=severity,
+            title=agent["name"],
+            subtitle=f"Last login: {days_since} days ago" if days_since < 999 else "Never logged in",
+            details={
+                "email": agent["email"],
+                "role": agent.get("role", "agent"),
+                "last_login": agent.get("last_login").isoformat() if agent.get("last_login") else None,
+                "days_since_login": days_since
+            },
+            related_id=agent["id"],
+            related_type="user"
+        ))
+    
+    not_logged_alerts.sort(key=lambda x: x.details.get("days_since_login", 999), reverse=True)
+    
+    if not_logged_alerts:
+        categories.append(AlertCategory(
+            category="agents_not_logged",
+            title="Agents Not Logged In",
+            icon="log-out",
+            count=len(not_logged_alerts),
+            severity="critical" if any(a.severity == "critical" for a in not_logged_alerts) else "warning",
+            alerts=not_logged_alerts[:20]
+        ))
+    
+    # 2. Agents with low activity (no leads/appointments in 7 days)
+    all_agents = await db.users.find({
+        "id": {"$in": user_ids},
+        "role": "agent",
+        "deleted_at": None,
+        "last_login": {"$gte": seven_days_ago}  # Only check active agents
+    }).to_list(100)
+    
+    low_activity_alerts = []
+    for agent in all_agents:
+        # Check lead activity
+        recent_leads = await db.leads.count_documents({
+            "created_by_user": agent["id"],
+            "created_date": {"$gte": seven_days_ago},
+            "deleted_at": None
+        })
+        recent_appointments = await db.appointments.count_documents({
+            "created_by_user": agent["id"],
+            "created_date": {"$gte": seven_days_ago}
+        })
+        
+        if recent_leads == 0 and recent_appointments < 2:
+            severity = "warning"
+            total_warning += 1
+            low_activity_alerts.append(AlertItem(
+                id=f"low_activity_{agent['id']}",
+                alert_type="low_activity",
+                severity=severity,
+                title=agent["name"],
+                subtitle=f"{recent_leads} leads, {recent_appointments} appointments (7 days)",
+                details={
+                    "email": agent["email"],
+                    "recent_leads": recent_leads,
+                    "recent_appointments": recent_appointments,
+                    "last_login": agent.get("last_login").isoformat() if agent.get("last_login") else None
+                },
+                related_id=agent["id"],
+                related_type="user"
+            ))
+    
+    if low_activity_alerts:
+        categories.append(AlertCategory(
+            category="low_activity",
+            title="Low Activity Agents",
+            icon="trending-down",
+            count=len(low_activity_alerts),
+            severity="warning",
+            alerts=low_activity_alerts[:20]
+        ))
+    
+    # ==================== LEAD ALERTS ====================
+    
+    # 3. Leads not contacted within 48 hours (new leads)
+    uncontacted_leads = await db.leads.find({
+        "created_by_user": {"$in": user_ids},
+        "created_date": {"$lt": today - timedelta(days=2)},
+        "last_contact_date": None,
+        "stage": "new_lead",
+        "deleted_at": None
+    }).sort("created_date", 1).to_list(50)
+    
+    uncontacted_alerts = []
+    for lead in uncontacted_leads:
+        days_waiting = (today - lead.get("created_date", today)).days
+        severity = "critical" if days_waiting >= 5 else "warning"
+        if severity == "critical":
+            total_critical += 1
+        else:
+            total_warning += 1
+        
+        agent = await db.users.find_one({"id": lead["created_by_user"]})
+        uncontacted_alerts.append(AlertItem(
+            id=f"uncontacted_{lead['id']}",
+            alert_type="uncontacted_lead",
+            severity=severity,
+            title=lead["name"],
+            subtitle=f"Waiting {days_waiting} days • {agent['name'] if agent else 'Unknown'}",
+            details={
+                "phone": lead.get("phone", ""),
+                "email": lead.get("email", ""),
+                "agent_name": agent["name"] if agent else "Unknown",
+                "agent_id": lead["created_by_user"],
+                "created_date": lead.get("created_date").isoformat() if lead.get("created_date") else None,
+                "days_waiting": days_waiting
+            },
+            related_id=lead["id"],
+            related_type="lead"
+        ))
+    
+    if uncontacted_alerts:
+        categories.append(AlertCategory(
+            category="uncontacted_leads",
+            title="Leads Not Contacted",
+            icon="person-add",
+            count=len(uncontacted_alerts),
+            severity="critical" if any(a.severity == "critical" for a in uncontacted_alerts) else "warning",
+            alerts=uncontacted_alerts[:20]
+        ))
+    
+    # 4. Overdue follow-ups
+    overdue_tasks = await db.tasks.find({
+        "created_by_user": {"$in": user_ids},
+        "status": "pending",
+        "due_date": {"$lt": today_str}
+    }).sort("due_date", 1).to_list(50)
+    
+    overdue_followup_alerts = []
+    for task in overdue_tasks:
+        days_overdue = (today - datetime.strptime(task["due_date"], "%Y-%m-%d")).days
+        severity = "critical" if days_overdue >= 7 else "warning"
+        if severity == "critical":
+            total_critical += 1
+        else:
+            total_warning += 1
+        
+        agent = await db.users.find_one({"id": task["created_by_user"]})
+        lead = await db.leads.find_one({"id": task.get("lead_id")}) if task.get("lead_id") else None
+        
+        overdue_followup_alerts.append(AlertItem(
+            id=f"overdue_task_{task['id']}",
+            alert_type="overdue_followup",
+            severity=severity,
+            title=task["title"],
+            subtitle=f"{days_overdue} days overdue • {agent['name'] if agent else 'Unknown'}",
+            details={
+                "task_type": task.get("task_type", "follow_up"),
+                "due_date": task["due_date"],
+                "days_overdue": days_overdue,
+                "agent_name": agent["name"] if agent else "Unknown",
+                "agent_id": task["created_by_user"],
+                "lead_id": task.get("lead_id"),
+                "lead_name": lead["name"] if lead else None
+            },
+            related_id=task.get("lead_id") or task["id"],
+            related_type="lead" if task.get("lead_id") else "task"
+        ))
+    
+    if overdue_followup_alerts:
+        categories.append(AlertCategory(
+            category="overdue_followups",
+            title="Overdue Follow-ups",
+            icon="time",
+            count=len(overdue_followup_alerts),
+            severity="critical" if any(a.severity == "critical" for a in overdue_followup_alerts) else "warning",
+            alerts=overdue_followup_alerts[:20]
+        ))
+    
+    # ==================== APPOINTMENT ALERTS ====================
+    
+    # 5. Missed appointments (past date, status still scheduled)
+    missed_appointments = await db.appointments.find({
+        "created_by_user": {"$in": user_ids},
+        "appointment_date": {"$lt": today_str},
+        "status": {"$in": ["scheduled", "pending"]}
+    }).sort("appointment_date", -1).to_list(50)
+    
+    missed_alerts = []
+    for apt in missed_appointments:
+        try:
+            apt_date = datetime.strptime(apt["appointment_date"], "%Y-%m-%d")
+            days_missed = (today - apt_date).days
+        except:
+            days_missed = 1
+        
+        severity = "critical" if days_missed >= 3 else "warning"
+        if severity == "critical":
+            total_critical += 1
+        else:
+            total_warning += 1
+        
+        agent = await db.users.find_one({"id": apt["created_by_user"]})
+        lead = await db.leads.find_one({"id": apt["lead_id"]})
+        
+        missed_alerts.append(AlertItem(
+            id=f"missed_apt_{apt['id']}",
+            alert_type="missed_appointment",
+            severity=severity,
+            title=lead["name"] if lead else "Unknown Lead",
+            subtitle=f"Missed {days_missed} day(s) ago • {agent['name'] if agent else 'Unknown'}",
+            details={
+                "appointment_date": apt["appointment_date"],
+                "appointment_time": apt.get("appointment_time", ""),
+                "days_missed": days_missed,
+                "agent_name": agent["name"] if agent else "Unknown",
+                "agent_id": apt["created_by_user"],
+                "lead_id": apt["lead_id"]
+            },
+            related_id=apt["lead_id"],
+            related_type="lead"
+        ))
+    
+    if missed_alerts:
+        categories.append(AlertCategory(
+            category="missed_appointments",
+            title="Missed Appointments",
+            icon="calendar-clear",
+            count=len(missed_alerts),
+            severity="critical" if any(a.severity == "critical" for a in missed_alerts) else "warning",
+            alerts=missed_alerts[:20]
+        ))
+    
+    # 6. Appointments with no outcome logged (completed but no outcome)
+    no_outcome_appointments = await db.appointments.find({
+        "created_by_user": {"$in": user_ids},
+        "status": "completed",
+        "$or": [{"outcome": None}, {"outcome": ""}, {"outcome": {"$exists": False}}]
+    }).sort("appointment_date", -1).to_list(50)
+    
+    no_outcome_alerts = []
+    for apt in no_outcome_appointments:
+        severity = "warning"
+        total_warning += 1
+        
+        agent = await db.users.find_one({"id": apt["created_by_user"]})
+        lead = await db.leads.find_one({"id": apt["lead_id"]})
+        
+        no_outcome_alerts.append(AlertItem(
+            id=f"no_outcome_{apt['id']}",
+            alert_type="no_outcome",
+            severity=severity,
+            title=lead["name"] if lead else "Unknown Lead",
+            subtitle=f"Completed {apt['appointment_date']} • No outcome logged",
+            details={
+                "appointment_date": apt["appointment_date"],
+                "appointment_time": apt.get("appointment_time", ""),
+                "agent_name": agent["name"] if agent else "Unknown",
+                "agent_id": apt["created_by_user"],
+                "lead_id": apt["lead_id"]
+            },
+            related_id=apt["lead_id"],
+            related_type="lead"
+        ))
+    
+    if no_outcome_alerts:
+        categories.append(AlertCategory(
+            category="no_outcome",
+            title="No Outcome Logged",
+            icon="help-circle",
+            count=len(no_outcome_alerts),
+            severity="warning",
+            alerts=no_outcome_alerts[:20]
+        ))
+    
+    # ==================== PIPELINE ALERTS ====================
+    
+    # 7. Applications stalled in pipeline (application_submitted stage for 7+ days)
+    stalled_applications = await db.leads.find({
+        "created_by_user": {"$in": user_ids},
+        "stage": "application_submitted",
+        "deleted_at": None,
+        "$or": [
+            {"last_contact_date": {"$lt": seven_days_ago}},
+            {"last_contact_date": None, "created_date": {"$lt": seven_days_ago}}
+        ]
+    }).to_list(50)
+    
+    stalled_app_alerts = []
+    for lead in stalled_applications:
+        last_activity = lead.get("last_contact_date") or lead.get("created_date")
+        days_stalled = (today - last_activity).days if last_activity else 999
+        
+        severity = "critical" if days_stalled >= 14 else "warning"
+        if severity == "critical":
+            total_critical += 1
+        else:
+            total_warning += 1
+        
+        agent = await db.users.find_one({"id": lead["created_by_user"]})
+        
+        stalled_app_alerts.append(AlertItem(
+            id=f"stalled_app_{lead['id']}",
+            alert_type="stalled_application",
+            severity=severity,
+            title=lead["name"],
+            subtitle=f"Stalled {days_stalled} days • {agent['name'] if agent else 'Unknown'}",
+            details={
+                "phone": lead.get("phone", ""),
+                "stage": lead["stage"],
+                "days_stalled": days_stalled,
+                "agent_name": agent["name"] if agent else "Unknown",
+                "agent_id": lead["created_by_user"],
+                "last_contact": last_activity.isoformat() if last_activity else None
+            },
+            related_id=lead["id"],
+            related_type="lead"
+        ))
+    
+    if stalled_app_alerts:
+        categories.append(AlertCategory(
+            category="stalled_applications",
+            title="Stalled Applications",
+            icon="document-text",
+            count=len(stalled_app_alerts),
+            severity="critical" if any(a.severity == "critical" for a in stalled_app_alerts) else "warning",
+            alerts=stalled_app_alerts[:20]
+        ))
+    
+    # 8. Underwriting waiting on requirements (additional_requirements stage)
+    waiting_requirements = await db.leads.find({
+        "created_by_user": {"$in": user_ids},
+        "stage": "additional_requirements",
+        "deleted_at": None
+    }).to_list(50)
+    
+    waiting_req_alerts = []
+    for lead in waiting_requirements:
+        last_activity = lead.get("last_contact_date") or lead.get("created_date")
+        days_waiting = (today - last_activity).days if last_activity else 0
+        
+        severity = "critical" if days_waiting >= 7 else "warning"
+        if severity == "critical":
+            total_critical += 1
+        else:
+            total_warning += 1
+        
+        agent = await db.users.find_one({"id": lead["created_by_user"]})
+        
+        waiting_req_alerts.append(AlertItem(
+            id=f"waiting_req_{lead['id']}",
+            alert_type="waiting_requirements",
+            severity=severity,
+            title=lead["name"],
+            subtitle=f"Waiting {days_waiting} days • {agent['name'] if agent else 'Unknown'}",
+            details={
+                "phone": lead.get("phone", ""),
+                "stage": lead["stage"],
+                "days_waiting": days_waiting,
+                "agent_name": agent["name"] if agent else "Unknown",
+                "agent_id": lead["created_by_user"]
+            },
+            related_id=lead["id"],
+            related_type="lead"
+        ))
+    
+    waiting_req_alerts.sort(key=lambda x: x.details.get("days_waiting", 0), reverse=True)
+    
+    if waiting_req_alerts:
+        categories.append(AlertCategory(
+            category="waiting_requirements",
+            title="Waiting on Requirements",
+            icon="clipboard",
+            count=len(waiting_req_alerts),
+            severity="critical" if any(a.severity == "critical" for a in waiting_req_alerts) else "warning",
+            alerts=waiting_req_alerts[:20]
+        ))
+    
+    # ==================== COMMISSION ALERTS ====================
+    
+    # 9. Commissions pending too long (30+ days in pending status)
+    pending_commissions = await db.commissions.find({
+        "created_by_user": {"$in": user_ids},
+        "commission_status": {"$in": ["pending", "approved"]},
+        "created_date": {"$lt": thirty_days_ago}
+    }).to_list(50)
+    
+    commission_alerts = []
+    for comm in pending_commissions:
+        days_pending = (today - comm.get("created_date", today)).days
+        
+        severity = "critical" if days_pending >= 60 else "warning"
+        if severity == "critical":
+            total_critical += 1
+        else:
+            total_warning += 1
+        
+        agent = await db.users.find_one({"id": comm["created_by_user"]})
+        lead = await db.leads.find_one({"id": comm.get("lead_id")}) if comm.get("lead_id") else None
+        
+        commission_alerts.append(AlertItem(
+            id=f"pending_comm_{comm['id']}",
+            alert_type="pending_commission",
+            severity=severity,
+            title=f"{comm.get('carrier', 'Unknown')} - {comm.get('policy_type', 'Policy')}",
+            subtitle=f"Pending {days_pending} days • ${comm.get('estimated_commission', 0):,.0f}",
+            details={
+                "carrier": comm.get("carrier", ""),
+                "policy_type": comm.get("policy_type", ""),
+                "estimated_commission": comm.get("estimated_commission", 0),
+                "days_pending": days_pending,
+                "status": comm.get("commission_status", "pending"),
+                "agent_name": agent["name"] if agent else "Unknown",
+                "agent_id": comm["created_by_user"],
+                "lead_id": comm.get("lead_id"),
+                "lead_name": lead["name"] if lead else None
+            },
+            related_id=comm["id"],
+            related_type="commission"
+        ))
+    
+    commission_alerts.sort(key=lambda x: x.details.get("days_pending", 0), reverse=True)
+    
+    if commission_alerts:
+        categories.append(AlertCategory(
+            category="pending_commissions",
+            title="Commissions Pending Too Long",
+            icon="cash",
+            count=len(commission_alerts),
+            severity="critical" if any(a.severity == "critical" for a in commission_alerts) else "warning",
+            alerts=commission_alerts[:20]
+        ))
+    
+    # Sort categories by severity and count
+    categories.sort(key=lambda x: (0 if x.severity == "critical" else 1, -x.count))
+    
+    total_alerts = sum(c.count for c in categories)
+    
+    return NeedsAttentionResponse(
+        total_alerts=total_alerts,
+        critical_count=total_critical,
+        warning_count=total_warning,
+        categories=categories
+    )
+
+@api_router.get("/needs-attention/category/{category}")
+async def get_needs_attention_category(category: str, current_user: dict = Depends(require_manager_or_admin)):
+    """Get all alerts for a specific category"""
+    full_response = await get_needs_attention_alerts(current_user)
+    
+    for cat in full_response.categories:
+        if cat.category == category:
+            return cat
+    
+    raise HTTPException(status_code=404, detail=f"Category '{category}' not found")
+
+@api_router.get("/needs-attention/summary")
+async def get_needs_attention_summary(current_user: dict = Depends(require_manager_or_admin)):
+    """Get just the summary counts for quick overview"""
+    full_response = await get_needs_attention_alerts(current_user)
+    
+    return {
+        "total_alerts": full_response.total_alerts,
+        "critical_count": full_response.critical_count,
+        "warning_count": full_response.warning_count,
+        "categories_count": len(full_response.categories),
+        "category_summaries": [
+            {"category": c.category, "title": c.title, "count": c.count, "severity": c.severity, "icon": c.icon}
+            for c in full_response.categories
+        ]
+    }
+
 # ==================== HEALTH CHECK ====================
 
 @api_router.get("/")
