@@ -195,25 +195,31 @@ export default function ScopeDetailScreen() {
           const fileUrl = URL.createObjectURL(blob);
           console.log('[ViewPDF] Object URL created:', fileUrl.substring(0, 50) + '...');
           
-          // Create and trigger anchor click for download/open
-          const a = document.createElement('a');
-          a.href = fileUrl;
-          a.target = '_blank';
-          a.rel = 'noopener noreferrer';
-          a.download = filename;
-          document.body.appendChild(a);
+          // Try to open in new window first
+          const newWindow = window.open(fileUrl, '_blank', 'noopener,noreferrer');
           
-          console.log('[ViewPDF] Triggering anchor click...');
-          a.click();
+          if (newWindow) {
+            console.log('[ViewPDF] PDF opened in new window');
+          } else {
+            // Popup blocked - trigger download instead
+            console.log('[ViewPDF] Popup blocked, triggering download...');
+            const a = document.createElement('a');
+            a.href = fileUrl;
+            a.download = filename;
+            a.style.display = 'none';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            console.log('[ViewPDF] Download triggered');
+          }
           
-          // Cleanup
+          // Cleanup after delay
           setTimeout(() => {
-            a.remove();
             URL.revokeObjectURL(fileUrl);
             console.log('[ViewPDF] Cleanup complete');
-          }, 1000);
+          }, 5000);
           
-          console.log('[ViewPDF] Web flow complete - PDF should be opening/downloading');
+          console.log('[ViewPDF] Web flow complete');
           
         } catch (webError: any) {
           console.error('[ViewPDF] Web blob/download error:', webError);
