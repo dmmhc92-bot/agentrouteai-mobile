@@ -515,6 +515,33 @@ class ApiService {
     const response = await apiClient.get(`/team/tree/${userId}`);
     return response.data;
   }
+
+  // ==================== AGENCY COMMAND CENTER ====================
+  
+  async getAgencyCommandCenterSummary() {
+    const response = await apiClient.get('/agency-command-center/summary');
+    return response.data;
+  }
+
+  async getAgencyTeamPerformance() {
+    const response = await apiClient.get('/agency-command-center/team-performance');
+    return response.data;
+  }
+
+  async getAgencyPipelineHealth() {
+    const response = await apiClient.get('/agency-command-center/pipeline-health');
+    return response.data;
+  }
+
+  async getAgencyActivityTracking() {
+    const response = await apiClient.get('/agency-command-center/activity-tracking');
+    return response.data;
+  }
+
+  async getAgencyCommandCenterFull() {
+    const response = await apiClient.get('/agency-command-center/full');
+    return response.data;
+  }
 }
 
 export const api = new ApiService();
