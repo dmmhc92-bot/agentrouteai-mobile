@@ -1145,7 +1145,7 @@ async def scan_document(request: dict, current_user: dict = Depends(get_current_
     Returns: name, phone, email, company, address, job_title
     """
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage, FileContent
+        from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
         api_key = os.environ.get("EMERGENT_LLM_KEY")
         if not api_key:
             raise HTTPException(status_code=500, detail="OCR not configured - EMERGENT_LLM_KEY not set")
@@ -1156,22 +1156,9 @@ async def scan_document(request: dict, current_user: dict = Depends(get_current_
         
         # Strip data URL prefix if present
         if image_base64.startswith("data:"):
-            # Extract content type and base64 data
             parts = image_base64.split(",")
             if len(parts) == 2:
-                content_type_part = parts[0]  # e.g., "data:image/jpeg;base64"
                 image_base64 = parts[1]
-                # Extract mime type
-                if "image/png" in content_type_part:
-                    content_type = "image/png"
-                elif "image/gif" in content_type_part:
-                    content_type = "image/gif"
-                else:
-                    content_type = "image/jpeg"
-            else:
-                content_type = "image/jpeg"
-        else:
-            content_type = "image/jpeg"
         
         # Enhanced system prompt for comprehensive business card extraction
         system_prompt = """You are an expert OCR system specialized in extracting contact information from business cards.
@@ -1185,12 +1172,11 @@ Extract ALL available information from the business card image and return ONLY a
   "job_title": "Job title or position",
   "address": "Full business address (street, city, state, zip)",
   "website": "Website URL if present",
-  "mobile": "Mobile/cell phone if different from main phone",
-  "fax": "Fax number if present"
+  "mobile": "Mobile/cell phone if different from main phone"
 }
 
 Rules:
-- Return ONLY the JSON object, no other text
+- Return ONLY the JSON object, no other text or markdown
 - Use empty string "" for fields not found on the card
 - Clean up phone numbers to a consistent format
 - Preserve the exact email address
@@ -1204,16 +1190,15 @@ Rules:
             system_message=system_prompt
         ).with_model("openai", "gpt-4.1")
         
-        # Create FileContent for the image
-        file_content = FileContent(
-            content_type=content_type,
-            file_content_base64=image_base64
+        # Create ImageContent for the image (correct approach for vision)
+        image_content = ImageContent(
+            image_base64=image_base64
         )
         
         # Send message with image
         response = await chat.send_message(UserMessage(
-            text="Extract all contact information from this business card image. Return only JSON.",
-            file_contents=[file_content]
+            text="Extract all contact information from this business card image. Return only JSON, no markdown formatting.",
+            file_contents=[image_content]
         ))
         
         logger.info(f"OCR raw response: {response[:500] if response else 'empty'}")
@@ -1221,11 +1206,19 @@ Rules:
         import json
         extracted = {}
         try:
-            # Find JSON in response (handle cases where model adds extra text)
-            if "{" in response and "}" in response:
-                json_start = response.find("{")
-                json_end = response.rfind("}") + 1
-                json_str = response[json_start:json_end]
+            # Remove any markdown formatting
+            clean_response = response.strip()
+            if clean_response.startswith("```"):
+                # Remove markdown code blocks
+                lines = clean_response.split("\n")
+                clean_lines = [l for l in lines if not l.startswith("```")]
+                clean_response = "\n".join(clean_lines).strip()
+            
+            # Find JSON in response
+            if "{" in clean_response and "}" in clean_response:
+                json_start = clean_response.find("{")
+                json_end = clean_response.rfind("}") + 1
+                json_str = clean_response[json_start:json_end]
                 extracted = json.loads(json_str)
         except json.JSONDecodeError as je:
             logger.error(f"JSON parse error: {je}, response: {response[:200]}")
