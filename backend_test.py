@@ -504,6 +504,132 @@ class APITester:
                        unauthorized_count == len(protected_endpoints),
                        f"{unauthorized_count}/{len(protected_endpoints)} endpoints properly protected")
     
+    def test_soa_delivery_logging(self):
+        """Test SOA delivery logging endpoints"""
+        print("=== SOA DELIVERY LOGGING TESTS ===")
+        
+        if not self.scope_id:
+            self.log_result("SOA Delivery Logging", False, "No scope document available for testing")
+            return False
+        
+        delivery_logs = []
+        
+        # Test 1: Log email delivery
+        email_delivery = {
+            "scope_id": self.scope_id,
+            "delivery_method": "email",
+            "recipient_contact": "jane@company.com",
+            "notes": "SOA document emailed to client for review"
+        }
+        
+        response = self.make_request("POST", f"/scope/{self.scope_id}/log-delivery", email_delivery)
+        if not response or response.status_code != 200:
+            self.log_result("SOA Email Delivery Logging", False, 
+                           f"Status: {response.status_code if response else 'No response'}")
+            return False
+        
+        email_log = response.json()
+        delivery_logs.append(email_log)
+        self.log_result("SOA Email Delivery Logging", True, 
+                       f"Logged delivery ID: {email_log.get('id')}")
+        
+        # Test 2: Log share delivery
+        share_delivery = {
+            "scope_id": self.scope_id,
+            "delivery_method": "share",
+            "recipient_contact": None,
+            "notes": "SOA document shared via secure link during appointment"
+        }
+        
+        response = self.make_request("POST", f"/scope/{self.scope_id}/log-delivery", share_delivery)
+        if not response or response.status_code != 200:
+            self.log_result("SOA Share Delivery Logging", False, 
+                           f"Status: {response.status_code if response else 'No response'}")
+            return False
+        
+        share_log = response.json()
+        delivery_logs.append(share_log)
+        self.log_result("SOA Share Delivery Logging", True, 
+                       f"Logged delivery ID: {share_log.get('id')}")
+        
+        # Test 3: Log SMS delivery
+        sms_delivery = {
+            "scope_id": self.scope_id,
+            "delivery_method": "sms",
+            "recipient_contact": "555-0101",
+            "notes": "SOA document link sent via SMS"
+        }
+        
+        response = self.make_request("POST", f"/scope/{self.scope_id}/log-delivery", sms_delivery)
+        if not response or response.status_code != 200:
+            self.log_result("SOA SMS Delivery Logging", False, 
+                           f"Status: {response.status_code if response else 'No response'}")
+            return False
+        
+        sms_log = response.json()
+        delivery_logs.append(sms_log)
+        self.log_result("SOA SMS Delivery Logging", True, 
+                       f"Logged delivery ID: {sms_log.get('id')}")
+        
+        # Test 4: Get delivery history
+        response = self.make_request("GET", f"/scope/{self.scope_id}/delivery-history")
+        if not response or response.status_code != 200:
+            self.log_result("SOA Delivery History Retrieval", False, 
+                           f"Status: {response.status_code if response else 'No response'}")
+            return False
+        
+        history_data = response.json()
+        delivery_history = history_data.get("delivery_history", [])
+        
+        if len(delivery_history) >= 3:
+            self.log_result("SOA Delivery History Retrieval", True, 
+                           f"Found {len(delivery_history)} delivery entries")
+            
+            # Verify delivery methods
+            methods_found = [entry.get("delivery_method") for entry in delivery_history]
+            expected_methods = ["email", "share", "sms"]
+            all_methods_found = all(method in methods_found for method in expected_methods)
+            
+            self.log_result("SOA Delivery Methods Verification", all_methods_found, 
+                           f"Methods found: {methods_found}")
+        else:
+            self.log_result("SOA Delivery History Retrieval", False, 
+                           f"Expected 3+ entries, found {len(delivery_history)}")
+            return False
+        
+        # Test 5: Verify SOA document includes delivery_history
+        response = self.make_request("GET", f"/scope/{self.scope_id}")
+        if not response or response.status_code != 200:
+            self.log_result("SOA Document Includes Delivery History", False, 
+                           f"Status: {response.status_code if response else 'No response'}")
+            return False
+        
+        scope_data = response.json()
+        if "delivery_history" in scope_data:
+            scope_delivery_history = scope_data["delivery_history"]
+            self.log_result("SOA Document Includes Delivery History", True, 
+                           f"Delivery history field present with {len(scope_delivery_history)} entries")
+        else:
+            self.log_result("SOA Document Includes Delivery History", False, 
+                           "delivery_history field missing from SOA document")
+            return False
+        
+        # Test 6: Test with invalid scope ID
+        invalid_scope_id = str(uuid.uuid4())
+        invalid_delivery = {
+            "scope_id": invalid_scope_id,
+            "delivery_method": "email",
+            "recipient_contact": "test@example.com",
+            "notes": "Test with invalid scope"
+        }
+        
+        response = self.make_request("POST", f"/scope/{invalid_scope_id}/log-delivery", invalid_delivery)
+        invalid_scope_test_passed = response and response.status_code == 404
+        self.log_result("SOA Invalid Scope ID Test", invalid_scope_test_passed, 
+                       f"Status: {response.status_code if response else 'No response'} (expected 404)")
+        
+        return True
+    
     def cleanup_test_data(self):
         """Clean up test data"""
         print("=== CLEANUP ===")
