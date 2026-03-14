@@ -216,6 +216,18 @@ backend:
           agent: "testing"
           comment: "Policy Sales Pipeline API endpoints fully tested and working correctly. GET /api/pipeline (200) with proper team_view role-based access control - agents see individual view, admin/manager see team view. PUT /api/pipeline/move (200) successfully moves leads through all 10 pipeline stages with proper premium/commission tracking. GET /api/pipeline/stats (200) provides accurate production statistics with daily/weekly/monthly breakdowns. Commission calculations working correctly with proper agent/manager/agency splits. Stage transitions logged properly. Production totals update accurately. Role-based access verified - agents restricted to individual view, admin users granted team view access. All 11 pipeline-specific test cases passed (100% success rate)."
 
+  - task: "SOA Delivery Logging"
+    implemented: true
+    working: "NA"
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "Implemented SOA delivery logging feature with POST /api/scope/{scope_id}/log-delivery endpoint for logging when SOA documents are shared/sent to clients, and GET /api/scope/{scope_id}/delivery-history endpoint for retrieving delivery history. Delivery logs include: delivery method (email, sms, share), recipient contact, notes, timestamp, and user who delivered. Logs are stored in the scope document's delivery_history array. Initial manual curl testing shows both endpoints working correctly."
+
 frontend:
   # No frontend testing performed as per instructions
 
