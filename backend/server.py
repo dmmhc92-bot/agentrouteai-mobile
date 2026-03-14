@@ -1140,46 +1140,95 @@ async def get_chat_history(current_user: dict = Depends(get_current_user)):
 
 @api_router.post("/ocr/scan")
 async def scan_document(request: dict, current_user: dict = Depends(get_current_user)):
+    """
+    Scan a business card image and extract contact information.
+    Returns: name, phone, email, company, address, job_title
+    """
     try:
         from emergentintegrations.llm.chat import LlmChat, UserMessage
         api_key = os.environ.get("EMERGENT_LLM_KEY")
         if not api_key:
-            raise HTTPException(status_code=500, detail="OCR not configured")
+            raise HTTPException(status_code=500, detail="OCR not configured - EMERGENT_LLM_KEY not set")
         
         image_base64 = request.get("image_base64", "")
+        if not image_base64:
+            raise HTTPException(status_code=400, detail="No image provided")
+        
+        # Strip data URL prefix if present
         if image_base64.startswith("data:"):
             image_base64 = image_base64.split(",")[1]
+        
+        # Enhanced system prompt for comprehensive business card extraction
+        system_prompt = """You are an expert OCR system specialized in extracting contact information from business cards.
+
+Extract ALL available information from the business card image and return ONLY a valid JSON object with these fields:
+{
+  "name": "Full name of the person (first and last name)",
+  "phone": "Primary phone number (include country code if visible, format: +1-XXX-XXX-XXXX or (XXX) XXX-XXXX)",
+  "email": "Email address",
+  "company": "Company or organization name",
+  "job_title": "Job title or position",
+  "address": "Full business address (street, city, state, zip)",
+  "website": "Website URL if present",
+  "mobile": "Mobile/cell phone if different from main phone",
+  "fax": "Fax number if present"
+}
+
+Rules:
+- Return ONLY the JSON object, no other text
+- Use empty string "" for fields not found on the card
+- Clean up phone numbers to a consistent format
+- Preserve the exact email address
+- For addresses, include all parts visible (street, suite, city, state, zip)
+- If multiple phone numbers exist, put the main one in "phone" and mobile in "mobile"
+"""
         
         chat = LlmChat(
             api_key=api_key,
             session_id=f"ocr_{uuid.uuid4().hex[:8]}",
-            system_message='Extract contact info from business card/document. Return ONLY JSON: {"name": "", "phone": "", "email": "", "address": ""}'
+            system_message=system_prompt
         ).with_model("openai", "gpt-4.1")
         
         response = await chat.send_message(UserMessage(
-            text="Extract contact information from this image.",
+            text="Extract all contact information from this business card image. Return only JSON.",
             image_urls=[f"data:image/jpeg;base64,{image_base64}"]
         ))
         
+        logger.info(f"OCR raw response: {response[:500] if response else 'empty'}")
+        
         import json
+        extracted = {}
         try:
-            if "{" in response:
-                extracted = json.loads(response[response.find("{"):response.rfind("}")+1])
-            else:
-                extracted = {}
-        except:
+            # Find JSON in response (handle cases where model adds extra text)
+            if "{" in response and "}" in response:
+                json_start = response.find("{")
+                json_end = response.rfind("}") + 1
+                json_str = response[json_start:json_end]
+                extracted = json.loads(json_str)
+        except json.JSONDecodeError as je:
+            logger.error(f"JSON parse error: {je}, response: {response[:200]}")
             extracted = {}
         
-        return {
-            "name": extracted.get("name", ""),
-            "phone": extracted.get("phone", ""),
-            "email": extracted.get("email", ""),
-            "address": extracted.get("address", ""),
+        # Normalize and clean the extracted data
+        result = {
+            "name": (extracted.get("name") or "").strip(),
+            "phone": (extracted.get("phone") or extracted.get("mobile") or "").strip(),
+            "email": (extracted.get("email") or "").strip().lower(),
+            "company": (extracted.get("company") or "").strip(),
+            "job_title": (extracted.get("job_title") or "").strip(),
+            "address": (extracted.get("address") or "").strip(),
+            "website": (extracted.get("website") or "").strip(),
             "raw_text": response
         }
+        
+        logger.info(f"OCR extracted: name={result['name']}, company={result['company']}, email={result['email']}")
+        return result
+        
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"OCR error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"OCR error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"OCR processing failed: {str(e)}")
 
 # ==================== ROUTING ROUTES ====================
 
