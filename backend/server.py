@@ -1635,7 +1635,7 @@ async def get_all_scopes(
     }
 
 async def generate_scope_pdf(scope: dict, lead: dict, agent: dict) -> dict:
-    """Generate professional CMS-compliant PDF for Medicare Scope of Appointment"""
+    """Generate CMS-compliant Scope of Sales Appointment Confirmation Form PDF"""
     from reportlab.lib.pagesizes import letter
     from reportlab.pdfgen import canvas
     from reportlab.lib import colors
@@ -1648,515 +1648,504 @@ async def generate_scope_pdf(scope: dict, lead: dict, agent: dict) -> dict:
     scope_id = scope.get("id", "")
     form_fields = scope.get("form_fields", {})
     
+    # Debug logging for signature payloads
+    beneficiary_sig = scope.get("signature", "")
+    agent_sig = scope.get("agent_signature", "")
+    logger.info(f"[PDF Generation] Beneficiary signature present: {bool(beneficiary_sig)}, length: {len(beneficiary_sig) if beneficiary_sig else 0}")
+    logger.info(f"[PDF Generation] Agent signature present: {bool(agent_sig)}, length: {len(agent_sig) if agent_sig else 0}")
+    
     buffer = BytesIO()
     p = canvas.Canvas(buffer, pagesize=letter)
     width, height = letter
     
-    # Colors - professional blue scheme
-    primary_blue = colors.HexColor("#1E40AF")
-    dark_blue = colors.HexColor("#1E3A8A")
-    light_blue = colors.HexColor("#DBEAFE")
-    very_light_blue = colors.HexColor("#EFF6FF")
-    dark_gray = colors.HexColor("#1F2937")
-    medium_gray = colors.HexColor("#64748B")
-    light_gray = colors.HexColor("#F1F5F9")
-    green = colors.HexColor("#16A34A")
-    border_gray = colors.HexColor("#CBD5E1")
+    # Colors - professional black/gray theme for carrier-style document
+    black = colors.HexColor("#000000")
+    dark_gray = colors.HexColor("#333333")
+    medium_gray = colors.HexColor("#666666")
+    light_gray = colors.HexColor("#999999")
+    line_gray = colors.HexColor("#CCCCCC")
+    box_gray = colors.HexColor("#F5F5F5")
     
-    # ========== HEADER ==========
-    # Blue header bar
-    p.setFillColor(primary_blue)
-    p.rect(0, height - 85, width, 85, stroke=0, fill=1)
-    
-    # Medicare logo text
-    p.setFillColor(colors.white)
-    p.setFont("Helvetica-Bold", 24)
-    p.drawCentredString(width/2, height - 35, "SCOPE OF APPOINTMENT")
-    
-    p.setFont("Helvetica", 11)
-    p.drawCentredString(width/2, height - 52, "Medicare Sales Appointment Authorization Form")
-    
-    p.setFont("Helvetica", 9)
-    p.drawCentredString(width/2, height - 68, "CMS Required Document • Retain for 10 Years")
-    
-    # Document ID banner
-    p.setFillColor(dark_blue)
-    p.rect(0, height - 105, width, 20, stroke=0, fill=1)
-    
-    created_date = scope.get("created_date", datetime.utcnow())
-    if isinstance(created_date, str):
-        try:
-            created_date = datetime.fromisoformat(created_date.replace('Z', '+00:00'))
-        except:
-            created_date = datetime.utcnow()
-    
-    p.setFillColor(colors.white)
-    p.setFont("Helvetica", 8)
-    p.drawString(40, height - 100, f"Document ID: {scope_id[:12].upper()}")
-    p.drawRightString(width - 40, height - 100, f"Generated: {created_date.strftime('%B %d, %Y at %I:%M %p')}")
-    
-    y = height - 125
-    
-    # Helper functions
-    def draw_section_header(title, section_num, y_pos):
-        """Draw a styled section header"""
-        # Section number circle
-        p.setFillColor(primary_blue)
-        p.circle(55, y_pos + 5, 12, stroke=0, fill=1)
-        p.setFillColor(colors.white)
-        p.setFont("Helvetica-Bold", 10)
-        p.drawCentredString(55, y_pos + 1, str(section_num))
-        
-        # Section title
-        p.setFillColor(primary_blue)
-        p.setFont("Helvetica-Bold", 12)
-        p.drawString(75, y_pos, title)
-        
-        # Underline
-        p.setStrokeColor(primary_blue)
-        p.setLineWidth(1)
-        p.line(40, y_pos - 5, width - 40, y_pos - 5)
-        return y_pos - 22
-    
-    def draw_field(label, value, y_pos, x=50, label_width=130):
-        """Draw a labeled field"""
-        p.setFillColor(medium_gray)
-        p.setFont("Helvetica", 9)
-        p.drawString(x, y_pos, f"{label}:")
-        p.setFillColor(dark_gray)
-        p.setFont("Helvetica", 10)
-        # Handle long values
-        val_str = str(value) if value else "N/A"
-        if len(val_str) > 50:
-            val_str = val_str[:47] + "..."
-        p.drawString(x + label_width, y_pos, val_str)
-        return y_pos - 15
-    
-    def draw_checkbox(checked, label, y_pos, x=55):
-        """Draw a checkbox with label"""
-        p.setStrokeColor(border_gray)
-        p.setFillColor(colors.white if not checked else green)
-        p.rect(x, y_pos - 2, 12, 12, stroke=1, fill=1)
-        if checked:
-            p.setStrokeColor(colors.white)
-            p.setLineWidth(1.5)
-            p.line(x + 2, y_pos + 3, x + 5, y_pos)
-            p.line(x + 5, y_pos, x + 10, y_pos + 8)
-        p.setFillColor(dark_gray)
-        p.setFont("Helvetica", 10)
-        p.drawString(x + 18, y_pos, label)
-        return y_pos - 16
-    
-    # ========== SECTION 1: BENEFICIARY INFORMATION ==========
-    y = draw_section_header("BENEFICIARY / AUTHORIZED REPRESENTATIVE", 1, y)
-    
-    # Info box
-    p.setFillColor(very_light_blue)
-    p.setStrokeColor(border_gray)
-    p.roundRect(40, y - 55, width - 80, 58, 5, stroke=1, fill=1)
-    
-    beneficiary_name = form_fields.get('beneficiary_name', lead_name)
-    y_inner = y - 8
-    y_inner = draw_field("Beneficiary Name", beneficiary_name, y_inner)
-    y_inner = draw_field("Phone", form_fields.get('beneficiary_phone', lead.get('phone', '') if lead else ''), y_inner)
-    y_inner = draw_field("Address", form_fields.get('beneficiary_address', lead.get('address', '') if lead else ''), y_inner)
-    
-    y -= 65
-    
-    # Authorized representative (if applicable)
-    if form_fields.get('auth_rep_name'):
-        p.setFillColor(light_gray)
-        p.roundRect(40, y - 35, width - 80, 38, 5, stroke=0, fill=1)
-        y_inner = y - 8
-        y_inner = draw_field("Authorized Representative", form_fields.get('auth_rep_name', ''), y_inner)
-        y_inner = draw_field("Relationship to Beneficiary", form_fields.get('auth_rep_relationship', ''), y_inner)
-        y -= 45
-    
-    y -= 8
-    
-    # ========== SECTION 2: LICENSED SALES REPRESENTATIVE ==========
-    y = draw_section_header("LICENSED SALES REPRESENTATIVE", 2, y)
-    
-    p.setFillColor(very_light_blue)
-    p.roundRect(40, y - 55, width - 80, 58, 5, stroke=1, fill=1)
-    
-    y_inner = y - 8
-    y_inner = draw_field("Agent Name", form_fields.get('agent_name', agent_name), y_inner)
-    
-    # Two columns for license info
-    p.setFillColor(medium_gray)
-    p.setFont("Helvetica", 9)
-    p.drawString(50, y_inner, "License #:")
-    p.setFillColor(dark_gray)
-    p.setFont("Helvetica", 10)
-    p.drawString(180, y_inner, form_fields.get('agent_license', '') or "N/A")
-    
-    p.setFillColor(medium_gray)
-    p.setFont("Helvetica", 9)
-    p.drawString(300, y_inner, "Agent ID/NPN:")
-    p.setFillColor(dark_gray)
-    p.setFont("Helvetica", 10)
-    p.drawString(400, y_inner, form_fields.get('agent_id_number', '') or "N/A")
-    y_inner -= 15
-    
-    y_inner = draw_field("Phone", form_fields.get('agent_phone', agent.get('phone', '') if agent else ''), y_inner)
-    
-    y -= 65
-    
-    # ========== SECTION 3: METHOD OF CONTACT ==========
-    y = draw_section_header("INITIAL METHOD OF CONTACT", 3, y)
-    
-    contact_method = form_fields.get('initial_contact_method', 'phone')
-    contact_labels = {
-        'phone': 'Phone Call',
-        'in_person': 'In Person',
-        'email': 'Email',
-        'mail': 'Direct Mail',
-        'referral': 'Referral',
-        'other': 'Other'
-    }
-    
-    # Contact method checkboxes in a row
-    methods = ['phone', 'in_person', 'email', 'mail', 'referral']
-    x_pos = 55
-    for method in methods:
-        is_checked = contact_method == method
-        p.setStrokeColor(border_gray)
-        p.setFillColor(green if is_checked else colors.white)
-        p.rect(x_pos, y - 2, 10, 10, stroke=1, fill=1)
-        if is_checked:
-            p.setFillColor(colors.white)
-            p.setFont("Helvetica-Bold", 8)
-            p.drawCentredString(x_pos + 5, y - 1, "✓")
-        p.setFillColor(dark_gray)
-        p.setFont("Helvetica", 9)
-        p.drawString(x_pos + 14, y, contact_labels[method])
-        x_pos += 85
-    
-    y -= 25
-    
-    # ========== SECTION 4: PRODUCTS TO BE DISCUSSED ==========
-    y = draw_section_header("PRODUCTS TO BE DISCUSSED", 4, y)
-    
-    p.setFillColor(medium_gray)
-    p.setFont("Helvetica-Oblique", 9)
-    p.drawString(50, y, "The beneficiary has requested information about the following Medicare product type(s):")
-    y -= 18
-    
-    # Product checkboxes with better styling
-    products = [
-        ("medicare_advantage", "Medicare Advantage Plans (Part C) - HMO, PPO, PFFS, SNP"),
-        ("medicare_supplement", "Medicare Supplement (Medigap) Insurance - Plans A through N"),
-        ("prescription_drug", "Medicare Prescription Drug Plans (Part D)"),
-        ("dental_vision_hearing", "Dental, Vision, and Hearing Products"),
-        ("hospital_indemnity", "Hospital Indemnity Insurance"),
-    ]
-    
-    for key, label in products:
-        checked = form_fields.get(key, False)
-        y = draw_checkbox(checked, label, y)
-    
-    if form_fields.get("other_products"):
-        y = draw_checkbox(True, f"Other: {form_fields.get('other_products')}", y)
-    
-    if form_fields.get("plans_to_represent"):
-        y -= 5
-        p.setFillColor(medium_gray)
-        p.setFont("Helvetica", 9)
-        p.drawString(50, y, "Plan(s) to be Represented:")
-        y -= 12
-        p.setFillColor(dark_gray)
-        p.setFont("Helvetica", 10)
-        p.drawString(55, y, form_fields.get('plans_to_represent', ''))
-        y -= 14
-    
-    y -= 8
-    
-    # ========== SECTION 5: APPOINTMENT DETAILS ==========
-    y = draw_section_header("APPOINTMENT DETAILS", 5, y)
-    
-    apt_date = form_fields.get('appointment_date', created_date.strftime('%Y-%m-%d'))
-    if isinstance(apt_date, str) and apt_date:
-        try:
-            apt_parsed = datetime.strptime(apt_date, '%Y-%m-%d')
-            apt_formatted = apt_parsed.strftime('%B %d, %Y')
-        except:
-            apt_formatted = apt_date
-    else:
-        apt_formatted = "N/A"
-    
-    sig_date = form_fields.get('signature_date', created_date.strftime('%Y-%m-%d'))
-    if isinstance(sig_date, str) and sig_date:
-        try:
-            sig_parsed = datetime.strptime(sig_date, '%Y-%m-%d')
-            sig_formatted = sig_parsed.strftime('%B %d, %Y')
-        except:
-            sig_formatted = sig_date
-    else:
-        sig_formatted = created_date.strftime('%B %d, %Y')
-    
-    # Dates in boxes
-    p.setFillColor(light_gray)
-    p.roundRect(50, y - 18, 200, 22, 3, stroke=0, fill=1)
-    p.roundRect(300, y - 18, 200, 22, 3, stroke=0, fill=1)
-    
-    p.setFillColor(medium_gray)
-    p.setFont("Helvetica", 8)
-    p.drawString(55, y, "Scheduled Appointment Date")
-    p.drawString(305, y, "Signature Date")
-    
-    p.setFillColor(dark_gray)
-    p.setFont("Helvetica-Bold", 11)
-    p.drawString(55, y - 13, apt_formatted)
-    p.drawString(305, y - 13, sig_formatted)
-    
-    y -= 35
-    
-    # ========== SECTION 6: CONSENT & ACKNOWLEDGMENT ==========
-    y = draw_section_header("CONSENT & ACKNOWLEDGMENT", 6, y)
-    
-    # Consent box with yellow background
-    p.setFillColor(colors.HexColor("#FEF9C3"))
-    p.setStrokeColor(colors.HexColor("#FACC15"))
-    p.roundRect(40, y - 62, width - 80, 65, 5, stroke=1, fill=1)
-    
-    consent_lines = [
-        "By signing below, I agree to a meeting with a sales agent to discuss the types of",
-        "products I have selected above. I understand that this is not an enrollment form",
-        "and I am under no obligation to enroll. The agent may only discuss the products I",
-        "have indicated above. I understand that CMS requires documentation of specific",
-        "product types prior to any Medicare sales appointment."
-    ]
-    
-    p.setFillColor(colors.HexColor("#713F12"))
-    p.setFont("Helvetica", 8)
-    text_y = y - 8
-    for line in consent_lines:
-        p.drawString(50, text_y, line)
-        text_y -= 11
-    
-    y -= 75
-    
-    # Check if we need a second page for signatures
-    if y < 180:
-        p.showPage()
-        y = height - 50
-        # Add continuation header
-        p.setFillColor(primary_blue)
-        p.setFont("Helvetica-Bold", 12)
-        p.drawString(40, y, "SCOPE OF APPOINTMENT - SIGNATURES (Continued)")
-        p.setStrokeColor(primary_blue)
-        p.line(40, y - 5, width - 40, y - 5)
-        y -= 30
-    
-    # ========== SECTION 7: SIGNATURES ==========
-    y = draw_section_header("SIGNATURES", 7, y)
-    
-    # Helper function to process signature image bytes
+    # Helper function to process signature image
     def process_signature_image(signature_data: str) -> BytesIO:
-        """
-        Process signature data (base64 with or without data URI prefix) 
-        and return a BytesIO object ready for ReportLab.
-        Handles PNG transparency issues by converting RGBA to RGB with white background.
-        Also handles SVG signatures by converting them to PNG.
-        """
+        """Process signature data and return BytesIO ready for ReportLab"""
         from PIL import Image as PILImage
         
-        # Extract the base64 data and detect format
+        logger.info(f"[PDF Generation] Processing signature, length: {len(signature_data)}")
+        logger.info(f"[PDF Generation] Signature prefix: {signature_data[:60] if signature_data else 'EMPTY'}")
+        
         is_svg = False
         if signature_data.startswith("data:"):
-            # Check for SVG
             if "svg" in signature_data[:60].lower():
                 is_svg = True
-            
-            # Split at the first comma to get the base64 part
             parts = signature_data.split(",", 1)
             if len(parts) == 2:
                 encoded = parts[1]
             else:
                 raise ValueError("Invalid data URI format")
         else:
-            # Assume raw base64
             encoded = signature_data
         
-        # Decode base64
         sig_bytes = base64.b64decode(encoded)
         
-        # Handle SVG by converting to PNG
         if is_svg:
-            logger.info("Processing SVG signature, converting to PNG...")
+            logger.info("[PDF Generation] Processing SVG signature...")
             try:
                 import cairosvg
-                png_bytes = cairosvg.svg2png(bytestring=sig_bytes, output_width=360, output_height=180)
+                png_bytes = cairosvg.svg2png(bytestring=sig_bytes, output_width=300, output_height=80)
                 sig_bytes = png_bytes
-                logger.info(f"SVG converted to PNG: {len(png_bytes)} bytes")
             except ImportError:
-                logger.warning("cairosvg not installed, trying manual SVG parsing...")
-                # Fallback: Create a simple blank image with text
-                pil_img = PILImage.new('RGB', (360, 180), (255, 255, 255))
+                logger.warning("[PDF Generation] cairosvg not installed, creating fallback")
+                pil_img = PILImage.new('RGB', (300, 80), (255, 255, 255))
                 output = BytesIO()
-                pil_img.save(output, format='PNG', optimize=True)
+                pil_img.save(output, format='PNG')
                 output.seek(0)
                 return output
             except Exception as e:
-                logger.error(f"SVG conversion failed: {e}")
-                # Return white image as fallback
-                pil_img = PILImage.new('RGB', (360, 180), (255, 255, 255))
+                logger.error(f"[PDF Generation] SVG conversion failed: {e}")
+                pil_img = PILImage.new('RGB', (300, 80), (255, 255, 255))
                 output = BytesIO()
-                pil_img.save(output, format='PNG', optimize=True)
+                pil_img.save(output, format='PNG')
                 output.seek(0)
                 return output
         
-        # Load with PIL to handle transparency and format issues
         pil_img = PILImage.open(BytesIO(sig_bytes))
-        logger.info(f"Loaded signature image: mode={pil_img.mode}, size={pil_img.size}")
+        logger.info(f"[PDF Generation] Loaded signature: mode={pil_img.mode}, size={pil_img.size}")
         
-        # If the image has transparency (RGBA), convert to RGB with white background
+        # Convert RGBA to RGB with white background
         if pil_img.mode in ('RGBA', 'LA', 'PA'):
-            # Create white background
             background = PILImage.new('RGB', pil_img.size, (255, 255, 255))
             if pil_img.mode == 'RGBA':
-                background.paste(pil_img, mask=pil_img.split()[3])  # Use alpha channel as mask
+                background.paste(pil_img, mask=pil_img.split()[3])
             else:
                 background.paste(pil_img)
             pil_img = background
         elif pil_img.mode != 'RGB':
             pil_img = pil_img.convert('RGB')
         
-        # Save to BytesIO as PNG (ReportLab works well with PNG)
         output = BytesIO()
-        pil_img.save(output, format='PNG', optimize=True)
+        pil_img.save(output, format='PNG')
         output.seek(0)
+        logger.info(f"[PDF Generation] Signature processed successfully")
         return output
     
-    # Helper function to draw signature with image
-    def draw_signature_block(label, signature_data, typed_name, date_str, y_pos):
-        """Draw a complete signature block with handwritten signature"""
-        # Label
-        p.setFillColor(dark_gray)
-        p.setFont("Helvetica-Bold", 10)
-        p.drawString(45, y_pos, label)
-        y_pos -= 8
-        
-        # Signature box with border
-        sig_box_width = 220
-        sig_box_height = 50
-        p.setStrokeColor(primary_blue)
-        p.setLineWidth(1)
-        p.setFillColor(colors.white)
-        p.roundRect(45, y_pos - sig_box_height, sig_box_width, sig_box_height, 3, stroke=1, fill=1)
-        
-        # Draw the actual handwritten signature image
-        signature_drawn = False
-        if signature_data and len(signature_data) > 100:  # Basic validation
-            try:
-                # Process the signature image (handles both PNG and SVG)
-                sig_buffer = process_signature_image(signature_data)
-                sig_image = ImageReader(sig_buffer)
-                
-                # Draw the image
-                p.drawImage(
-                    sig_image, 
-                    50, 
-                    y_pos - sig_box_height + 5, 
-                    width=sig_box_width - 10, 
-                    height=sig_box_height - 10, 
-                    preserveAspectRatio=True, 
-                    mask=None  # No mask needed since we converted to RGB
-                )
-                signature_drawn = True
-                logger.info(f"Successfully drew signature image for {label}")
-            except Exception as e:
-                logger.error(f"Error drawing signature for {label}: {type(e).__name__}: {e}")
-        
-        # Fallback to typed name if signature wasn't drawn
-        if not signature_drawn:
-            p.setFont("Helvetica-Oblique", 14)
-            p.setFillColor(dark_gray)
-            display_name = typed_name or "Signature"
-            p.drawString(55, y_pos - 30, display_name)
-        
-        # Fallback to typed name if signature wasn't drawn
-        if not signature_drawn:
-            p.setFont("Helvetica-Oblique", 14)
-            p.setFillColor(dark_gray)
-            display_name = typed_name or "Signature"
-            p.drawString(55, y_pos - 30, display_name)
-        
-        # Labels under signature box
-        p.setFont("Helvetica", 8)
-        p.setFillColor(medium_gray)
-        p.drawString(45, y_pos - sig_box_height - 10, "Handwritten Signature")
-        
-        # Date field
-        date_x = 285
-        p.setStrokeColor(border_gray)
-        p.line(date_x, y_pos - sig_box_height + 5, date_x + 80, y_pos - sig_box_height + 5)
-        p.setFont("Helvetica", 8)
-        p.drawString(date_x, y_pos - sig_box_height - 10, "Date")
-        p.setFillColor(dark_gray)
-        p.setFont("Helvetica", 11)
-        p.drawString(date_x, y_pos - sig_box_height + 10, date_str)
-        
-        # Printed name field
-        name_x = 385
-        p.setStrokeColor(border_gray)
-        p.line(name_x, y_pos - sig_box_height + 5, width - 45, y_pos - sig_box_height + 5)
-        p.setFont("Helvetica", 8)
-        p.setFillColor(medium_gray)
-        p.drawString(name_x, y_pos - sig_box_height - 10, "Printed Name")
-        p.setFillColor(dark_gray)
-        p.setFont("Helvetica", 11)
-        p.drawString(name_x, y_pos - sig_box_height + 10, typed_name or "")
-        
-        return y_pos - sig_box_height - 25
+    # ========== PAGE 1 - CMS SCOPE OF SALES APPOINTMENT CONFIRMATION FORM ==========
+    y = height - 40
     
-    # Beneficiary/Authorized Rep Signature
-    beneficiary_typed = scope.get('typed_name', form_fields.get('beneficiary_name', ''))
-    y = draw_signature_block(
-        "BENEFICIARY / AUTHORIZED REPRESENTATIVE:",
-        scope.get("signature"),
-        beneficiary_typed,
-        sig_formatted,
-        y
-    )
+    # Title
+    p.setFont("Helvetica-Bold", 14)
+    p.setFillColor(black)
+    p.drawCentredString(width/2, y, "Scope of Sales Appointment Confirmation Form")
+    
+    # Page number
+    p.setFont("Helvetica", 9)
+    p.setFillColor(medium_gray)
+    p.drawRightString(width - 40, y, "Page 1 of 1")
+    
+    y -= 25
+    
+    # Introductory paragraph
+    p.setFont("Helvetica", 9)
+    p.setFillColor(dark_gray)
+    intro_text = ("The Centers for Medicare & Medicaid Services requires agents to document the scope "
+                  "of a marketing appointment prior to any face-to-face sales meeting. All information "
+                  "provided on this form is confidential and should be completed by the beneficiary or "
+                  "authorized representative.")
+    
+    # Word wrap the intro text
+    from reportlab.lib.utils import simpleSplit
+    lines = simpleSplit(intro_text, "Helvetica", 9, width - 80)
+    for line in lines:
+        p.drawString(40, y, line)
+        y -= 12
     
     y -= 10
     
-    # Agent Signature
-    agent_typed = scope.get('agent_typed_name', form_fields.get('agent_name', agent_name))
-    y = draw_signature_block(
-        "LICENSED SALES REPRESENTATIVE:",
-        scope.get("agent_signature"),
-        agent_typed,
-        sig_formatted,
-        y
-    )
+    # ========== PRODUCT SELECTION SECTION ==========
+    p.setFont("Helvetica-Bold", 10)
+    p.setFillColor(black)
+    p.drawString(40, y, "Please initial below beside the type of product(s) you want the Licensed Sales")
+    y -= 12
+    p.drawString(40, y, "Representative to discuss.")
+    y -= 8
+    p.setFont("Helvetica-Oblique", 8)
+    p.setFillColor(medium_gray)
+    p.drawString(40, y, "(Refer to page 2 for product type descriptions)")
+    y -= 18
     
-    # ========== FOOTER ==========
-    # Footer bar
-    p.setFillColor(light_gray)
-    p.rect(0, 0, width, 45, stroke=0, fill=1)
+    # Product checkboxes in two columns
+    def draw_product_checkbox(checked, label, x, y):
+        # Draw checkbox
+        p.setStrokeColor(dark_gray)
+        p.setFillColor(colors.white)
+        p.rect(x, y - 2, 10, 10, stroke=1, fill=1)
+        if checked:
+            p.setFillColor(black)
+            p.setFont("Helvetica-Bold", 10)
+            p.drawString(x + 2, y - 1, "✓")
+        p.setFont("Helvetica", 9)
+        p.setFillColor(dark_gray)
+        p.drawString(x + 15, y, label)
     
-    # Green compliance badge
-    p.setFillColor(colors.HexColor("#DCFCE7"))
-    p.roundRect(width/2 - 100, 25, 200, 16, 3, stroke=0, fill=1)
-    p.setFillColor(green)
+    # Left column products
+    col1_x = 50
+    col2_x = 300
+    
+    draw_product_checkbox(form_fields.get('prescription_drug', False), 
+                         "Stand-alone Medicare Prescription Drug Plans (Part D)", col1_x, y)
+    draw_product_checkbox(form_fields.get('hospital_indemnity', False), 
+                         "Hospital Indemnity Products", col2_x, y)
+    y -= 16
+    
+    draw_product_checkbox(form_fields.get('medicare_advantage', False), 
+                         "Medicare Advantage Plans (Part C) and Cost Plans", col1_x, y)
+    draw_product_checkbox(form_fields.get('medicare_supplement', False), 
+                         "Medicare Supplement (Medigap) Products", col2_x, y)
+    y -= 16
+    
+    draw_product_checkbox(form_fields.get('dental_vision_hearing', False), 
+                         "Dental/Vision/Hearing Products", col1_x, y)
+    y -= 20
+    
+    # ========== AGREEMENT TEXT ==========
+    p.setFont("Helvetica", 8)
+    p.setFillColor(dark_gray)
+    agreement_text = ("By signing this form, you agree to a meeting with a Licensed Sales Representative to discuss "
+                      "the types of products you initialed above. Please note, the person who will discuss the products "
+                      "is either employed or contracted by a Medicare plan. They do not work directly for the Federal "
+                      "government. This individual may also be paid based on your enrollment in a plan. Signing this form "
+                      "does NOT obligate you to enroll in a plan, affect your current enrollment, or enroll you in a "
+                      "Medicare plan.")
+    
+    lines = simpleSplit(agreement_text, "Helvetica", 8, width - 80)
+    for line in lines:
+        p.drawString(40, y, line)
+        y -= 11
+    
+    y -= 12
+    
+    # ========== BENEFICIARY SIGNATURE SECTION ==========
+    p.setFont("Helvetica-Bold", 10)
+    p.setFillColor(black)
+    p.drawString(40, y, "Beneficiary or Authorized Representative Signature and Signature Date:")
+    y -= 20
+    
+    # Signature and date boxes
+    sig_box_width = 250
+    sig_box_height = 50
+    date_box_width = 100
+    
+    # Signature box
+    p.setStrokeColor(line_gray)
+    p.setLineWidth(1)
+    p.rect(40, y - sig_box_height, sig_box_width, sig_box_height, stroke=1, fill=0)
+    
+    # Draw beneficiary signature image
+    beneficiary_signature_data = scope.get("signature", "")
+    if beneficiary_signature_data and len(beneficiary_signature_data) > 100:
+        try:
+            logger.info("[PDF Generation] Injecting beneficiary signature into PDF...")
+            sig_buffer = process_signature_image(beneficiary_signature_data)
+            sig_image = ImageReader(sig_buffer)
+            # Draw centered in the box with correct aspect ratio
+            p.drawImage(
+                sig_image,
+                45,
+                y - sig_box_height + 5,
+                width=sig_box_width - 10,
+                height=sig_box_height - 10,
+                preserveAspectRatio=True,
+                mask=None
+            )
+            logger.info("[PDF Generation] Beneficiary signature successfully injected")
+        except Exception as e:
+            logger.error(f"[PDF Generation] Error injecting beneficiary signature: {e}")
+            # Fallback: draw typed name
+            p.setFont("Helvetica-Oblique", 16)
+            p.setFillColor(dark_gray)
+            typed_name = scope.get('typed_name', form_fields.get('beneficiary_name', ''))
+            p.drawString(50, y - sig_box_height/2 - 5, typed_name or "")
+    else:
+        # Draw typed name as fallback
+        p.setFont("Helvetica-Oblique", 16)
+        p.setFillColor(dark_gray)
+        typed_name = scope.get('typed_name', form_fields.get('beneficiary_name', ''))
+        p.drawString(50, y - sig_box_height/2 - 5, typed_name or "Signature Required")
+    
+    # Signature label
+    p.setFont("Helvetica", 8)
+    p.setFillColor(medium_gray)
+    p.drawString(40, y - sig_box_height - 10, "Signature")
+    
+    # Date box
+    date_x = 310
+    p.setStrokeColor(line_gray)
+    p.rect(date_x, y - sig_box_height, date_box_width, sig_box_height, stroke=1, fill=0)
+    
+    # Format signature date
+    sig_date = form_fields.get('signature_date', '')
+    if sig_date:
+        try:
+            sig_parsed = datetime.strptime(sig_date, '%Y-%m-%d')
+            sig_formatted = sig_parsed.strftime('%m/%d/%Y')
+        except:
+            sig_formatted = sig_date
+    else:
+        created_date = scope.get("created_date", datetime.utcnow())
+        if isinstance(created_date, str):
+            try:
+                created_date = datetime.fromisoformat(created_date.replace('Z', '+00:00'))
+            except:
+                created_date = datetime.utcnow()
+        sig_formatted = created_date.strftime('%m/%d/%Y')
+    
+    p.setFont("Helvetica", 12)
+    p.setFillColor(dark_gray)
+    p.drawString(date_x + 10, y - sig_box_height/2 - 5, sig_formatted)
+    
+    p.setFont("Helvetica", 8)
+    p.setFillColor(medium_gray)
+    p.drawString(date_x, y - sig_box_height - 10, "Signature Date")
+    
+    y -= sig_box_height + 25
+    
+    # ========== AUTHORIZED REP SECTION ==========
+    p.setFont("Helvetica-Oblique", 9)
+    p.setFillColor(dark_gray)
+    p.drawString(40, y, "If you are the authorized representative, please sign above and print clearly and legibly below:")
+    y -= 18
+    
+    # Name and Relationship fields
+    name_width = 220
+    rel_width = 220
+    
+    p.setStrokeColor(line_gray)
+    p.line(40, y, 40 + name_width, y)
+    p.line(280, y, 280 + rel_width, y)
+    
+    # Fill in values
+    p.setFont("Helvetica", 10)
+    p.setFillColor(dark_gray)
+    auth_rep_name = form_fields.get('auth_rep_name', '')
+    auth_rep_rel = form_fields.get('auth_rep_relationship', '')
+    if auth_rep_name:
+        p.drawString(45, y + 3, auth_rep_name)
+    if auth_rep_rel:
+        p.drawString(285, y + 3, auth_rep_rel)
+    
+    # Labels
+    p.setFont("Helvetica", 8)
+    p.setFillColor(medium_gray)
+    p.drawString(40, y - 12, "Name (First_Last)")
+    p.drawString(280, y - 12, "Relationship to Beneficiary")
+    
+    y -= 30
+    
+    # ========== LSR SECTION ==========
+    p.setFont("Helvetica-Bold", 10)
+    p.setFillColor(black)
+    p.drawString(40, y, "To be completed by Licensed Sales Representative (please print clearly and legibly)")
+    y -= 5
+    
+    # Draw grid border
+    grid_height = 130
+    p.setStrokeColor(line_gray)
+    p.rect(40, y - grid_height, width - 80, grid_height, stroke=1, fill=0)
+    
+    # Grid lines
+    row_height = 26
+    
+    # Row 1: LSR Name, Phone, ID
+    row_y = y - row_height
+    p.line(40, row_y, width - 40, row_y)
+    p.line(220, y, 220, row_y)  # vertical
+    p.line(380, y, 380, row_y)  # vertical
+    
+    # Row 1 values
+    p.setFont("Helvetica", 10)
+    p.setFillColor(dark_gray)
+    p.drawString(45, row_y + 10, form_fields.get('agent_name', agent_name))
+    p.drawString(225, row_y + 10, form_fields.get('agent_phone', agent.get('phone', '') if agent else ''))
+    p.drawString(385, row_y + 10, form_fields.get('agent_id_number', ''))
+    
+    # Row 1 labels
+    p.setFont("Helvetica", 7)
+    p.setFillColor(medium_gray)
+    p.drawString(45, y - 8, "Licensed Sales Representative Name (First_Last)")
+    p.drawString(225, y - 8, "Licensed Sales Representative Phone")
+    p.drawString(385, y - 8, "Licensed Sales Representative ID")
+    
+    # Row 2: Beneficiary Name, Phone, Appointment Date
+    row2_y = row_y - row_height
+    p.setStrokeColor(line_gray)
+    p.line(40, row2_y, width - 40, row2_y)
+    p.line(220, row_y, 220, row2_y)
+    p.line(380, row_y, 380, row2_y)
+    
+    # Row 2 values
+    p.setFont("Helvetica", 10)
+    p.setFillColor(dark_gray)
+    p.drawString(45, row2_y + 10, form_fields.get('beneficiary_name', lead_name))
+    p.drawString(225, row2_y + 10, form_fields.get('beneficiary_phone', lead.get('phone', '') if lead else ''))
+    
+    apt_date = form_fields.get('appointment_date', '')
+    if apt_date:
+        try:
+            apt_parsed = datetime.strptime(apt_date, '%Y-%m-%d')
+            apt_formatted = apt_parsed.strftime('%m/%d/%Y')
+        except:
+            apt_formatted = apt_date
+    else:
+        apt_formatted = ''
+    p.drawString(385, row2_y + 10, apt_formatted)
+    
+    # Row 2 labels
+    p.setFont("Helvetica", 7)
+    p.setFillColor(medium_gray)
+    p.drawString(45, row_y - 8, "Beneficiary Name (First_Last)")
+    p.drawString(225, row_y - 8, "Beneficiary Phone (Optional)")
+    p.drawString(385, row_y - 8, "Date Appointment will be Completed")
+    
+    # Row 3: Beneficiary Address
+    row3_y = row2_y - row_height
+    p.setStrokeColor(line_gray)
+    p.line(40, row3_y, width - 40, row3_y)
+    
+    # Row 3 values
+    p.setFont("Helvetica", 10)
+    p.setFillColor(dark_gray)
+    p.drawString(45, row3_y + 10, form_fields.get('beneficiary_address', lead.get('address', '') if lead else ''))
+    
+    # Row 3 labels
+    p.setFont("Helvetica", 7)
+    p.setFillColor(medium_gray)
+    p.drawString(45, row2_y - 8, "Beneficiary Address (Optional)")
+    
+    # Row 4: Initial Contact, Plans to Represent
+    row4_y = row3_y - row_height
+    p.setStrokeColor(line_gray)
+    p.line(40, row4_y, width - 40, row4_y)
+    p.line(280, row3_y, 280, row4_y)
+    
+    # Row 4 values
+    p.setFont("Helvetica", 10)
+    p.setFillColor(dark_gray)
+    contact_method = form_fields.get('initial_contact_method', 'phone')
+    contact_labels = {'phone': 'Phone', 'in_person': 'In Person', 'email': 'Email', 
+                      'mail': 'Direct Mail', 'referral': 'Referral', 'other': 'Other'}
+    p.drawString(45, row4_y + 10, contact_labels.get(contact_method, contact_method))
+    p.drawString(285, row4_y + 10, form_fields.get('plans_to_represent', 'Medicare Advantage, Medicare Supplement'))
+    
+    # Row 4 labels
+    p.setFont("Helvetica", 7)
+    p.setFillColor(medium_gray)
+    p.drawString(45, row3_y - 8, "Initial Method of Contact")
+    p.drawString(285, row3_y - 8, "Plan(s) the Licensed Sales Representative will represent during the meeting")
+    
+    # Row 5: LSR Signature
+    lsr_sig_y = row4_y - row_height - 10
+    
+    # LSR Signature box
+    lsr_sig_box_height = 45
+    p.setStrokeColor(line_gray)
+    p.rect(40, lsr_sig_y, width - 80, lsr_sig_box_height, stroke=1, fill=0)
+    
+    # Draw agent signature image
+    agent_signature_data = scope.get("agent_signature", "")
+    if agent_signature_data and len(agent_signature_data) > 100:
+        try:
+            logger.info("[PDF Generation] Injecting agent signature into PDF...")
+            sig_buffer = process_signature_image(agent_signature_data)
+            sig_image = ImageReader(sig_buffer)
+            p.drawImage(
+                sig_image,
+                45,
+                lsr_sig_y + 5,
+                width=width - 90,
+                height=lsr_sig_box_height - 10,
+                preserveAspectRatio=True,
+                mask=None
+            )
+            logger.info("[PDF Generation] Agent signature successfully injected")
+        except Exception as e:
+            logger.error(f"[PDF Generation] Error injecting agent signature: {e}")
+            p.setFont("Helvetica-Oblique", 16)
+            p.setFillColor(dark_gray)
+            agent_typed = scope.get('agent_typed_name', form_fields.get('agent_name', agent_name))
+            p.drawString(50, lsr_sig_y + lsr_sig_box_height/2 - 5, agent_typed or "")
+    else:
+        p.setFont("Helvetica-Oblique", 16)
+        p.setFillColor(dark_gray)
+        agent_typed = scope.get('agent_typed_name', form_fields.get('agent_name', agent_name))
+        p.drawString(50, lsr_sig_y + lsr_sig_box_height/2 - 5, agent_typed or "Signature Required")
+    
+    # LSR Signature label
+    p.setFont("Helvetica", 7)
+    p.setFillColor(medium_gray)
+    p.drawString(40, row4_y - 8, "Licensed Sales Representative Signature")
+    
+    y = lsr_sig_y - 15
+    
+    # ========== SOA NOTES SECTION ==========
     p.setFont("Helvetica-Bold", 8)
-    p.drawCentredString(width/2, 29, "✓ CMS COMPLIANT DOCUMENT")
+    p.setFillColor(dark_gray)
+    p.drawString(40, y, "Scope of appointment (SOA) is subject to CMS Record Retention Requirements")
+    y -= 12
     
     p.setFont("Helvetica", 7)
     p.setFillColor(medium_gray)
-    p.drawCentredString(width/2, 14, f"AgentRoute AI Insurance Services • Document ID: {scope_id}")
-    p.drawCentredString(width/2, 5, "This Scope of Appointment is valid only for the appointment date and products specified above. Retain for 10 years.")
+    soa_note = ("Licensed Sales Representative, if the form was not signed by the beneficiary prior to the "
+                "appointment, provide explanation why SOA was not documented prior to meeting:")
+    lines = simpleSplit(soa_note, "Helvetica", 7, width - 80)
+    for line in lines:
+        p.drawString(40, y, line)
+        y -= 9
+    
+    y -= 5
+    p.setFont("Helvetica-Bold", 7)
+    p.drawString(40, y, "Please check all that apply:")
+    y -= 12
+    
+    # Exception checkboxes
+    def draw_small_checkbox(checked, label, x, y_pos):
+        p.setStrokeColor(dark_gray)
+        p.setFillColor(colors.white)
+        p.rect(x, y_pos - 1, 8, 8, stroke=1, fill=1)
+        if checked:
+            p.setFillColor(black)
+            p.setFont("Helvetica", 7)
+            p.drawString(x + 1, y_pos, "✓")
+        p.setFont("Helvetica", 7)
+        p.setFillColor(dark_gray)
+        p.drawString(x + 12, y_pos, label)
+        return y_pos
+    
+    draw_small_checkbox(False, "Unplanned Attendee", 50, y)
+    draw_small_checkbox(False, "New SOA required (consumer requested other Health Product information)", 200, y)
+    y -= 12
+    draw_small_checkbox(False, "Walk-in", 50, y)
+    draw_small_checkbox(False, "Other (please explain): ________________", 200, y)
+    
+    y -= 20
+    
+    # ========== FOOTER ==========
+    p.setFont("Helvetica", 7)
+    p.setFillColor(light_gray)
+    p.drawString(40, 25, f"Document ID: {scope_id[:16].upper()}")
+    p.drawRightString(width - 40, 25, f"Generated: {datetime.utcnow().strftime('%m/%d/%Y %I:%M %p UTC')}")
+    p.drawCentredString(width/2, 15, "CMS-Compliant Scope of Appointment • Retain for 10 Years • AgentRoute AI")
+    
+    logger.info("[PDF Generation] Final PDF generated successfully")
     
     p.save()
     buffer.seek(0)
     pdf_base64 = base64.b64encode(buffer.read()).decode()
     
+    logger.info(f"[PDF Generation] PDF created successfully, size: {len(pdf_base64)} chars")
+    
     return {
         "pdf_base64": pdf_base64, 
-        "filename": f"SOA_{lead_name.replace(' ', '_')}_{created_date.strftime('%Y%m%d')}.pdf"
+        "filename": f"SOA_{lead_name.replace(' ', '_')}_{datetime.utcnow().strftime('%Y%m%d')}.pdf"
     }
 
 @api_router.get("/scope/{scope_id}/pdf")
