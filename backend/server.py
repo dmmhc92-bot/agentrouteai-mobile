@@ -2528,14 +2528,27 @@ async def get_agent_details(agent_id: str, current_user: dict = Depends(require_
     if current_user.get("role") != "admin" and agent.get("manager_id") != current_user["id"]:
         raise HTTPException(status_code=403, detail="Access denied")
     
-    leads = await db.leads.find({"created_by_user": agent_id}).to_list(1000)
-    appointments = await db.appointments.find({"created_by_user": agent_id}).to_list(1000)
-    scopes = await db.scope_forms.find({"created_by_user": agent_id}).to_list(1000)
-    production = await db.production.find({"created_by_user": agent_id}).to_list(1000)
-    activities = await db.activity_logs.find({"user_id": agent_id}).sort("created_at", -1).limit(50).to_list(50)
-    tasks = await db.tasks.find({"created_by_user": agent_id}).to_list(100)
+    leads_raw = await db.leads.find({"created_by_user": agent_id}).to_list(1000)
+    appointments_raw = await db.appointments.find({"created_by_user": agent_id}).to_list(1000)
+    scopes_raw = await db.scope_forms.find({"created_by_user": agent_id}).to_list(1000)
+    production_raw = await db.production.find({"created_by_user": agent_id}).to_list(1000)
+    activities_raw = await db.activity_logs.find({"user_id": agent_id}).sort("created_at", -1).limit(50).to_list(50)
+    tasks_raw = await db.tasks.find({"created_by_user": agent_id}).to_list(100)
     
-    overdue_tasks = [t for t in tasks if t["status"] == "pending" and t["due_date"] < datetime.utcnow().strftime("%Y-%m-%d")]
+    # Remove MongoDB _id from all documents
+    def sanitize(doc):
+        if "_id" in doc:
+            del doc["_id"]
+        return doc
+    
+    leads = [sanitize(l) for l in leads_raw]
+    appointments = [sanitize(a) for a in appointments_raw]
+    scopes = [sanitize(s) for s in scopes_raw]
+    production = [sanitize(p) for p in production_raw]
+    activities = [sanitize(a) for a in activities_raw]
+    tasks = [sanitize(t) for t in tasks_raw]
+    
+    overdue_tasks = [t for t in tasks if t.get("status") == "pending" and t.get("due_date", "") < datetime.utcnow().strftime("%Y-%m-%d")]
     
     return {
         "agent": {
@@ -2564,7 +2577,7 @@ async def get_agent_details(agent_id: str, current_user: dict = Depends(require_
             "total_production": sum(p.get("premium", 0) for p in production),
             "total_commission": sum(p.get("agent_commission", 0) for p in production),
             "overdue_tasks": len(overdue_tasks),
-            "pending_follow_ups": len([t for t in tasks if t["status"] == "pending"])
+            "pending_follow_ups": len([t for t in tasks if t.get("status") == "pending"])
         }
     }
 
