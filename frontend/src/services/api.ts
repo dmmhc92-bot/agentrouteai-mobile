@@ -504,6 +504,17 @@ class ApiService {
     const response = await apiClient.get('/daily-planner/team-summary');
     return response.data;
   }
+
+  // Team Tree View
+  async getTeamTree() {
+    const response = await apiClient.get('/team/tree');
+    return response.data;
+  }
+
+  async getTeamTreeNode(userId: string) {
+    const response = await apiClient.get(`/team/tree/${userId}`);
+    return response.data;
+  }
 }
 
 export const api = new ApiService();
