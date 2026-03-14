@@ -416,6 +416,102 @@ export default function LeadDetailScreen() {
           )}
         </View>
       </ScrollView>
+
+      {/* Stage Update Modal */}
+      <Modal
+        visible={stageModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setStageModalVisible(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Update Pipeline Stage</Text>
+              <TouchableOpacity onPress={() => setStageModalVisible(false)}>
+                <Ionicons name="close" size={24} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.modalSubtitle}>
+              Current: {STAGE_CONFIG[lead.stage]?.label || lead.stage}
+            </Text>
+
+            {/* Stage Selector */}
+            <Text style={styles.inputLabel}>Select New Stage</Text>
+            <ScrollView 
+              style={styles.stageList} 
+              showsVerticalScrollIndicator={false}
+            >
+              {ALL_STAGES.map((stage) => {
+                const config = STAGE_CONFIG[stage];
+                const isSelected = selectedStage === stage;
+                const isCurrent = lead.stage === stage;
+                return (
+                  <TouchableOpacity
+                    key={stage}
+                    style={[
+                      styles.stageOption,
+                      isSelected && { borderColor: config.color, borderWidth: 2 },
+                      isCurrent && { backgroundColor: '#334155' },
+                    ]}
+                    onPress={() => setSelectedStage(stage)}
+                  >
+                    <View style={[styles.stageOptionIcon, { backgroundColor: config.color }]}>
+                      <Ionicons name={config.icon as any} size={16} color="#FFFFFF" />
+                    </View>
+                    <Text style={[
+                      styles.stageOptionText,
+                      isSelected && { color: config.color, fontWeight: '600' }
+                    ]}>
+                      {config.label}
+                    </Text>
+                    {isCurrent && (
+                      <View style={styles.currentBadge}>
+                        <Text style={styles.currentBadgeText}>Current</Text>
+                      </View>
+                    )}
+                    {isSelected && !isCurrent && (
+                      <Ionicons name="checkmark-circle" size={20} color={config.color} />
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            {/* Notes */}
+            <Text style={styles.inputLabel}>Notes (optional)</Text>
+            <TextInput
+              style={styles.notesInput}
+              placeholder="Add notes about this stage change..."
+              placeholderTextColor="#94A3B8"
+              value={stageNotes}
+              onChangeText={setStageNotes}
+              multiline
+            />
+
+            <TouchableOpacity
+              style={[
+                styles.updateButton,
+                (updatingStage || selectedStage === lead.stage) && styles.updateButtonDisabled
+              ]}
+              onPress={handleUpdateStage}
+              disabled={updatingStage || selectedStage === lead.stage}
+            >
+              {updatingStage ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Text style={styles.updateButtonText}>
+                  {selectedStage === lead.stage ? 'No Change' : 'Update Stage'}
+                </Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
