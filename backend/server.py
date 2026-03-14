@@ -1750,32 +1750,60 @@ async def generate_stamped_pdf(scope_id: str, current_user: dict = Depends(get_c
         logger.info(f"[PDF Gen] PAGE 2: STAMPED '{field_name}' = '{text}' @ ({coords['x']}, {coords['y']})")
     
     def stamp_sig_p2(sig_data, field_name):
-        if not sig_data or len(sig_data) < 100:
-            logger.info(f"[PDF Gen] PAGE 2: SKIP '{field_name}' signature - no data")
+        if not sig_data or len(sig_data) < 50:
+            logger.info(f"[PDF Gen] PAGE 2: SKIP '{field_name}' signature - no data or too short")
             return
         coords = PAGE_2_COORDS.get(field_name)
         if not coords:
+            logger.warning(f"[PDF Gen] PAGE 2: No coords for '{field_name}' signature")
             return
         try:
-            # Handle data URI
+            # Handle data URI (e.g., "data:image/png;base64,XXXXX")
             if ',' in sig_data:
                 sig_b64 = sig_data.split(',')[1]
             else:
                 sig_b64 = sig_data
+            
+            # Decode base64
             sig_bytes = base64.b64decode(sig_b64)
+            logger.info(f"[PDF Gen] PAGE 2: SIG '{field_name}' decoded {len(sig_bytes)} bytes")
+            
+            # Validate image bytes
+            if len(sig_bytes) < 50:
+                logger.warning(f"[PDF Gen] PAGE 2: SIG '{field_name}' too small ({len(sig_bytes)} bytes)")
+                return
+            
+            # Open and convert image
             img = Image.open(BytesIO(sig_bytes))
+            logger.info(f"[PDF Gen] PAGE 2: SIG '{field_name}' opened - size {img.size}, mode {img.mode}")
+            
+            # Convert to RGBA for transparency support
             if img.mode != 'RGBA':
                 img = img.convert('RGBA')
+            
+            # Save to buffer in PNG format
             buf = BytesIO()
             img.save(buf, format='PNG')
             buf.seek(0)
+            
+            # Draw on canvas
             reader = ImageReader(buf)
-            c2.drawImage(reader, coords['x'], coords['y'], width=coords['w'], height=coords['h'], 
-                        mask='auto', preserveAspectRatio=True, anchor='sw')
+            c2.drawImage(
+                reader, 
+                coords['x'], 
+                coords['y'], 
+                width=coords['w'], 
+                height=coords['h'], 
+                mask='auto', 
+                preserveAspectRatio=True, 
+                anchor='sw'
+            )
             stamped_items.append(f"PAGE 2: SIG '{field_name}' @ ({coords['x']}, {coords['y']})")
             logger.info(f"[PDF Gen] PAGE 2: STAMPED SIG '{field_name}' @ ({coords['x']}, {coords['y']}) size {coords['w']}x{coords['h']}")
         except Exception as e:
+            import traceback
             logger.error(f"[PDF Gen] PAGE 2: SIG '{field_name}' FAILED: {e}")
+            logger.error(f"[PDF Gen] PAGE 2: SIG traceback: {traceback.format_exc()}")
     
     # Stamp all text fields on page 2
     stamp_text_p2('beneficiary_name', beneficiary_name)
