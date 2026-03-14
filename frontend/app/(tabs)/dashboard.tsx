@@ -160,6 +160,12 @@ export default function DashboardScreen() {
               </View>
               <Text style={styles.actionText}>Scan Card</Text>
             </TouchableOpacity>
+            <TouchableOpacity style={styles.actionButton} onPress={() => router.push('/pipeline')}>
+              <View style={[styles.actionIcon, { backgroundColor: '#8B5CF620' }]}>
+                <Ionicons name="git-branch" size={24} color="#8B5CF6" />
+              </View>
+              <Text style={styles.actionText}>Pipeline</Text>
+            </TouchableOpacity>
             <TouchableOpacity style={styles.actionButton} onPress={() => router.push('/appointment/new')}>
               <View style={[styles.actionIcon, { backgroundColor: '#F59E0B20' }]}>
                 <Ionicons name="calendar" size={24} color="#F59E0B" />
@@ -173,8 +179,8 @@ export default function DashboardScreen() {
               <Text style={styles.actionText}>Route</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.actionButton} onPress={() => router.push('/(tabs)/coach')}>
-              <View style={[styles.actionIcon, { backgroundColor: '#8B5CF620' }]}>
-                <Ionicons name="chatbubbles" size={24} color="#8B5CF6" />
+              <View style={[styles.actionIcon, { backgroundColor: '#06B6D420' }]}>
+                <Ionicons name="chatbubbles" size={24} color="#06B6D4" />
               </View>
               <Text style={styles.actionText}>AI Coach</Text>
             </TouchableOpacity>
