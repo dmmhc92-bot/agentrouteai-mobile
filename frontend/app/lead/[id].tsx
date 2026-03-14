@@ -74,6 +74,17 @@ interface Scope {
   id: string;
   typed_name: string;
   created_date: string;
+  signature?: string;
+  pdf_base64?: string;
+}
+
+interface ComplianceStatus {
+  compliance_status: string;
+  compliance_message: string;
+  has_appointment: boolean;
+  has_soa: boolean;
+  has_signed_soa: boolean;
+  has_pdf: boolean;
 }
 
 export default function LeadDetailScreen() {
@@ -84,6 +95,7 @@ export default function LeadDetailScreen() {
   const [lead, setLead] = useState<Lead | null>(null);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [scopes, setScopes] = useState<Scope[]>([]);
+  const [compliance, setCompliance] = useState<ComplianceStatus | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   
   // Stage update modal state
@@ -103,6 +115,15 @@ export default function LeadDetailScreen() {
       setLead(leadData);
       setAppointments(appointmentsData);
       setScopes(scopesData);
+      
+      // Also fetch compliance status
+      try {
+        const complianceData = await api.getLeadComplianceStatus(id);
+        setCompliance(complianceData);
+      } catch (e) {
+        // Non-critical, compliance may not be available
+        console.log('Compliance status not available');
+      }
     } catch (error) {
       console.log('Error loading lead:', error);
       Alert.alert('Error', 'Failed to load lead details');
