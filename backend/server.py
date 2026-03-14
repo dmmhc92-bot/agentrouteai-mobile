@@ -53,7 +53,16 @@ class UserRole(str, Enum):
     AGENT = "agent"
 
 class LeadStage(str, Enum):
-    # Pipeline stages for Policy Sales
+    # Pipeline stages for Policy Sales (Updated for Smart Lead Distribution)
+    NEW = "new"  # Just created/uploaded
+    CONTACTED = "contacted"  # First contact made
+    FOLLOW_UP = "follow_up"  # Needs follow-up
+    APPOINTMENT_SET = "appointment_set"  # Appointment scheduled
+    SOA_COMPLETED = "soa_completed"  # Scope of Appointment signed
+    POLICY_SUBMITTED = "policy_submitted"  # Application submitted
+    CLOSED_WON = "closed_won"  # Policy issued/placed
+    CLOSED_LOST = "closed_lost"  # Lost opportunity
+    # Legacy stages (kept for backwards compatibility)
     NEW_LEAD = "new_lead"
     APPOINTMENT_SCHEDULED = "appointment_scheduled"
     APPLICATION_SUBMITTED = "application_submitted"
@@ -72,6 +81,20 @@ class UnderwritingStatus(str, Enum):
     APPROVED = "approved"
     DECLINED = "declined"
     ISSUED = "issued"
+
+class AssignmentMethod(str, Enum):
+    MANUAL = "manual"
+    ROUND_ROBIN = "round_robin"
+    TERRITORY = "territory"
+    WORKLOAD = "workload"
+    MANAGER_GROUP = "manager_group"
+
+class ComplianceStatus(str, Enum):
+    MISSING_SOA = "missing_soa"
+    PENDING_SIGNATURE = "pending_signature"
+    SIGNED = "signed"
+    COMPLIANT = "compliant"
+    NON_COMPLIANT = "non_compliant"
 
 class TaskType(str, Enum):
     FOLLOW_UP = "follow_up"
