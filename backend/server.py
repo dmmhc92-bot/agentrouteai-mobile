@@ -2191,42 +2191,8 @@ async def get_all_scopes(
     }
 
 # ==================== SOA DELIVERY LOGGING ====================
-    
-    if not os.path.exists(template_path):
-        logger.error(f"[SOA Render] Template not found at {template_path}")
-        raise ValueError("SOA template form not found")
-    
-    # Draw the exact carrier form as the base layer (background)
-    template_img = ImageReader(template_path)
-    p.drawImage(template_img, 0, 0, width=width, height=height, preserveAspectRatio=False, mask=None)
-    logger.info("[SOA Render] Base template loaded and rendered")
-    
-    # =========================================================================
-    # STEP 2: HELPER FUNCTION - Process signature to transparent PNG
-    # =========================================================================
-    def process_signature_to_transparent(signature_data: str) -> BytesIO:
-        """
-        Process signature and return as PNG with TRANSPARENCY preserved.
-        The signature strokes remain black, background stays transparent.
-        This prevents white boxes from covering the form.
-        """
-        from PIL import Image as PILImage
-        
-        logger.info(f"[SOA Render] Processing signature ({len(signature_data)} chars)")
-        
-        is_svg = False
-        if signature_data.startswith("data:"):
-            if "svg" in signature_data[:60].lower():
-                is_svg = True
-            parts = signature_data.split(",", 1)
-            if len(parts) == 2:
-                encoded = parts[1]
-            else:
-                raise ValueError("Invalid data URI")
-        else:
-            encoded = signature_data
-        
-        sig_bytes = base64.b64decode(encoded)
+
+@api_router.post("/scope/{scope_id}/log-delivery")
         
         if is_svg:
             logger.info("[SOA Render] Converting SVG signature...")
