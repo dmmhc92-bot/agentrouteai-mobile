@@ -5407,6 +5407,838 @@ async def get_needs_attention_summary(current_user: dict = Depends(require_manag
         ]
     }
 
+# ==================== SMART LEAD DISTRIBUTION SYSTEM ====================
+
+@api_router.get("/smart-distribution/summary")
+async def get_distribution_summary(current_user: dict = Depends(require_manager_or_admin)):
+    """Get comprehensive lead distribution summary for Admin/Manager dashboards"""
+    user_ids = await get_user_accessible_ids(current_user["id"], current_user.get("role", "agent"))
+    
+    # Total leads
+    total_leads = await db.leads.count_documents({
+        "$or": [
+            {"created_by_user": {"$in": user_ids}},
+            {"assigned_to_user": {"$in": user_ids}}
+        ],
+        "deleted_at": None
+    })
+    
+    # Unassigned leads
+    unassigned_leads = await db.leads.count_documents({
+        "created_by_user": {"$in": user_ids},
+        "$or": [
+            {"assigned_to_user": None},
+            {"assigned_to_user": {"$exists": False}},
+            {"assigned_to_user": ""}
+        ],
+        "deleted_at": None
+    })
+    
+    # Assigned leads
+    assigned_leads = total_leads - unassigned_leads
+    
+    # Leads by stage
+    pipeline_stages = await db.leads.aggregate([
+        {"$match": {
+            "$or": [
+                {"created_by_user": {"$in": user_ids}},
+                {"assigned_to_user": {"$in": user_ids}}
+            ],
+            "deleted_at": None
+        }},
+        {"$group": {"_id": "$stage", "count": {"$sum": 1}}}
+    ]).to_list(100)
+    
+    leads_by_stage = {item["_id"] or "new": item["count"] for item in pipeline_stages}
+    
+    # Leads by agent
+    agent_pipeline = await db.leads.aggregate([
+        {"$match": {
+            "assigned_to_user": {"$in": user_ids, "$ne": None},
+            "deleted_at": None
+        }},
+        {"$group": {"_id": "$assigned_to_user", "count": {"$sum": 1}}}
+    ]).to_list(100)
+    
+    leads_by_agent = []
+    for item in agent_pipeline:
+        agent = await db.users.find_one({"id": item["_id"]})
+        if agent:
+            leads_by_agent.append({
+                "agent_id": item["_id"],
+                "agent_name": agent.get("name", "Unknown"),
+                "lead_count": item["count"]
+            })
+    
+    # Distribution methods used (from activity log)
+    distribution_methods = await db.lead_activities.aggregate([
+        {"$match": {"activity_type": "assigned"}},
+        {"$group": {"_id": "$assignment_method", "count": {"$sum": 1}}}
+    ]).to_list(10)
+    
+    methods_used = {item["_id"] or "manual": item["count"] for item in distribution_methods}
+    
+    # Calculate averages
+    agent_count = len(leads_by_agent) if leads_by_agent else 1
+    avg_leads_per_agent = assigned_leads / agent_count if agent_count > 0 else 0
+    
+    # Top performing agents (by closed_won stage)
+    top_agents_pipeline = await db.leads.aggregate([
+        {"$match": {
+            "assigned_to_user": {"$in": user_ids},
+            "stage": {"$in": ["closed_won", "policy_issued", "policy_placed", "commission_paid"]},
+            "deleted_at": None
+        }},
+        {"$group": {"_id": "$assigned_to_user", "won_count": {"$sum": 1}}},
+        {"$sort": {"won_count": -1}},
+        {"$limit": 5}
+    ]).to_list(5)
+    
+    top_performing_agents = []
+    for item in top_agents_pipeline:
+        agent = await db.users.find_one({"id": item["_id"]})
+        if agent:
+            top_performing_agents.append({
+                "agent_id": item["_id"],
+                "agent_name": agent.get("name", "Unknown"),
+                "closed_won": item["won_count"]
+            })
+    
+    return LeadDistributionSummary(
+        total_leads=total_leads,
+        unassigned_leads=unassigned_leads,
+        assigned_leads=assigned_leads,
+        leads_by_stage=leads_by_stage,
+        leads_by_agent=leads_by_agent,
+        distribution_methods_used=methods_used,
+        avg_leads_per_agent=round(avg_leads_per_agent, 1),
+        top_performing_agents=top_performing_agents
+    )
+
+@api_router.get("/smart-distribution/agents")
+async def get_agent_performance_metrics(current_user: dict = Depends(require_manager_or_admin)):
+    """Get detailed performance metrics for all agents under current user"""
+    user_ids = await get_user_accessible_ids(current_user["id"], current_user.get("role", "agent"))
+    
+    # Get all agents
+    agents = await db.users.find({
+        "id": {"$in": user_ids},
+        "role": {"$in": ["agent", "manager"]},
+        "deleted_at": None
+    }).to_list(100)
+    
+    metrics = []
+    for agent in agents:
+        agent_id = agent["id"]
+        
+        # Total leads assigned to agent
+        total_leads = await db.leads.count_documents({
+            "assigned_to_user": agent_id,
+            "deleted_at": None
+        })
+        
+        # Leads by stage
+        stage_pipeline = await db.leads.aggregate([
+            {"$match": {"assigned_to_user": agent_id, "deleted_at": None}},
+            {"$group": {"_id": "$stage", "count": {"$sum": 1}}}
+        ]).to_list(20)
+        
+        leads_by_stage = {item["_id"] or "new": item["count"] for item in stage_pipeline}
+        
+        # Closed won/lost
+        closed_won = leads_by_stage.get("closed_won", 0) + leads_by_stage.get("policy_issued", 0) + leads_by_stage.get("policy_placed", 0)
+        closed_lost = leads_by_stage.get("closed_lost", 0)
+        
+        # Active pipeline (not closed)
+        active_pipeline = total_leads - closed_won - closed_lost
+        
+        # Conversion rate
+        total_closed = closed_won + closed_lost
+        conversion_rate = (closed_won / total_closed * 100) if total_closed > 0 else 0
+        
+        # SOA completion rate
+        leads_with_appointments = await db.leads.count_documents({
+            "assigned_to_user": agent_id,
+            "stage": {"$in": ["appointment_set", "appointment_scheduled", "soa_completed", "policy_submitted", "closed_won"]},
+            "deleted_at": None
+        })
+        
+        soas_completed = await db.scopes.count_documents({
+            "created_by_user": agent_id
+        })
+        
+        soa_completion_rate = (soas_completed / leads_with_appointments * 100) if leads_with_appointments > 0 else 0
+        
+        # Last activity
+        last_lead = await db.leads.find_one(
+            {"assigned_to_user": agent_id},
+            sort=[("last_contact_date", -1)]
+        )
+        last_activity = last_lead.get("last_contact_date") if last_lead else None
+        
+        metrics.append(AgentPerformanceMetrics(
+            agent_id=agent_id,
+            agent_name=agent.get("name", "Unknown"),
+            agent_email=agent.get("email", ""),
+            total_leads=total_leads,
+            leads_by_stage=leads_by_stage,
+            conversion_rate=round(conversion_rate, 1),
+            avg_response_time_hours=None,  # Could be calculated from activity timestamps
+            soa_completion_rate=round(soa_completion_rate, 1),
+            closed_won=closed_won,
+            closed_lost=closed_lost,
+            active_pipeline=active_pipeline,
+            last_activity=last_activity
+        ))
+    
+    return metrics
+
+@api_router.post("/smart-distribution/distribute")
+async def smart_distribute_leads(request: SmartDistributionRequest, current_user: dict = Depends(require_manager_or_admin)):
+    """Smart lead distribution with multiple methods"""
+    user_ids = await get_user_accessible_ids(current_user["id"], current_user.get("role", "agent"))
+    
+    # Get the leads to distribute
+    leads = await db.leads.find({
+        "id": {"$in": request.lead_ids},
+        "deleted_at": None
+    }).to_list(len(request.lead_ids))
+    
+    if not leads:
+        raise HTTPException(status_code=404, detail="No valid leads found")
+    
+    # Get available agents
+    if request.target_agent_ids:
+        agent_ids = request.target_agent_ids
+    elif request.manager_id and request.method == "manager_group":
+        # Get agents under the specified manager
+        agents = await db.users.find({
+            "manager_id": request.manager_id,
+            "role": "agent",
+            "deleted_at": None
+        }).to_list(100)
+        agent_ids = [a["id"] for a in agents]
+    else:
+        # Get all agents accessible to current user
+        agents = await db.users.find({
+            "id": {"$in": user_ids},
+            "role": "agent",
+            "deleted_at": None
+        }).to_list(100)
+        agent_ids = [a["id"] for a in agents]
+    
+    if not agent_ids:
+        raise HTTPException(status_code=400, detail="No agents available for distribution")
+    
+    # Get current workloads for each agent
+    agent_workloads = {}
+    for aid in agent_ids:
+        workload = await db.leads.count_documents({
+            "assigned_to_user": aid,
+            "stage": {"$nin": ["closed_won", "closed_lost"]},
+            "deleted_at": None
+        })
+        agent_workloads[aid] = workload
+    
+    # Get territories if needed
+    territories = {}
+    if request.method == "territory" or request.respect_territories:
+        terr_docs = await db.territories.find({
+            "assigned_agents": {"$in": agent_ids}
+        }).to_list(100)
+        for t in terr_docs:
+            for aid in t.get("assigned_agents", []):
+                if aid not in territories:
+                    territories[aid] = []
+                territories[aid].append({
+                    "zip_codes": t.get("zip_codes", []),
+                    "cities": t.get("cities", []),
+                    "states": t.get("states", [])
+                })
+    
+    assignments = []
+    skipped = []
+    agent_index = 0
+    
+    for lead in leads:
+        assigned_agent_id = None
+        skip_reason = None
+        
+        if request.method == "equal" or request.method == "round_robin":
+            # Simple round-robin
+            assigned_agent_id = agent_ids[agent_index % len(agent_ids)]
+            agent_index += 1
+            
+        elif request.method == "territory":
+            # Match by territory (zip code)
+            lead_address = lead.get("address", "")
+            lead_zip = ""
+            # Extract zip code from address (last 5 digits)
+            import re
+            zip_match = re.search(r'\b(\d{5})\b', lead_address)
+            if zip_match:
+                lead_zip = zip_match.group(1)
+            
+            # Find agent with matching territory
+            for aid, terrs in territories.items():
+                for t in terrs:
+                    if lead_zip in t.get("zip_codes", []):
+                        assigned_agent_id = aid
+                        break
+                if assigned_agent_id:
+                    break
+            
+            if not assigned_agent_id:
+                # Fall back to round-robin if no territory match
+                if request.balance_workload:
+                    assigned_agent_id = min(agent_workloads, key=agent_workloads.get)
+                else:
+                    assigned_agent_id = agent_ids[agent_index % len(agent_ids)]
+                    agent_index += 1
+                    
+        elif request.method == "availability" or request.method == "workload":
+            # Assign to agent with lowest workload
+            assigned_agent_id = min(agent_workloads, key=agent_workloads.get)
+            agent_workloads[assigned_agent_id] += 1  # Update workload
+            
+        elif request.method == "manager_group":
+            # Already filtered agents by manager, use round-robin
+            assigned_agent_id = agent_ids[agent_index % len(agent_ids)]
+            agent_index += 1
+        
+        if assigned_agent_id:
+            # Update lead
+            await db.leads.update_one(
+                {"id": lead["id"]},
+                {"$set": {
+                    "assigned_to_user": assigned_agent_id,
+                    "assignment_date": datetime.utcnow(),
+                    "assignment_method": request.method
+                }}
+            )
+            
+            # Log activity
+            agent = await db.users.find_one({"id": assigned_agent_id})
+            agent_name = agent.get("name", "Unknown") if agent else "Unknown"
+            
+            await db.lead_activities.insert_one({
+                "id": str(uuid.uuid4()),
+                "lead_id": lead["id"],
+                "activity_type": "assigned",
+                "description": f"Lead assigned to {agent_name} via {request.method} distribution",
+                "performed_by": current_user["id"],
+                "performed_by_name": current_user.get("name", "System"),
+                "old_value": lead.get("assigned_to_user"),
+                "new_value": assigned_agent_id,
+                "assignment_method": request.method,
+                "created_at": datetime.utcnow()
+            })
+            
+            assignments.append({
+                "lead_id": lead["id"],
+                "lead_name": lead.get("name", "Unknown"),
+                "agent_id": assigned_agent_id,
+                "agent_name": agent_name
+            })
+        else:
+            skipped.append({
+                "lead_id": lead["id"],
+                "reason": skip_reason or "Could not find suitable agent"
+            })
+    
+    return SmartDistributionResult(
+        total_distributed=len(assignments),
+        assignments=assignments,
+        skipped=skipped,
+        method_used=request.method
+    )
+
+@api_router.get("/smart-distribution/activity/{lead_id}")
+async def get_lead_activity_history(lead_id: str, current_user: dict = Depends(get_current_user)):
+    """Get activity history for a specific lead"""
+    user_ids = await get_user_accessible_ids(current_user["id"], current_user.get("role", "agent"))
+    
+    # Verify lead access
+    lead = await db.leads.find_one({
+        "id": lead_id,
+        "$or": [
+            {"created_by_user": {"$in": user_ids}},
+            {"assigned_to_user": {"$in": user_ids}}
+        ],
+        "deleted_at": None
+    })
+    
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    
+    # Get activities
+    activities = await db.lead_activities.find({
+        "lead_id": lead_id
+    }).sort("created_at", -1).to_list(100)
+    
+    return [
+        LeadActivityEntry(
+            id=a["id"],
+            lead_id=a["lead_id"],
+            activity_type=a["activity_type"],
+            description=a["description"],
+            performed_by=a["performed_by"],
+            performed_by_name=a.get("performed_by_name", "Unknown"),
+            old_value=a.get("old_value"),
+            new_value=a.get("new_value"),
+            created_at=a["created_at"]
+        )
+        for a in activities
+    ]
+
+@api_router.post("/smart-distribution/activity")
+async def log_lead_activity(activity: LeadActivityCreate, current_user: dict = Depends(get_current_user)):
+    """Log a new activity for a lead"""
+    user_ids = await get_user_accessible_ids(current_user["id"], current_user.get("role", "agent"))
+    
+    # Verify lead access
+    lead = await db.leads.find_one({
+        "id": activity.lead_id,
+        "$or": [
+            {"created_by_user": {"$in": user_ids}},
+            {"assigned_to_user": {"$in": user_ids}}
+        ],
+        "deleted_at": None
+    })
+    
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    
+    activity_doc = {
+        "id": str(uuid.uuid4()),
+        "lead_id": activity.lead_id,
+        "activity_type": activity.activity_type,
+        "description": activity.description,
+        "performed_by": current_user["id"],
+        "performed_by_name": current_user.get("name", "Unknown"),
+        "old_value": activity.old_value,
+        "new_value": activity.new_value,
+        "created_at": datetime.utcnow()
+    }
+    
+    await db.lead_activities.insert_one(activity_doc)
+    
+    # Update lead's last_contact_date if relevant activity
+    if activity.activity_type in ["contacted", "call", "email", "meeting"]:
+        await db.leads.update_one(
+            {"id": activity.lead_id},
+            {"$set": {"last_contact_date": datetime.utcnow()}}
+        )
+    
+    return activity_doc
+
+# ==================== MEDICARE COMPLIANCE TRACKING SYSTEM ====================
+
+@api_router.get("/compliance/summary")
+async def get_compliance_summary(current_user: dict = Depends(require_manager_or_admin)):
+    """Get Medicare compliance summary for Admin/Manager dashboards"""
+    user_ids = await get_user_accessible_ids(current_user["id"], current_user.get("role", "agent"))
+    
+    # Total leads
+    total_leads = await db.leads.count_documents({
+        "$or": [
+            {"created_by_user": {"$in": user_ids}},
+            {"assigned_to_user": {"$in": user_ids}}
+        ],
+        "deleted_at": None
+    })
+    
+    # Get all leads with their SOA status
+    leads = await db.leads.find({
+        "$or": [
+            {"created_by_user": {"$in": user_ids}},
+            {"assigned_to_user": {"$in": user_ids}}
+        ],
+        "deleted_at": None
+    }).to_list(10000)
+    
+    lead_ids = [l["id"] for l in leads]
+    
+    # Get all SOAs for these leads
+    soas = await db.scopes.find({
+        "lead_id": {"$in": lead_ids}
+    }).to_list(10000)
+    
+    soa_by_lead = {}
+    for soa in soas:
+        if soa["lead_id"] not in soa_by_lead:
+            soa_by_lead[soa["lead_id"]] = []
+        soa_by_lead[soa["lead_id"]].append(soa)
+    
+    # Count leads with/without SOA
+    leads_with_soa = len([l for l in leads if l["id"] in soa_by_lead])
+    leads_without_soa = total_leads - leads_with_soa
+    
+    # Count signed SOAs
+    signed_soas = 0
+    pending_soas = 0
+    for lead_id, lead_soas in soa_by_lead.items():
+        for soa in lead_soas:
+            if soa.get("signature") and soa.get("signature") != "":
+                signed_soas += 1
+            else:
+                pending_soas += 1
+    
+    # Get appointments
+    appointments = await db.appointments.find({
+        "lead_id": {"$in": lead_ids},
+        "status": {"$in": ["scheduled", "pending", "completed"]}
+    }).to_list(10000)
+    
+    # Appointments without SOA
+    appointments_without_soa = 0
+    compliant_appointments = 0
+    
+    for apt in appointments:
+        apt_lead_soas = soa_by_lead.get(apt["lead_id"], [])
+        has_signed_soa = any(s.get("signature") for s in apt_lead_soas)
+        
+        if not apt_lead_soas:
+            appointments_without_soa += 1
+        elif has_signed_soa:
+            compliant_appointments += 1
+        else:
+            appointments_without_soa += 1
+    
+    # Calculate compliance rate
+    total_requiring_compliance = len(appointments)
+    compliance_rate = (compliant_appointments / total_requiring_compliance * 100) if total_requiring_compliance > 0 else 100.0
+    
+    return ComplianceSummary(
+        total_leads=total_leads,
+        leads_with_soa=leads_with_soa,
+        leads_without_soa=leads_without_soa,
+        signed_soas=signed_soas,
+        pending_soas=pending_soas,
+        appointments_without_soa=appointments_without_soa,
+        compliant_appointments=compliant_appointments,
+        compliance_rate=round(compliance_rate, 1)
+    )
+
+@api_router.get("/compliance/records")
+async def get_compliance_records(
+    status: Optional[str] = None,  # missing_soa, pending_signature, signed, compliant
+    limit: int = 50,
+    current_user: dict = Depends(require_manager_or_admin)
+):
+    """Get detailed compliance records for each lead/appointment"""
+    user_ids = await get_user_accessible_ids(current_user["id"], current_user.get("role", "agent"))
+    
+    # Get leads with their appointments and SOAs
+    leads = await db.leads.find({
+        "$or": [
+            {"created_by_user": {"$in": user_ids}},
+            {"assigned_to_user": {"$in": user_ids}}
+        ],
+        "deleted_at": None
+    }).to_list(1000)
+    
+    records = []
+    
+    for lead in leads:
+        # Get appointments for this lead
+        appointments = await db.appointments.find({
+            "lead_id": lead["id"],
+            "status": {"$ne": "cancelled"}
+        }).to_list(100)
+        
+        # Get SOAs for this lead
+        soas = await db.scopes.find({
+            "lead_id": lead["id"]
+        }).to_list(100)
+        
+        # Get agent info
+        agent_id = lead.get("assigned_to_user") or lead.get("created_by_user")
+        agent = await db.users.find_one({"id": agent_id})
+        agent_name = agent.get("name", "Unknown") if agent else "Unknown"
+        
+        # Determine compliance status
+        has_soa = len(soas) > 0
+        has_signed_soa = any(s.get("signature") and s.get("signature") != "" for s in soas)
+        has_pdf = any(s.get("pdf_base64") for s in soas)
+        
+        if not has_soa:
+            compliance_status = "missing_soa"
+        elif not has_signed_soa:
+            compliance_status = "pending_signature"
+        elif has_signed_soa and has_pdf:
+            compliance_status = "compliant"
+        else:
+            compliance_status = "signed"
+        
+        # Filter by status if provided
+        if status and compliance_status != status:
+            continue
+        
+        # Get the most recent SOA and appointment
+        latest_soa = soas[0] if soas else None
+        latest_apt = appointments[0] if appointments else None
+        
+        record = ComplianceRecord(
+            lead_id=lead["id"],
+            lead_name=lead.get("name", "Unknown"),
+            appointment_id=latest_apt["id"] if latest_apt else None,
+            appointment_date=latest_apt.get("appointment_date") if latest_apt else None,
+            appointment_time=latest_apt.get("appointment_time") if latest_apt else None,
+            soa_id=latest_soa["id"] if latest_soa else None,
+            soa_signed=has_signed_soa,
+            soa_signature_timestamp=latest_soa.get("created_date") if latest_soa and has_signed_soa else None,
+            soa_pdf_available=has_pdf,
+            compliance_status=compliance_status,
+            agent_id=agent_id,
+            agent_name=agent_name,
+            created_date=lead.get("created_date", datetime.utcnow()),
+            last_updated=lead.get("last_contact_date", lead.get("created_date", datetime.utcnow()))
+        )
+        
+        records.append(record)
+        
+        if len(records) >= limit:
+            break
+    
+    return records
+
+@api_router.get("/compliance/lead/{lead_id}")
+async def get_lead_compliance_status(lead_id: str, current_user: dict = Depends(get_current_user)):
+    """Get compliance status for a specific lead"""
+    user_ids = await get_user_accessible_ids(current_user["id"], current_user.get("role", "agent"))
+    
+    # Get lead
+    lead = await db.leads.find_one({
+        "id": lead_id,
+        "$or": [
+            {"created_by_user": {"$in": user_ids}},
+            {"assigned_to_user": {"$in": user_ids}}
+        ],
+        "deleted_at": None
+    })
+    
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    
+    # Get appointments
+    appointments = await db.appointments.find({
+        "lead_id": lead_id,
+        "status": {"$ne": "cancelled"}
+    }).to_list(100)
+    
+    # Get SOAs
+    soas = await db.scopes.find({
+        "lead_id": lead_id
+    }).to_list(100)
+    
+    # Determine compliance
+    has_soa = len(soas) > 0
+    has_signed_soa = any(s.get("signature") and s.get("signature") != "" for s in soas)
+    has_pdf = any(s.get("pdf_base64") for s in soas)
+    has_appointment = len(appointments) > 0
+    
+    if not has_soa:
+        compliance_status = "missing_soa"
+        compliance_message = "No Scope of Appointment on file"
+    elif not has_signed_soa:
+        compliance_status = "pending_signature"
+        compliance_message = "SOA exists but awaiting signature"
+    elif has_signed_soa and has_pdf:
+        compliance_status = "compliant"
+        compliance_message = "Fully compliant - SOA signed and PDF available"
+    else:
+        compliance_status = "signed"
+        compliance_message = "SOA signed, PDF generation pending"
+    
+    return {
+        "lead_id": lead_id,
+        "lead_name": lead.get("name", "Unknown"),
+        "compliance_status": compliance_status,
+        "compliance_message": compliance_message,
+        "has_appointment": has_appointment,
+        "appointment_count": len(appointments),
+        "has_soa": has_soa,
+        "soa_count": len(soas),
+        "has_signed_soa": has_signed_soa,
+        "has_pdf": has_pdf,
+        "soas": [
+            {
+                "id": s["id"],
+                "typed_name": s.get("typed_name", ""),
+                "signed": bool(s.get("signature")),
+                "created_date": s.get("created_date"),
+                "has_pdf": bool(s.get("pdf_base64"))
+            }
+            for s in soas
+        ],
+        "appointments": [
+            {
+                "id": a["id"],
+                "date": a.get("appointment_date"),
+                "time": a.get("appointment_time"),
+                "status": a.get("status", "scheduled")
+            }
+            for a in appointments
+        ]
+    }
+
+@api_router.get("/compliance/appointment/{appointment_id}")
+async def get_appointment_compliance_status(appointment_id: str, current_user: dict = Depends(get_current_user)):
+    """Get compliance status for a specific appointment"""
+    user_ids = await get_user_accessible_ids(current_user["id"], current_user.get("role", "agent"))
+    
+    # Get appointment
+    appointment = await db.appointments.find_one({
+        "id": appointment_id,
+        "created_by_user": {"$in": user_ids}
+    })
+    
+    if not appointment:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+    
+    lead_id = appointment.get("lead_id")
+    
+    # Get lead
+    lead = await db.leads.find_one({"id": lead_id})
+    
+    # Get SOAs for the lead
+    soas = await db.scopes.find({
+        "lead_id": lead_id
+    }).to_list(100)
+    
+    has_soa = len(soas) > 0
+    has_signed_soa = any(s.get("signature") and s.get("signature") != "" for s in soas)
+    has_pdf = any(s.get("pdf_base64") for s in soas)
+    
+    # Determine compliance
+    if not has_soa:
+        compliance_status = "missing_soa"
+        is_compliant = False
+    elif not has_signed_soa:
+        compliance_status = "pending_signature"
+        is_compliant = False
+    else:
+        compliance_status = "compliant"
+        is_compliant = True
+    
+    return {
+        "appointment_id": appointment_id,
+        "lead_id": lead_id,
+        "lead_name": lead.get("name", "Unknown") if lead else "Unknown",
+        "appointment_date": appointment.get("appointment_date"),
+        "appointment_time": appointment.get("appointment_time"),
+        "appointment_status": appointment.get("status", "scheduled"),
+        "compliance_status": compliance_status,
+        "is_compliant": is_compliant,
+        "has_soa": has_soa,
+        "has_signed_soa": has_signed_soa,
+        "has_pdf": has_pdf,
+        "soas": [
+            {
+                "id": s["id"],
+                "typed_name": s.get("typed_name", ""),
+                "signed": bool(s.get("signature")),
+                "created_date": s.get("created_date")
+            }
+            for s in soas
+        ]
+    }
+
+@api_router.get("/compliance/dashboard-cards")
+async def get_compliance_dashboard_cards(current_user: dict = Depends(get_current_user)):
+    """Get compliance summary cards for any dashboard"""
+    user_role = current_user.get("role", "agent")
+    user_ids = await get_user_accessible_ids(current_user["id"], user_role)
+    
+    # For agents, only show their own compliance
+    if user_role == "agent":
+        query = {"$or": [
+            {"created_by_user": current_user["id"]},
+            {"assigned_to_user": current_user["id"]}
+        ], "deleted_at": None}
+    else:
+        query = {"$or": [
+            {"created_by_user": {"$in": user_ids}},
+            {"assigned_to_user": {"$in": user_ids}}
+        ], "deleted_at": None}
+    
+    # Get leads
+    leads = await db.leads.find(query).to_list(10000)
+    lead_ids = [l["id"] for l in leads]
+    
+    # Get SOAs
+    soas = await db.scopes.find({
+        "lead_id": {"$in": lead_ids}
+    }).to_list(10000)
+    
+    soa_by_lead = {}
+    for soa in soas:
+        if soa["lead_id"] not in soa_by_lead:
+            soa_by_lead[soa["lead_id"]] = []
+        soa_by_lead[soa["lead_id"]].append(soa)
+    
+    # Get upcoming appointments (next 7 days)
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    week_later = (datetime.utcnow() + timedelta(days=7)).strftime("%Y-%m-%d")
+    
+    upcoming_appointments = await db.appointments.find({
+        "lead_id": {"$in": lead_ids},
+        "appointment_date": {"$gte": today, "$lte": week_later},
+        "status": {"$in": ["scheduled", "pending"]}
+    }).to_list(1000)
+    
+    # Calculate metrics
+    missing_soa_count = 0
+    signed_soa_count = 0
+    pending_appointments_no_soa = 0
+    compliant_appointments = 0
+    
+    for lead in leads:
+        lead_soas = soa_by_lead.get(lead["id"], [])
+        if not lead_soas:
+            missing_soa_count += 1
+        elif any(s.get("signature") for s in lead_soas):
+            signed_soa_count += 1
+    
+    for apt in upcoming_appointments:
+        lead_soas = soa_by_lead.get(apt["lead_id"], [])
+        if not lead_soas:
+            pending_appointments_no_soa += 1
+        elif any(s.get("signature") for s in lead_soas):
+            compliant_appointments += 1
+        else:
+            pending_appointments_no_soa += 1
+    
+    return {
+        "missing_soa": {
+            "count": missing_soa_count,
+            "label": "Missing SOA",
+            "color": "#EF4444",
+            "icon": "alert-circle"
+        },
+        "signed_soa": {
+            "count": signed_soa_count,
+            "label": "Signed SOA",
+            "color": "#22C55E",
+            "icon": "checkmark-circle"
+        },
+        "pending_no_soa": {
+            "count": pending_appointments_no_soa,
+            "label": "Appointments Without SOA",
+            "color": "#F59E0B",
+            "icon": "warning"
+        },
+        "compliant_appointments": {
+            "count": compliant_appointments,
+            "label": "Compliant Appointments",
+            "color": "#3B82F6",
+            "icon": "shield-checkmark"
+        },
+        "total_leads": len(leads),
+        "total_upcoming_appointments": len(upcoming_appointments)
+    }
+
 # ==================== HEALTH CHECK ====================
 
 @api_router.get("/")
