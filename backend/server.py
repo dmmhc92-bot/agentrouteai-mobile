@@ -53,14 +53,17 @@ class UserRole(str, Enum):
     AGENT = "agent"
 
 class LeadStage(str, Enum):
+    # Pipeline stages for Policy Sales
     NEW_LEAD = "new_lead"
-    CONTACTED = "contacted"
     APPOINTMENT_SCHEDULED = "appointment_scheduled"
-    APPOINTMENT_COMPLETED = "appointment_completed"
     APPLICATION_SUBMITTED = "application_submitted"
     UNDERWRITING_REVIEW = "underwriting_review"
-    POLICY_APPROVED = "policy_approved"
+    ADDITIONAL_REQUIREMENTS = "additional_requirements"
+    APPROVED = "approved"
     POLICY_ISSUED = "policy_issued"
+    POLICY_PLACED = "policy_placed"
+    COMMISSION_PENDING = "commission_pending"
+    COMMISSION_PAID = "commission_paid"
 
 class UnderwritingStatus(str, Enum):
     NOT_SUBMITTED = "not_submitted"
