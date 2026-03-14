@@ -19,6 +19,7 @@ import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import * as Print from 'expo-print';
 import { api } from '../../src/services/api';
+import { generateSOAPdf, savePdfToDevice, sharePdf, printPdf } from '../../src/services/pdfGenerator';
 
 // Check if we're running on web
 const isWeb = Platform.OS === 'web';
