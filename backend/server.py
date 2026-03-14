@@ -1195,40 +1195,141 @@ async def get_pipeline_stats(team_view: bool = False, current_user: dict = Depen
 
 @api_router.post("/scope")
 async def create_scope(scope_data: ScopeCreate, current_user: dict = Depends(get_current_user)):
+    """Create a new Scope of Appointment document with both signatures"""
     scope_id = str(uuid.uuid4())
+    
+    # Get lead and agent info for PDF generation
+    lead = await db.leads.find_one({"id": scope_data.lead_id})
+    agent = await db.users.find_one({"id": current_user["id"]})
+    
     scope_doc = {
         "id": scope_id,
         "lead_id": scope_data.lead_id,
         "form_fields": scope_data.form_fields,
         "typed_name": scope_data.typed_name,
         "signature": scope_data.signature or "",
+        "agent_typed_name": scope_data.agent_typed_name or agent.get("name", "") if agent else "",
+        "agent_signature": scope_data.agent_signature or "",
         "created_date": datetime.utcnow(),
-        "created_by_user": current_user["id"]
+        "created_by_user": current_user["id"],
+        "pdf_base64": None  # Will be generated
     }
+    
+    # Generate PDF and store it
+    try:
+        pdf_data = await generate_scope_pdf(scope_doc, lead, agent)
+        scope_doc["pdf_base64"] = pdf_data["pdf_base64"]
+    except Exception as e:
+        logger.error(f"Failed to generate PDF: {e}")
+    
     await db.scope_forms.insert_one(scope_doc)
     await log_activity(current_user["id"], "scope_created", "Created Scope of Appointment", scope_data.lead_id)
-    return ScopeResponse(**scope_doc)
+    
+    return {
+        "id": scope_doc["id"],
+        "lead_id": scope_doc["lead_id"],
+        "form_fields": scope_doc["form_fields"],
+        "typed_name": scope_doc["typed_name"],
+        "signature": scope_doc["signature"],
+        "agent_typed_name": scope_doc["agent_typed_name"],
+        "agent_signature": scope_doc["agent_signature"],
+        "pdf_base64": scope_doc.get("pdf_base64"),
+        "created_date": scope_doc["created_date"],
+        "created_by_user": scope_doc["created_by_user"]
+    }
 
 @api_router.get("/scope/{scope_id}")
 async def get_scope(scope_id: str, current_user: dict = Depends(get_current_user)):
     scope = await db.scope_forms.find_one({"id": scope_id})
     if not scope:
         raise HTTPException(status_code=404, detail="Scope not found")
-    return ScopeResponse(**scope)
+    
+    # Ensure all fields exist
+    scope.setdefault("agent_typed_name", "")
+    scope.setdefault("agent_signature", "")
+    scope.setdefault("pdf_base64", None)
+    return scope
 
 @api_router.get("/scope/lead/{lead_id}")
 async def get_lead_scopes(lead_id: str, current_user: dict = Depends(get_current_user)):
     scopes = await db.scope_forms.find({"lead_id": lead_id}).to_list(100)
-    return [ScopeResponse(**s) for s in scopes]
+    # Ensure all fields exist
+    for s in scopes:
+        s.setdefault("agent_typed_name", "")
+        s.setdefault("agent_signature", "")
+        s.setdefault("pdf_base64", None)
+    return scopes
 
-@api_router.get("/scope/{scope_id}/pdf")
-async def get_scope_pdf(scope_id: str, current_user: dict = Depends(get_current_user)):
-    scope = await db.scope_forms.find_one({"id": scope_id})
-    if not scope:
-        raise HTTPException(status_code=404, detail="Scope not found")
+# Admin/Manager endpoint to view all SOAs
+@api_router.get("/scope/admin/all")
+async def get_all_scopes(
+    skip: int = 0,
+    limit: int = 50,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get all SOA documents - Admin/Manager only"""
+    user_role = current_user.get("role", "agent")
     
-    lead = await db.leads.find_one({"id": scope["lead_id"]})
+    if user_role not in ["admin", "manager"]:
+        raise HTTPException(status_code=403, detail="Admin or Manager access required")
+    
+    # Determine which users' documents to show
+    if user_role == "admin":
+        # Admin sees all
+        query = {}
+    else:
+        # Manager sees their agents' documents
+        agent_ids = [current_user["id"]]
+        async for agent in db.users.find({"manager_id": current_user["id"]}, {"id": 1}):
+            agent_ids.append(agent["id"])
+        query = {"created_by_user": {"$in": agent_ids}}
+    
+    # Get scopes with pagination
+    scopes = await db.scope_forms.find(query).sort("created_date", -1).skip(skip).limit(limit).to_list(limit)
+    total = await db.scope_forms.count_documents(query)
+    
+    # Enrich with lead and agent info
+    enriched_scopes = []
+    for scope in scopes:
+        lead = await db.leads.find_one({"id": scope.get("lead_id")}, {"name": 1, "phone": 1})
+        agent = await db.users.find_one({"id": scope.get("created_by_user")}, {"name": 1, "email": 1})
+        
+        enriched_scopes.append({
+            "id": scope["id"],
+            "lead_id": scope.get("lead_id"),
+            "lead_name": lead.get("name") if lead else "Unknown",
+            "lead_phone": lead.get("phone") if lead else "",
+            "agent_name": agent.get("name") if agent else "Unknown",
+            "agent_email": agent.get("email") if agent else "",
+            "beneficiary_name": scope.get("form_fields", {}).get("beneficiary_name", ""),
+            "typed_name": scope.get("typed_name", ""),
+            "created_date": scope.get("created_date"),
+            "has_pdf": bool(scope.get("pdf_base64")),
+            "products": {
+                "medicare_advantage": scope.get("form_fields", {}).get("medicare_advantage", False),
+                "medicare_supplement": scope.get("form_fields", {}).get("medicare_supplement", False),
+                "prescription_drug": scope.get("form_fields", {}).get("prescription_drug", False),
+                "dental_vision": scope.get("form_fields", {}).get("dental_vision", False),
+            }
+        })
+    
+    return {
+        "scopes": enriched_scopes,
+        "total": total,
+        "skip": skip,
+        "limit": limit
+    }
+
+async def generate_scope_pdf(scope: dict, lead: dict, agent: dict) -> dict:
+    """Generate professional PDF for Scope of Appointment"""
+    from reportlab.lib.pagesizes import letter
+    from reportlab.pdfgen import canvas
+    from reportlab.lib import colors
+    from io import BytesIO
+    import base64
+    
     lead_name = lead["name"] if lead else "Unknown"
+    agent_name = agent["name"] if agent else "Unknown"
     
     buffer = BytesIO()
     p = canvas.Canvas(buffer, pagesize=letter)
