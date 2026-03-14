@@ -1751,8 +1751,7 @@ async def generate_stamped_pdf(scope_id: str, current_user: dict = Depends(get_c
     
     def stamp_sig_p2(sig_data, field_name):
         """
-        FINAL STABLE SIGNATURE STAMPING FUNCTION
-        Handles SVG and PNG signatures with proper normalization.
+        Stamp signature with transparency preserved (no white background).
         """
         import cairosvg
         from datetime import datetime
@@ -1771,14 +1770,10 @@ async def generate_stamped_pdf(scope_id: str, current_user: dict = Depends(get_c
             logger.info(f"[PDF Gen] PAGE 2: SIG '{field_name}' - payload length={len(sig_data)}")
             
             # ==================== 1. SIGNATURE DECODING ====================
-            is_svg = False
-            
             if sig_data.startswith('data:image/svg+xml;base64,'):
-                # SVG FORMAT
-                is_svg = True
+                # SVG FORMAT - convert to PNG
                 sig_b64 = sig_data.split(',', 1)[1]
                 sig_bytes = base64.b64decode(sig_b64)
-                # Convert SVG → PNG using cairosvg
                 sig_bytes = cairosvg.svg2png(bytestring=sig_bytes, output_width=300, output_height=80)
                 img = Image.open(BytesIO(sig_bytes))
                 logger.info(f"[PDF Gen] PAGE 2: SIG '{field_name}' - SVG converted to PNG")
@@ -1788,17 +1783,14 @@ async def generate_stamped_pdf(scope_id: str, current_user: dict = Depends(get_c
                 sig_b64 = sig_data.split(',', 1)[1]
                 sig_bytes = base64.b64decode(sig_b64)
                 img = Image.open(BytesIO(sig_bytes))
-                img = img.convert('RGB')
                 logger.info(f"[PDF Gen] PAGE 2: SIG '{field_name}' - PNG loaded")
                 
             elif sig_data.startswith('data:image'):
-                # OTHER IMAGE FORMAT - try to handle
                 parts = sig_data.split(',', 1)
                 if len(parts) != 2:
                     logger.error(f"[PDF Gen] PAGE 2: SIG '{field_name}' FAILED - malformed data URI")
                     return False
                 if 'svg+xml' in sig_data:
-                    is_svg = True
                     sig_bytes = base64.b64decode(parts[1])
                     sig_bytes = cairosvg.svg2png(bytestring=sig_bytes, output_width=300, output_height=80)
                     img = Image.open(BytesIO(sig_bytes))
@@ -1806,53 +1798,35 @@ async def generate_stamped_pdf(scope_id: str, current_user: dict = Depends(get_c
                     sig_bytes = base64.b64decode(parts[1])
                     img = Image.open(BytesIO(sig_bytes))
             else:
-                # Raw base64 - assume PNG
                 sig_bytes = base64.b64decode(sig_data)
                 img = Image.open(BytesIO(sig_bytes))
             
-            # ==================== 2. NORMALIZE IMAGE ====================
-            # Resize to max width 300px if larger
-            max_width = 300
-            if img.width > max_width:
-                ratio = max_width / img.width
-                new_height = int(img.height * ratio)
-                img = img.resize((max_width, new_height), Image.LANCZOS)
-                logger.info(f"[PDF Gen] PAGE 2: SIG '{field_name}' - resized to {img.size}")
-            
-            # Convert to RGBA for transparency handling
+            # ==================== 2. PRESERVE TRANSPARENCY ====================
+            # Convert to RGBA to preserve transparency
             img = img.convert('RGBA')
             
-            # Flatten transparency onto WHITE background
-            bg = Image.new("RGB", img.size, "white")
-            bg.paste(img, mask=img.split()[-1])
-            
-            # Save clean PNG into new BytesIO buffer
+            # Save transparent PNG to BytesIO buffer
             buffer = BytesIO()
-            bg.save(buffer, format='PNG')
-            buffer.seek(0)  # CRITICAL
+            img.save(buffer, format='PNG')
+            buffer.seek(0)
             
-            logger.info(f"[PDF Gen] PAGE 2: SIG '{field_name}' - normalized: size={bg.size}")
+            logger.info(f"[PDF Gen] PAGE 2: SIG '{field_name}' - transparent PNG: size={img.size}")
             
             # ==================== 3. STAMP SIGNATURE ====================
-            # Fixed coordinates and size
             sig_x = coords['x']
             sig_y = coords['y']
-            sig_width = 160
-            sig_height = 40
             
-            c2.drawImage(ImageReader(buffer), sig_x, sig_y, width=sig_width, height=sig_height, mask='auto')
+            c2.drawImage(ImageReader(buffer), sig_x, sig_y, width=160, height=40, mask='auto')
             
-            # ==================== 5. ADD ELECTRONIC SIGNATURE CONFIRMATION ====================
+            # Add e-signature confirmation below
             server_timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
             confirmation_text = f"Signed electronically on {server_timestamp} via mobile application"
-            
             c2.setFont("Helvetica", 6)
-            c2.setFillColorRGB(0.4, 0.4, 0.4)  # Gray text
+            c2.setFillColorRGB(0.4, 0.4, 0.4)
             c2.drawString(sig_x, sig_y - 8, confirmation_text)
             
             stamped_items.append(f"PAGE 2: SIG '{field_name}' @ ({sig_x}, {sig_y})")
-            logger.info(f"[PDF Gen] PAGE 2: STAMPED SIG '{field_name}' @ ({sig_x}, {sig_y}) width={sig_width} height={sig_height}")
-            logger.info(f"[PDF Gen] PAGE 2: Added e-signature confirmation: {confirmation_text}")
+            logger.info(f"[PDF Gen] PAGE 2: STAMPED SIG '{field_name}' @ ({sig_x}, {sig_y})")
             
             return True
             
