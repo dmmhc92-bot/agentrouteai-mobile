@@ -174,74 +174,108 @@ export default function ScopeDetailScreen() {
     return fileUri;
   };
 
-  // Open PDF in browser (web only)
-  const openPdfInBrowser = async () => {
-    const pdfBase64 = await getPdfData();
-    if (!pdfBase64) {
-      Alert.alert('Error', 'Could not load PDF document');
-      return;
-    }
-    
-    // Create a data URL and open it
-    const dataUrl = `data:application/pdf;base64,${pdfBase64}`;
-    
-    // For web, we can create a blob and open it
-    try {
-      const byteCharacters = atob(pdfBase64);
-      const byteNumbers = new Array(byteCharacters.length);
-      for (let i = 0; i < byteCharacters.length; i++) {
-        byteNumbers[i] = byteCharacters.charCodeAt(i);
-      }
-      const byteArray = new Uint8Array(byteNumbers);
-      const blob = new Blob([byteArray], { type: 'application/pdf' });
-      const blobUrl = URL.createObjectURL(blob);
-      window.open(blobUrl, '_blank');
-    } catch (error) {
-      console.error('Error opening PDF:', error);
-      // Fallback: try to download
-      const link = document.createElement('a');
-      link.href = dataUrl;
-      link.download = getFilename();
-      link.click();
-    }
-  };
-
-  // iOS-native PDF preview using Sharing (opens Quick Look)
-  const handlePreview = async () => {
+  /**
+   * DIRECT VIEW PDF - Single function for both web and mobile
+   * Fetches PDF from backend and opens/downloads it directly
+   */
+  const handleViewPdfDirect = async () => {
+    console.log('[ViewPDF] Button clicked - starting direct view flow');
     setActionLoading('preview');
+    
     try {
-      // On web, open in browser
-      if (isWeb) {
-        await openPdfInBrowser();
-        setActionLoading(null);
-        return;
-      }
+      // Step 1: Fetch PDF from backend
+      console.log('[ViewPDF] Fetching PDF from backend...');
+      const pdfBase64 = await getPdfData();
       
-      const fileUri = await savePdfToTempFile();
-      if (!fileUri) {
+      if (!pdfBase64) {
+        console.error('[ViewPDF] No PDF data received');
         Alert.alert('Error', 'Could not load PDF document');
         return;
       }
       
-      // On iOS, expo-sharing opens the native share sheet which includes Quick Look preview
-      // This is the most reliable way to preview PDFs on iOS
-      const canShare = await Sharing.isAvailableAsync();
-      if (canShare) {
-        await Sharing.shareAsync(fileUri, {
-          mimeType: 'application/pdf',
-          dialogTitle: 'View Scope of Appointment',
-          UTI: 'com.adobe.pdf',
-        });
+      console.log('[ViewPDF] PDF received, size:', pdfBase64.length, 'chars');
+      const filename = `scope-${id}.pdf`;
+      
+      if (isWeb) {
+        // WEB: Direct blob-to-anchor download/open flow
+        console.log('[ViewPDF] Web platform - creating blob...');
+        
+        try {
+          // Convert base64 to binary
+          const byteCharacters = atob(pdfBase64);
+          const byteNumbers = new Array(byteCharacters.length);
+          for (let i = 0; i < byteCharacters.length; i++) {
+            byteNumbers[i] = byteCharacters.charCodeAt(i);
+          }
+          const byteArray = new Uint8Array(byteNumbers);
+          
+          // Create blob with PDF MIME type
+          const blob = new Blob([byteArray], { type: 'application/pdf' });
+          console.log('[ViewPDF] Blob created, size:', blob.size, 'bytes');
+          
+          // Create object URL
+          const fileUrl = URL.createObjectURL(blob);
+          console.log('[ViewPDF] Object URL created:', fileUrl.substring(0, 50) + '...');
+          
+          // Create and trigger anchor click for download/open
+          const a = document.createElement('a');
+          a.href = fileUrl;
+          a.target = '_blank';
+          a.rel = 'noopener noreferrer';
+          a.download = filename;
+          document.body.appendChild(a);
+          
+          console.log('[ViewPDF] Triggering anchor click...');
+          a.click();
+          
+          // Cleanup
+          setTimeout(() => {
+            a.remove();
+            URL.revokeObjectURL(fileUrl);
+            console.log('[ViewPDF] Cleanup complete');
+          }, 1000);
+          
+          console.log('[ViewPDF] Web flow complete - PDF should be opening/downloading');
+          
+        } catch (webError: any) {
+          console.error('[ViewPDF] Web blob/download error:', webError);
+          Alert.alert('Download Error', 'Could not download PDF. Please try again.');
+        }
+        
       } else {
-        Alert.alert(
-          'Preview Unavailable',
-          'PDF preview is not available on this device. Use Print or Save to Files instead.'
-        );
+        // MOBILE: Save to temp file and open with native viewer
+        console.log('[ViewPDF] Mobile platform - saving to temp file...');
+        
+        const fileUri = `${FileSystem.cacheDirectory}${filename}`;
+        
+        await FileSystem.writeAsStringAsync(fileUri, pdfBase64, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        
+        console.log('[ViewPDF] File saved to:', fileUri);
+        
+        // Open with native share sheet (includes Quick Look on iOS)
+        const canShare = await Sharing.isAvailableAsync();
+        if (canShare) {
+          console.log('[ViewPDF] Opening with native share sheet...');
+          await Sharing.shareAsync(fileUri, {
+            mimeType: 'application/pdf',
+            dialogTitle: 'View Scope of Appointment',
+            UTI: 'com.adobe.pdf',
+          });
+          console.log('[ViewPDF] Mobile flow complete');
+        } else {
+          Alert.alert(
+            'View Unavailable',
+            'PDF viewing is not available on this device. Use Print or Save to Files instead.'
+          );
+        }
       }
+      
     } catch (error: any) {
-      console.error('Preview error:', error);
+      console.error('[ViewPDF] Error:', error);
       if (!error.message?.includes('canceled') && !error.message?.includes('cancelled')) {
-        Alert.alert('Preview Error', 'Unable to preview document. Please try again.');
+        Alert.alert('View Error', `Unable to view document: ${error.message}`);
       }
     } finally {
       setActionLoading(null);
