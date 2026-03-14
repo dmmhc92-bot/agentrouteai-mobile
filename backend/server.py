@@ -300,11 +300,6 @@ class PipelineCaseUpdate(BaseModel):
     premium: Optional[float] = None
     commission: Optional[float] = None
     policy_type: Optional[str] = None
-    resource_type: str
-    url: Optional[str]
-    content: Optional[str]
-    category: str
-    created_date: datetime
 
 # ==================== HELPER FUNCTIONS ====================
 
