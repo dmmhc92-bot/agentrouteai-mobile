@@ -1573,20 +1573,14 @@ async def generate_stamped_pdf(scope_id: str, current_user: dict = Depends(get_c
     """
     SINGLE SOURCE OF TRUTH for SOA PDF generation.
     
-    This endpoint:
-    1. Loads the EXACT original PDF form (original_soa_form.pdf)
-    2. Draws all field values DIRECTLY onto the page (not form fields)
-    3. Embeds signature images onto the page
-    4. Returns the final VISIBLY FILLED PDF
+    This draws ALL content directly onto the PDF page - NO form field rendering.
+    Uses fixed coordinates derived from the original form layout.
     
-    Used by: View PDF, Print, Share, Save to Files
+    Returns a visibly filled, flattened PDF for View/Print/Share/Save.
     """
     import os
     from reportlab.pdfgen import canvas as rl_canvas
-    from reportlab.lib.pagesizes import letter
     from reportlab.lib.utils import ImageReader
-    from reportlab.pdfbase import pdfmetrics
-    from reportlab.pdfbase.ttfonts import TTFont
     from PIL import Image
     from io import BytesIO
     from PyPDF2 import PdfReader, PdfWriter
@@ -1611,27 +1605,28 @@ async def generate_stamped_pdf(scope_id: str, current_user: dict = Depends(get_c
             if not lead or (lead.get("assigned_agent_id") and lead.get("assigned_agent_id") != user_id):
                 raise HTTPException(status_code=403, detail="Access denied")
     
-    # ==================== LOG INPUT DATA ====================
-    logger.info(f"[PDF Gen] --- INPUT DATA VERIFICATION ---")
+    # ==================== EXTRACT ALL FIELD VALUES ====================
+    logger.info(f"[PDF Gen] --- INPUT DATA ---")
     
-    # Extract and log all field values
-    beneficiary_name = scope.get('beneficiary_name') or scope.get('typed_name') or ''
-    beneficiary_phone = scope.get('beneficiary_phone') or scope.get('form_fields', {}).get('beneficiary_phone') or ''
-    beneficiary_address = scope.get('beneficiary_address') or scope.get('form_fields', {}).get('beneficiary_address') or ''
-    agent_name = scope.get('agent_name') or scope.get('agent_typed_name') or ''
-    agent_phone = scope.get('agent_phone') or scope.get('form_fields', {}).get('agent_phone') or ''
-    appointment_date = scope.get('appointment_date') or scope.get('form_fields', {}).get('appointment_date') or ''
-    signature_date = scope.get('signature_date') or scope.get('form_fields', {}).get('signature_date') or ''
-    contact_method = scope.get('initial_contact_method') or scope.get('form_fields', {}).get('initial_contact_method') or ''
-    plans_to_represent = scope.get('plans_to_represent') or scope.get('form_fields', {}).get('plans_to_represent') or ''
-    auth_rep_name = scope.get('auth_rep_name') or scope.get('form_fields', {}).get('auth_rep_name') or ''
-    auth_rep_relationship = scope.get('auth_rep_relationship') or scope.get('form_fields', {}).get('auth_rep_relationship') or ''
+    # Get form_fields if stored
+    form_fields = scope.get('form_fields', {})
+    
+    # Extract values with fallbacks
+    beneficiary_name = scope.get('beneficiary_name') or scope.get('typed_name') or form_fields.get('beneficiary_name') or ''
+    beneficiary_phone = scope.get('beneficiary_phone') or form_fields.get('beneficiary_phone') or ''
+    beneficiary_address = scope.get('beneficiary_address') or form_fields.get('beneficiary_address') or ''
+    agent_name = scope.get('agent_name') or scope.get('agent_typed_name') or form_fields.get('agent_name') or ''
+    agent_phone = scope.get('agent_phone') or form_fields.get('agent_phone') or ''
+    appointment_date = scope.get('appointment_date') or form_fields.get('appointment_date') or ''
+    signature_date = scope.get('signature_date') or form_fields.get('signature_date') or ''
+    contact_method = scope.get('initial_contact_method') or form_fields.get('initial_contact_method') or ''
+    plans_to_represent = scope.get('plans_to_represent') or form_fields.get('plans_to_represent') or ''
+    auth_rep_name = scope.get('auth_rep_name') or form_fields.get('auth_rep_name') or ''
+    auth_rep_relationship = scope.get('auth_rep_relationship') or form_fields.get('auth_rep_relationship') or ''
     
     # Products/checkboxes
     products = scope.get('products_to_discuss', [])
-    form_fields = scope.get('form_fields', {})
     if not products:
-        # Try to get from form_fields
         if form_fields.get('medicare_advantage'): products.append('medicare_advantage')
         if form_fields.get('medicare_supplement'): products.append('medicare_supplement')
         if form_fields.get('prescription_drug'): products.append('prescription_drug')
@@ -1642,20 +1637,21 @@ async def generate_stamped_pdf(scope_id: str, current_user: dict = Depends(get_c
     beneficiary_signature = scope.get('signature', '')
     agent_signature = scope.get('agent_signature', '')
     
-    logger.info(f"[PDF Gen] Beneficiary Name: '{beneficiary_name}'")
-    logger.info(f"[PDF Gen] Beneficiary Phone: '{beneficiary_phone}'")
-    logger.info(f"[PDF Gen] Beneficiary Address: '{beneficiary_address}'")
-    logger.info(f"[PDF Gen] Agent Name: '{agent_name}'")
-    logger.info(f"[PDF Gen] Agent Phone: '{agent_phone}'")
-    logger.info(f"[PDF Gen] Appointment Date: '{appointment_date}'")
-    logger.info(f"[PDF Gen] Signature Date: '{signature_date}'")
-    logger.info(f"[PDF Gen] Contact Method: '{contact_method}'")
-    logger.info(f"[PDF Gen] Plans to Represent: '{plans_to_represent}'")
-    logger.info(f"[PDF Gen] Auth Rep Name: '{auth_rep_name}'")
-    logger.info(f"[PDF Gen] Products: {products}")
-    logger.info(f"[PDF Gen] Beneficiary Signature: {'YES (' + str(len(beneficiary_signature)) + ' chars)' if beneficiary_signature else 'NO'}")
-    logger.info(f"[PDF Gen] Agent Signature: {'YES (' + str(len(agent_signature)) + ' chars)' if agent_signature else 'NO'}")
-    logger.info(f"[PDF Gen] --- END INPUT DATA ---")
+    # Log all values for verification
+    logger.info(f"[PDF Gen] beneficiary_name = '{beneficiary_name}'")
+    logger.info(f"[PDF Gen] beneficiary_phone = '{beneficiary_phone}'")
+    logger.info(f"[PDF Gen] beneficiary_address = '{beneficiary_address}'")
+    logger.info(f"[PDF Gen] agent_name = '{agent_name}'")
+    logger.info(f"[PDF Gen] agent_phone = '{agent_phone}'")
+    logger.info(f"[PDF Gen] appointment_date = '{appointment_date}'")
+    logger.info(f"[PDF Gen] signature_date = '{signature_date}'")
+    logger.info(f"[PDF Gen] contact_method = '{contact_method}'")
+    logger.info(f"[PDF Gen] plans_to_represent = '{plans_to_represent}'")
+    logger.info(f"[PDF Gen] auth_rep_name = '{auth_rep_name}'")
+    logger.info(f"[PDF Gen] auth_rep_relationship = '{auth_rep_relationship}'")
+    logger.info(f"[PDF Gen] products = {products}")
+    logger.info(f"[PDF Gen] beneficiary_signature = {'YES (' + str(len(beneficiary_signature)) + ' chars)' if beneficiary_signature else 'NONE'}")
+    logger.info(f"[PDF Gen] agent_signature = {'YES (' + str(len(agent_signature)) + ' chars)' if agent_signature else 'NONE'}")
     
     # ==================== LOAD ORIGINAL PDF ====================
     original_pdf_path = '/app/backend/original_soa_form.pdf'
@@ -1664,208 +1660,228 @@ async def generate_stamped_pdf(scope_id: str, current_user: dict = Depends(get_c
         logger.error("[PDF Gen] Original PDF form not found!")
         raise HTTPException(status_code=500, detail="Original PDF form not found")
     
-    logger.info(f"[PDF Gen] Loading original PDF: {original_pdf_path}")
+    logger.info(f"[PDF Gen] Loading: {original_pdf_path}")
     
-    # Read original PDF to get page dimensions
+    # Read original PDF dimensions
     with open(original_pdf_path, 'rb') as f:
         original_reader = PdfReader(f)
-        original_page = original_reader.pages[0]
-        page_width = float(original_page.mediabox.width)
-        page_height = float(original_page.mediabox.height)
-        logger.info(f"[PDF Gen] Page dimensions: {page_width} x {page_height}")
+        page = original_reader.pages[0]
+        page_width = float(page.mediabox.width)
+        page_height = float(page.mediabox.height)
     
-    # ==================== CREATE OVERLAY WITH TEXT AND SIGNATURES ====================
+    logger.info(f"[PDF Gen] Page: {page_width} x {page_height} pts")
+    
+    # ==================== CREATE OVERLAY - DRAW ALL CONTENT DIRECTLY ====================
     overlay_buffer = BytesIO()
     c = rl_canvas.Canvas(overlay_buffer, pagesize=(page_width, page_height))
     
-    # Set font
-    c.setFont("Helvetica", 10)
-    c.setFillColorRGB(0, 0, 0)  # Black text
+    # ==================== FIXED COORDINATES (from form field analysis) ====================
+    # Page is 612 x 792 pts. Y=0 is BOTTOM, Y=792 is TOP.
+    # Form field positions extracted from PDF:
+    #   Name field: y=683-709 (center ~696)
+    #   Phone field: y=683-709 (center ~696)
+    #   Address field: y=655-681 (center ~668)
+    #   Auth Rep Name: y=569-595 (center ~582)
+    #   Auth Rep Relationship: y=539-568 (center ~554)
+    #   Agent Name: y=461-489 (center ~475)
+    #   Agent Phone: y=461-489 (center ~475)
+    #   Contact Method: y=432-460 (center ~446)
+    #   Plans: y=372-401 (center ~387)
+    #   Checkboxes: y ranges from 196 to 545
     
-    # ==================== DRAW TEXT FIELDS ====================
-    # Coordinates are in PDF points from BOTTOM-LEFT
-    # Adjusted based on the original form layout
+    # Track what we stamp
+    stamped_items = []
     
-    # Helper function to draw text with logging
-    def draw_text(label, value, x, y, font_size=10):
-        if value:
-            c.setFont("Helvetica", font_size)
-            c.drawString(x, y, str(value))
-            logger.info(f"[PDF Gen] Drew '{label}': '{value}' at ({x}, {y})")
+    def stamp_text(label, value, x, y, size=10, max_chars=None):
+        """Stamp text directly on page and log it"""
+        if not value:
+            logger.info(f"[PDF Gen] SKIP '{label}' - empty value")
+            return
+        text = str(value)
+        if max_chars and len(text) > max_chars:
+            text = text[:max_chars]
+        c.setFont("Helvetica", size)
+        c.setFillColorRGB(0, 0, 0)
+        c.drawString(x, y, text)
+        stamped_items.append(f"{label}: '{text}' @ ({x}, {y})")
+        logger.info(f"[PDF Gen] STAMPED '{label}' = '{text}' at ({x}, {y})")
     
-    # Product checkboxes - draw checkmarks
-    checkbox_size = 12
-    c.setFont("Helvetica-Bold", checkbox_size)
+    def stamp_check(label, x, y):
+        """Stamp a checkmark"""
+        c.setFont("ZapfDingbats", 12)
+        c.setFillColorRGB(0, 0, 0)
+        c.drawString(x, y, "4")  # Zapf Dingbats checkmark
+        stamped_items.append(f"CHECK: {label} @ ({x}, {y})")
+        logger.info(f"[PDF Gen] STAMPED CHECK '{label}' at ({x}, {y})")
     
-    # Checkbox positions (approximate - adjust based on actual form)
-    if 'prescription_drug' in products:
-        c.drawString(135, 570, "✓")  # Part D
-        logger.info("[PDF Gen] Checked: Prescription Drug (Part D)")
+    # ==================== STAMP BENEFICIARY INFO ====================
+    # Based on form: Name field at x=72, y=683
+    stamp_text("Beneficiary Name", beneficiary_name, 75, 690, 10, 35)
+    # Phone field at x=343, y=683
+    stamp_text("Beneficiary Phone", beneficiary_phone, 346, 690, 10, 20)
+    # Address field at x=83, y=655
+    stamp_text("Beneficiary Address", beneficiary_address, 86, 662, 9, 70)
+    
+    # ==================== STAMP AUTH REP INFO ====================
+    # Auth rep name at x=164, y=569
+    stamp_text("Auth Rep Name", auth_rep_name, 167, 576, 9, 40)
+    # Auth rep relationship at x=217, y=539
+    stamp_text("Auth Rep Relationship", auth_rep_relationship, 220, 548, 9, 30)
+    
+    # ==================== STAMP AGENT INFO ====================
+    # Agent name at x=104, y=461
+    stamp_text("Agent Name", agent_name, 107, 470, 10, 25)
+    # Agent phone at x=376, y=461
+    stamp_text("Agent Phone", agent_phone, 379, 470, 10, 15)
+    
+    # ==================== STAMP APPOINTMENT INFO ====================
+    # Contact method at x=378, y=432
+    stamp_text("Contact Method", contact_method, 381, 442, 9, 20)
+    # Plans at x=279, y=372
+    stamp_text("Plans", plans_to_represent, 282, 382, 9, 40)
+    
+    # ==================== STAMP CHECKBOXES ====================
+    # Checkbox positions (X is ~53 based on field x=45-70, center ~57)
+    # Part C (Medicare Advantage): y=520 -> center ~532
     if 'medicare_advantage' in products:
-        c.drawString(135, 545, "✓")  # Part C
-        logger.info("[PDF Gen] Checked: Medicare Advantage (Part C)")
-    if 'dental_vision_hearing' in products:
-        c.drawString(135, 520, "✓")  # Dental/Vision
-        logger.info("[PDF Gen] Checked: Dental/Vision/Hearing")
+        stamp_check("Medicare Advantage", 53, 528)
+    # Part D (Prescription Drug): y=439 -> center ~452  
+    if 'prescription_drug' in products:
+        stamp_check("Prescription Drug", 53, 448)
+    # Hospital Indemnity: y=330 -> center ~343
     if 'hospital_indemnity' in products:
-        c.drawString(400, 570, "✓")  # Hospital Indemnity
-        logger.info("[PDF Gen] Checked: Hospital Indemnity")
+        stamp_check("Hospital Indemnity", 53, 339)
+    # Dental/Vision: y=242 -> center ~255
+    if 'dental_vision_hearing' in products:
+        stamp_check("Dental Vision", 53, 251)
+    # Medicare Supplement: y=196 -> center ~209
     if 'medicare_supplement' in products:
-        c.drawString(400, 545, "✓")  # Medigap
-        logger.info("[PDF Gen] Checked: Medicare Supplement")
+        stamp_check("Medicare Supplement", 53, 205)
     
-    # Signature date (near beneficiary signature line)
-    draw_text("Signature Date", signature_date, 480, 380, 10)
+    # ==================== STAMP SIGNATURES ====================
+    # Beneficiary signature - position above auth rep name line
+    # Typical signature line is around y=600-640
+    ben_sig_x = 100
+    ben_sig_y = 610
+    ben_sig_w = 200
+    ben_sig_h = 50
     
-    # Auth rep fields (below signature)
-    draw_text("Auth Rep Name", auth_rep_name, 90, 340, 9)
-    draw_text("Auth Rep Relationship", auth_rep_relationship, 380, 340, 9)
+    # Agent signature - position at bottom of form (around y=100-150)
+    agent_sig_x = 100
+    agent_sig_y = 100
+    agent_sig_w = 200
+    agent_sig_h = 45
     
-    # LSR Section - Row 1: Agent info
-    draw_text("Agent Name", agent_name, 90, 265, 10)
-    draw_text("Agent Phone", agent_phone, 280, 265, 10)
-    
-    # LSR Section - Row 2: Beneficiary info
-    draw_text("Beneficiary Name", beneficiary_name, 90, 220, 10)
-    draw_text("Beneficiary Phone", beneficiary_phone, 280, 220, 10)
-    draw_text("Appointment Date", appointment_date, 460, 220, 10)
-    
-    # LSR Section - Row 3: Address
-    draw_text("Beneficiary Address", beneficiary_address[:60] if beneficiary_address else '', 90, 175, 9)
-    
-    # LSR Section - Row 4: Contact method and plans
-    draw_text("Contact Method", contact_method, 90, 130, 10)
-    draw_text("Plans", plans_to_represent[:40] if plans_to_represent else '', 340, 130, 9)
-    
-    # ==================== DRAW SIGNATURES ====================
-    
-    # Beneficiary signature position
-    ben_sig_x = 90
-    ben_sig_y = 380
-    ben_sig_width = 180
-    ben_sig_height = 50
-    
-    # Agent signature position  
-    agent_sig_x = 90
-    agent_sig_y = 85
-    agent_sig_width = 200
-    agent_sig_height = 40
-    
-    def embed_signature(sig_data, x, y, width, height, label):
+    def stamp_signature(sig_data, x, y, w, h, label):
+        """Embed signature image directly on page"""
         if not sig_data or len(sig_data) < 100:
-            logger.info(f"[PDF Gen] No {label} signature to embed")
+            logger.info(f"[PDF Gen] SKIP {label} signature - no data")
             return False
         
         try:
-            logger.info(f"[PDF Gen] Processing {label} signature ({len(sig_data)} chars)")
+            logger.info(f"[PDF Gen] Processing {label} signature ({len(sig_data)} chars)...")
             
-            # Check if it's SVG format
+            # Handle SVG
             if sig_data.strip().startswith('<svg') or sig_data.strip().startswith('<?xml'):
-                logger.info(f"[PDF Gen] {label} signature is SVG format - creating PNG from it")
-                # Convert SVG to PNG using cairosvg if available, otherwise create simple fallback
+                logger.info(f"[PDF Gen] {label} is SVG format")
                 try:
                     import cairosvg
-                    png_bytes = cairosvg.svg2png(bytestring=sig_data.encode(), output_width=int(width*2), output_height=int(height*2))
-                    sig_image = Image.open(BytesIO(png_bytes))
+                    png_bytes = cairosvg.svg2png(bytestring=sig_data.encode(), output_width=int(w*3), output_height=int(h*3))
+                    img = Image.open(BytesIO(png_bytes))
                 except ImportError:
-                    logger.warning(f"[PDF Gen] cairosvg not available - creating transparent placeholder")
-                    # Create a simple transparent image as fallback
-                    sig_image = Image.new('RGBA', (int(width*2), int(height*2)), (0, 0, 0, 0))
+                    logger.warning("[PDF Gen] cairosvg not available")
+                    return False
             else:
-                # Regular base64 image (PNG or JPEG)
-                # Extract base64 data
+                # Handle base64 PNG/JPEG
                 if ',' in sig_data:
-                    sig_base64 = sig_data.split(',')[1]
+                    sig_b64 = sig_data.split(',')[1]
                 else:
-                    sig_base64 = sig_data
-                
-                sig_bytes = base64.b64decode(sig_base64)
-                sig_image = Image.open(BytesIO(sig_bytes))
+                    sig_b64 = sig_data
+                sig_bytes = base64.b64decode(sig_b64)
+                img = Image.open(BytesIO(sig_bytes))
             
-            # Convert to RGBA for transparency
-            if sig_image.mode != 'RGBA':
-                sig_image = sig_image.convert('RGBA')
+            # Convert to RGBA
+            if img.mode != 'RGBA':
+                img = img.convert('RGBA')
             
             # Save to buffer
-            img_buffer = BytesIO()
-            sig_image.save(img_buffer, format='PNG')
-            img_buffer.seek(0)
+            buf = BytesIO()
+            img.save(buf, format='PNG')
+            buf.seek(0)
             
             # Draw on canvas
-            img_reader = ImageReader(img_buffer)
-            c.drawImage(img_reader, x, y, width=width, height=height, 
-                       mask='auto', preserveAspectRatio=True, anchor='sw')
+            reader = ImageReader(buf)
+            c.drawImage(reader, x, y, width=w, height=h, mask='auto', preserveAspectRatio=True, anchor='sw')
             
-            logger.info(f"[PDF Gen] {label} signature embedded at ({x}, {y}), size: {width}x{height}")
+            stamped_items.append(f"SIGNATURE: {label} @ ({x}, {y}) size {w}x{h}")
+            logger.info(f"[PDF Gen] STAMPED {label} signature at ({x}, {y}) size {w}x{h}")
             return True
             
         except Exception as e:
-            logger.error(f"[PDF Gen] Failed to embed {label} signature: {e}")
-            import traceback
-            logger.error(f"[PDF Gen] Traceback: {traceback.format_exc()}")
+            logger.error(f"[PDF Gen] {label} signature FAILED: {e}")
             return False
     
-    embed_signature(beneficiary_signature, ben_sig_x, ben_sig_y, ben_sig_width, ben_sig_height, "Beneficiary")
-    embed_signature(agent_signature, agent_sig_x, agent_sig_y, agent_sig_width, agent_sig_height, "Agent")
+    stamp_signature(beneficiary_signature, ben_sig_x, ben_sig_y, ben_sig_w, ben_sig_h, "Beneficiary")
+    stamp_signature(agent_signature, agent_sig_x, agent_sig_y, agent_sig_w, agent_sig_h, "Agent")
     
-    # Save the overlay
+    # ==================== SAVE OVERLAY ====================
     c.save()
     overlay_buffer.seek(0)
     
-    # ==================== MERGE OVERLAY WITH ORIGINAL PDF ====================
+    # ==================== MERGE WITH ORIGINAL PDF ====================
     logger.info("[PDF Gen] Merging overlay with original PDF...")
     
     with open(original_pdf_path, 'rb') as f:
-        original_reader = PdfReader(f)
+        orig_reader = PdfReader(f)
         overlay_reader = PdfReader(overlay_buffer)
         writer = PdfWriter()
         
-        # Merge first page
-        page = original_reader.pages[0]
-        if len(overlay_reader.pages) > 0:
-            page.merge_page(overlay_reader.pages[0])
-        writer.add_page(page)
+        # Merge first page (form + overlay)
+        page1 = orig_reader.pages[0]
+        if overlay_reader.pages:
+            page1.merge_page(overlay_reader.pages[0])
+        writer.add_page(page1)
         
-        # Add remaining pages if any
-        for i in range(1, len(original_reader.pages)):
-            writer.add_page(original_reader.pages[i])
+        # Add page 2 unchanged
+        if len(orig_reader.pages) > 1:
+            writer.add_page(orig_reader.pages[1])
         
-        # Write final PDF
+        # Write to buffer
         output = BytesIO()
         writer.write(output)
         output.seek(0)
-        
         pdf_bytes = output.read()
-        pdf_base64 = base64.b64encode(pdf_bytes).decode()
     
-    logger.info(f"[PDF Gen] Final PDF size: {len(pdf_bytes)} bytes")
-    logger.info(f"[PDF Gen] ========== PDF GENERATION COMPLETE ==========")
+    pdf_base64 = base64.b64encode(pdf_bytes).decode()
     
-    # Save to database
+    # ==================== FINAL LOG ====================
+    logger.info(f"[PDF Gen] --- STAMPED {len(stamped_items)} ITEMS ---")
+    for item in stamped_items:
+        logger.info(f"[PDF Gen]   {item}")
+    logger.info(f"[PDF Gen] Final PDF: {len(pdf_bytes)} bytes")
+    logger.info(f"[PDF Gen] ========== COMPLETE ==========")
+    
+    # Save to DB
     await db.scope_forms.update_one(
         {"id": scope_id},
-        {"$set": {
-            "stamped_pdf_base64": pdf_base64, 
-            "pdf_generated_at": datetime.utcnow().isoformat()
-        }}
+        {"$set": {"stamped_pdf_base64": pdf_base64, "pdf_generated_at": datetime.utcnow().isoformat()}}
     )
     
     return {
         "pdf_base64": pdf_base64,
         "filename": f"SOA_{beneficiary_name.replace(' ', '_') if beneficiary_name else 'Document'}_{scope_id[:8]}.pdf",
         "size_bytes": len(pdf_bytes),
-        "generated_at": datetime.utcnow().isoformat()
+        "generated_at": datetime.utcnow().isoformat(),
+        "items_stamped": len(stamped_items)
     }
 
 
 @api_router.get("/scope/{scope_id}/pdf")
 async def get_scope_pdf(scope_id: str, current_user: dict = Depends(get_current_user)):
     """
-    Get the generated PDF for a scope.
-    Always generates fresh to ensure latest data.
-    This is the SINGLE endpoint for all PDF operations (View/Print/Share/Save).
+    Get the generated PDF. Always generates fresh.
+    This is the SINGLE endpoint for View/Print/Share/Save.
     """
-    # Always generate fresh PDF to ensure it contains latest data
     return await generate_stamped_pdf(scope_id, current_user)
 
 @api_router.get("/scope/lead/{lead_id}")
