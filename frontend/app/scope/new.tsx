@@ -164,8 +164,28 @@ export default function NewScopeScreen() {
     if (!hasProduct) return 'Please select at least one product to discuss';
     
     if (!formData.consent_given) return 'Beneficiary must acknowledge consent';
-    if (!beneficiarySignature) return 'Beneficiary signature is required';
-    if (!agentSignature) return 'Agent signature is required';
+    
+    // Validate signatures exist and are real image data (not empty or placeholder)
+    if (!beneficiarySignature) {
+      return 'Beneficiary handwritten signature is required. Tap the signature area to sign.';
+    }
+    if (!beneficiarySignature.startsWith('data:image/')) {
+      return 'Invalid beneficiary signature format. Please sign again.';
+    }
+    // Check for minimum signature data (base64 PNG should be >500 chars for a real signature)
+    if (beneficiarySignature.length < 500) {
+      return 'Beneficiary signature appears incomplete. Please draw a full signature.';
+    }
+    
+    if (!agentSignature) {
+      return 'Agent handwritten signature is required. Tap the signature area to sign.';
+    }
+    if (!agentSignature.startsWith('data:image/')) {
+      return 'Invalid agent signature format. Please sign again.';
+    }
+    if (agentSignature.length < 500) {
+      return 'Agent signature appears incomplete. Please draw a full signature.';
+    }
     
     return null;
   };
