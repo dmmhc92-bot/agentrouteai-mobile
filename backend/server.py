@@ -1502,9 +1502,10 @@ async def create_scope(scope_data: ScopeCreate, current_user: dict = Depends(get
     pdf_error = None
     try:
         logger.info(f"Generating PDF for SOA {scope_id}")
-        pdf_data = await generate_scope_pdf(scope_doc, lead, agent)
-        scope_doc["pdf_base64"] = pdf_data["pdf_base64"]
-        logger.info(f"PDF generated successfully for SOA {scope_id}, size: {len(pdf_data['pdf_base64'])} chars")
+        # Use internal PDF generation (same as generate_stamped_pdf endpoint)
+        pdf_result = await _generate_pdf_internal(scope_doc)
+        scope_doc["pdf_base64"] = pdf_result["pdf_base64"]
+        logger.info(f"PDF generated successfully for SOA {scope_id}, size: {len(pdf_result['pdf_base64'])} chars")
     except Exception as e:
         pdf_error = str(e)
         logger.error(f"Failed to generate PDF for SOA {scope_id}: {type(e).__name__}: {e}")
