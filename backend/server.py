@@ -1592,13 +1592,20 @@ async def generate_stamped_pdf(scope_id: str, current_user: dict = Depends(get_c
     if not scope:
         raise HTTPException(status_code=404, detail="Scope not found")
     
-    # Check authorization
+    # Check authorization - allow if:
+    # 1. User is admin/manager, OR
+    # 2. User created the scope, OR
+    # 3. User is assigned to the lead
     user_id = current_user.get("id")
     user_role = current_user.get("role")
+    
     if user_role not in ["admin", "manager"]:
-        lead = await db.leads.find_one({"id": scope.get("lead_id")})
-        if lead and lead.get("assigned_agent_id") != user_id:
-            raise HTTPException(status_code=403, detail="Access denied")
+        # Check if user created the scope
+        if scope.get("created_by_user") != user_id:
+            # Check if user is assigned to the lead
+            lead = await db.leads.find_one({"id": scope.get("lead_id")})
+            if not lead or (lead.get("assigned_agent_id") and lead.get("assigned_agent_id") != user_id):
+                raise HTTPException(status_code=403, detail="Access denied")
     
     # Path to the ORIGINAL PDF form
     original_pdf_path = '/app/backend/original_soa_form.pdf'
