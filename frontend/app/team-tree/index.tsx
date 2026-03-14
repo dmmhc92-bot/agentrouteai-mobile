@@ -271,6 +271,17 @@ export default function TeamTreeScreen() {
     }).format(amount);
   };
 
+  if (authLoading) {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#3B82F6" />
+          <Text style={styles.loadingText}>Loading...</Text>
+        </View>
+      </View>
+    );
+  }
+
   if (!isManagerOrAdmin) {
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
