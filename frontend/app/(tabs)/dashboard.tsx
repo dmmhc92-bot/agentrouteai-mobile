@@ -610,4 +610,58 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.8)',
     fontSize: 14,
   },
+  // Compliance Dashboard Cards
+  complianceGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  complianceCard: {
+    flex: 1,
+    minWidth: '45%',
+    backgroundColor: '#1E293B',
+    borderRadius: 12,
+    padding: 16,
+    borderLeftWidth: 4,
+    alignItems: 'flex-start',
+  },
+  complianceValue: {
+    color: '#FFFFFF',
+    fontSize: 28,
+    fontWeight: '700',
+    marginTop: 8,
+  },
+  complianceLabel: {
+    color: '#94A3B8',
+    fontSize: 12,
+    marginTop: 2,
+  },
+  // Agency Management Grid
+  managementGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  managementCard: {
+    flex: 1,
+    minWidth: '45%',
+    backgroundColor: '#1E293B',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+  },
+  managementIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  managementText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
 });
