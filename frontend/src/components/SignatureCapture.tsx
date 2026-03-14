@@ -18,6 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import Svg, { Path, Rect } from 'react-native-svg';
 import { captureRef } from 'react-native-view-shot';
 import * as ImagePicker from 'expo-image-picker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface SignatureCaptureProps {
   visible: boolean;
@@ -42,6 +43,9 @@ const CANVAS_HEIGHT = 180;
 const MIN_POINTS = 10;
 const MIN_PATHS = 1;
 
+// Storage key prefix for signature persistence
+const SIGNATURE_STORAGE_KEY = '@soa_signature_';
+
 export default function SignatureCapture({
   visible,
   onClose,
@@ -58,12 +62,13 @@ export default function SignatureCapture({
   const [isSaving, setIsSaving] = useState(false);
   const [signatureImage, setSignatureImage] = useState<string | null>(null);
   const [totalPoints, setTotalPoints] = useState(0);
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'capturing' | 'success' | 'error'>('idle');
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'capturing' | 'validating' | 'success' | 'error'>('idle');
   
   // Use refs for values that PanResponder needs to access
   const isDrawingRef = useRef(false);
   const currentPointsRef = useRef<Point[]>([]);
   const signatureImageRef = useRef<string | null>(null);
+  const pathsRef = useRef<string[]>([]);
 
   // Sync refs with state
   useEffect(() => {
@@ -73,10 +78,15 @@ export default function SignatureCapture({
   useEffect(() => {
     signatureImageRef.current = signatureImage;
   }, [signatureImage]);
+  
+  useEffect(() => {
+    pathsRef.current = paths;
+  }, [paths]);
 
   // Reset when modal opens
   useEffect(() => {
     if (visible) {
+      console.log(`[SignatureCapture] Modal opened for: ${title}`);
       setPaths([]);
       setCurrentPoints([]);
       setIsSaving(false);
@@ -84,9 +94,11 @@ export default function SignatureCapture({
       setSaveStatus('idle');
       isDrawingRef.current = false;
       currentPointsRef.current = [];
+      pathsRef.current = [];
       
       // Load existing signature if available
-      if (existingSignature && existingSignature.startsWith('data:image/')) {
+      if (existingSignature && existingSignature.startsWith('data:image/') && existingSignature.length > 500) {
+        console.log(`[SignatureCapture] Loading existing signature: ${existingSignature.length} chars`);
         setSignatureImage(existingSignature);
         signatureImageRef.current = existingSignature;
       } else {
@@ -94,7 +106,7 @@ export default function SignatureCapture({
         signatureImageRef.current = null;
       }
     }
-  }, [visible, existingSignature]);
+  }, [visible, existingSignature, title]);
 
   // Convert points to SVG path string
   const pointsToPath = useCallback((points: Point[]): string => {
@@ -121,7 +133,7 @@ export default function SignatureCapture({
     // Touch start
     onPanResponderGrant: (event: GestureResponderEvent) => {
       const { locationX, locationY } = event.nativeEvent;
-      console.log('[Signature] Touch START:', locationX.toFixed(0), locationY.toFixed(0));
+      console.log(`[SignatureCapture] Touch START: ${locationX.toFixed(0)}, ${locationY.toFixed(0)}`);
       
       isDrawingRef.current = true;
       const point = { x: locationX, y: locationY };
@@ -136,7 +148,7 @@ export default function SignatureCapture({
       }
     },
     
-    // Touch move - this is the critical handler for continuous drawing
+    // Touch move
     onPanResponderMove: (event: GestureResponderEvent, gestureState) => {
       if (!isDrawingRef.current) return;
       
@@ -154,12 +166,14 @@ export default function SignatureCapture({
     
     // Touch end
     onPanResponderRelease: () => {
-      console.log('[Signature] Touch END, points:', currentPointsRef.current.length);
+      console.log(`[SignatureCapture] Touch END, points: ${currentPointsRef.current.length}`);
       
       if (currentPointsRef.current.length > 0) {
         const pathStr = pointsToPath(currentPointsRef.current);
         if (pathStr) {
-          setPaths(prev => [...prev, pathStr]);
+          const newPaths = [...pathsRef.current, pathStr];
+          pathsRef.current = newPaths;
+          setPaths(newPaths);
           setTotalPoints(prev => prev + currentPointsRef.current.length);
         }
       }
@@ -171,12 +185,14 @@ export default function SignatureCapture({
     
     // Touch cancelled
     onPanResponderTerminate: () => {
-      console.log('[Signature] Touch TERMINATED');
+      console.log('[SignatureCapture] Touch TERMINATED');
       
       if (currentPointsRef.current.length > 0) {
         const pathStr = pointsToPath(currentPointsRef.current);
         if (pathStr) {
-          setPaths(prev => [...prev, pathStr]);
+          const newPaths = [...pathsRef.current, pathStr];
+          pathsRef.current = newPaths;
+          setPaths(newPaths);
           setTotalPoints(prev => prev + currentPointsRef.current.length);
         }
       }
@@ -192,12 +208,13 @@ export default function SignatureCapture({
 
   // Clear signature
   const handleClear = useCallback(() => {
-    console.log('[Signature] Clearing signature');
+    console.log('[SignatureCapture] Clearing signature');
     setPaths([]);
     setCurrentPoints([]);
     setTotalPoints(0);
     setSignatureImage(null);
     signatureImageRef.current = null;
+    pathsRef.current = [];
     isDrawingRef.current = false;
     currentPointsRef.current = [];
     setSaveStatus('idle');
@@ -211,23 +228,35 @@ export default function SignatureCapture({
 
   // Generate SVG string for fallback
   const generateSvgDataUri = useCallback((): string | null => {
-    if (paths.length === 0) return null;
+    const currentPaths = pathsRef.current;
+    if (currentPaths.length === 0) return null;
+    
+    console.log(`[SignatureCapture] Generating SVG from ${currentPaths.length} paths`);
     
     const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" width="${CANVAS_WIDTH}" height="${CANVAS_HEIGHT}" viewBox="0 0 ${CANVAS_WIDTH} ${CANVAS_HEIGHT}">
       <rect width="${CANVAS_WIDTH}" height="${CANVAS_HEIGHT}" fill="white"/>
-      ${paths.map(d => `<path d="${d}" stroke="#111111" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`).join('')}
+      ${currentPaths.map(d => `<path d="${d}" stroke="#111111" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`).join('')}
     </svg>`;
     
-    const base64 = btoa(unescape(encodeURIComponent(svgContent)));
-    return `data:image/svg+xml;base64,${base64}`;
-  }, [paths]);
+    // Use btoa for base64 encoding (works in React Native)
+    try {
+      const base64 = btoa(unescape(encodeURIComponent(svgContent)));
+      const dataUri = `data:image/svg+xml;base64,${base64}`;
+      console.log(`[SignatureCapture] SVG generated: ${dataUri.length} chars`);
+      return dataUri;
+    } catch (e) {
+      console.error('[SignatureCapture] SVG generation failed:', e);
+      return null;
+    }
+  }, []);
 
-  // Save signature - with multiple fallback methods
+  // Save signature - with multiple fallback methods and robust validation
   const handleSave = useCallback(async () => {
-    console.log('[Signature] === SAVE INITIATED ===');
-    console.log('[Signature] Paths:', paths.length);
-    console.log('[Signature] Total points:', totalPoints);
-    console.log('[Signature] Has uploaded image:', !!signatureImage);
+    console.log('[SignatureCapture] ========== SAVE INITIATED ==========');
+    console.log(`[SignatureCapture] Title: ${title}`);
+    console.log(`[SignatureCapture] Paths: ${pathsRef.current.length}`);
+    console.log(`[SignatureCapture] Total points: ${totalPoints}`);
+    console.log(`[SignatureCapture] Has uploaded image: ${!!signatureImageRef.current}`);
 
     if (!hasValidSignature) {
       Alert.alert(
@@ -241,90 +270,107 @@ export default function SignatureCapture({
     setIsSaving(true);
     setSaveStatus('capturing');
 
-    try {
-      // If we have an uploaded/existing image and no new drawing, use it
-      if (signatureImage && paths.length === 0) {
-        console.log('[Signature] Using existing/uploaded image');
-        console.log('[Signature] Image length:', signatureImage.length);
-        setSaveStatus('success');
-        
-        // Small delay to show success state
-        await new Promise(resolve => setTimeout(resolve, 300));
-        onSave(signatureImage);
-        return;
-      }
+    let finalSignatureData: string | null = null;
 
-      // Try to capture the canvas as PNG using react-native-view-shot
-      console.log('[Signature] Attempting captureRef...');
-      
-      let dataUri: string | null = null;
-      
-      try {
-        if (canvasRef.current) {
-          const uri = await captureRef(canvasRef, {
-            format: 'png',
-            quality: 1,
-            result: 'base64',
-          });
-          
-          if (uri && uri.length > 100) {
-            dataUri = `data:image/png;base64,${uri}`;
-            console.log('[Signature] captureRef SUCCESS, length:', dataUri.length);
-          } else {
-            console.warn('[Signature] captureRef returned empty/short result');
+    try {
+      // Method 1: Use existing uploaded/captured image
+      if (signatureImageRef.current && pathsRef.current.length === 0) {
+        console.log('[SignatureCapture] Using existing/uploaded image');
+        finalSignatureData = signatureImageRef.current;
+      } else {
+        // Method 2: Try to capture the canvas as PNG
+        console.log('[SignatureCapture] Attempting PNG capture via captureRef...');
+        
+        try {
+          if (canvasRef.current) {
+            // Add a small delay for iOS to ensure view is rendered
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            const uri = await captureRef(canvasRef, {
+              format: 'png',
+              quality: 1,
+              result: 'base64',
+            });
+            
+            if (uri && uri.length > 100) {
+              finalSignatureData = `data:image/png;base64,${uri}`;
+              console.log(`[SignatureCapture] PNG capture SUCCESS: ${finalSignatureData.length} chars`);
+            } else {
+              console.warn('[SignatureCapture] PNG capture returned empty/short result');
+            }
+          }
+        } catch (captureError: any) {
+          console.warn(`[SignatureCapture] PNG capture failed: ${captureError?.message || captureError}`);
+        }
+        
+        // Method 3: Fallback to SVG if PNG capture failed
+        if (!finalSignatureData || finalSignatureData.length < 500) {
+          console.log('[SignatureCapture] PNG failed, using SVG fallback...');
+          finalSignatureData = generateSvgDataUri();
+          if (finalSignatureData) {
+            console.log(`[SignatureCapture] SVG fallback: ${finalSignatureData.length} chars`);
           }
         }
-      } catch (captureError) {
-        console.warn('[Signature] captureRef failed:', captureError);
       }
       
-      // Fallback: Generate SVG data URI if PNG capture failed
-      if (!dataUri || dataUri.length < 500) {
-        console.log('[Signature] Using SVG fallback');
-        const svgUri = generateSvgDataUri();
-        if (svgUri) {
-          dataUri = svgUri;
-          console.log('[Signature] SVG fallback length:', dataUri.length);
-        }
+      // Validate final data
+      setSaveStatus('validating');
+      
+      if (!finalSignatureData) {
+        throw new Error('Failed to capture signature - no data generated');
       }
       
-      // Validate we have valid data
-      if (!dataUri || dataUri.length < 500) {
-        throw new Error('Failed to capture signature image');
+      if (finalSignatureData.length < 500) {
+        throw new Error('Signature data is too small - may be corrupted');
+      }
+      
+      if (!finalSignatureData.startsWith('data:image/')) {
+        throw new Error('Invalid signature format - must be a data URI');
       }
 
-      console.log('[Signature] Final data URI length:', dataUri.length);
-      console.log('[Signature] Data URI prefix:', dataUri.substring(0, 50));
+      console.log('[SignatureCapture] ========== VALIDATION PASSED ==========');
+      console.log(`[SignatureCapture] Final signature type: ${finalSignatureData.substring(5, 25)}`);
+      console.log(`[SignatureCapture] Final signature length: ${finalSignatureData.length}`);
       
-      setSignatureImage(dataUri);
+      // Store in AsyncStorage as backup
+      try {
+        const storageKey = `${SIGNATURE_STORAGE_KEY}${title.replace(/\s/g, '_')}`;
+        await AsyncStorage.setItem(storageKey, finalSignatureData);
+        console.log(`[SignatureCapture] Signature backed up to AsyncStorage: ${storageKey}`);
+      } catch (storageError) {
+        console.warn('[SignatureCapture] AsyncStorage backup failed:', storageError);
+      }
+      
+      setSignatureImage(finalSignatureData);
+      signatureImageRef.current = finalSignatureData;
       setSaveStatus('success');
       
       // Small delay to show success state
       await new Promise(resolve => setTimeout(resolve, 300));
       
-      console.log('[Signature] Calling onSave callback...');
-      onSave(dataUri);
-      console.log('[Signature] === SAVE COMPLETE ===');
+      console.log('[SignatureCapture] Calling onSave callback...');
+      onSave(finalSignatureData);
+      console.log('[SignatureCapture] ========== SAVE COMPLETE ==========');
       
     } catch (error: any) {
-      console.error('[Signature] === SAVE ERROR ===');
-      console.error('[Signature] Error:', error?.message || error);
+      console.error('[SignatureCapture] ========== SAVE ERROR ==========');
+      console.error(`[SignatureCapture] Error: ${error?.message || error}`);
       setSaveStatus('error');
       
       Alert.alert(
         'Capture Failed', 
-        'Failed to capture your signature. Please try again or use the upload option.',
+        `Failed to capture your signature: ${error?.message || 'Unknown error'}. Please try again or use the upload option.`,
         [{ text: 'OK' }]
       );
     } finally {
       setIsSaving(false);
     }
-  }, [hasValidSignature, signatureImage, paths.length, totalPoints, onSave, generateSvgDataUri]);
+  }, [hasValidSignature, totalPoints, onSave, generateSvgDataUri, title]);
 
   // Upload signature image from device
   const handleUploadImage = useCallback(async () => {
     try {
-      console.log('[Signature] Opening image picker...');
+      console.log('[SignatureCapture] Opening image picker...');
       
       // Request permission
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -348,30 +394,31 @@ export default function SignatureCapture({
 
       if (!result.canceled && result.assets[0].base64) {
         const dataUri = `data:image/png;base64,${result.assets[0].base64}`;
-        console.log('[Signature] Image picked, length:', dataUri.length);
+        console.log(`[SignatureCapture] Image picked: ${dataUri.length} chars`);
         
         setSignatureImage(dataUri);
         signatureImageRef.current = dataUri;
         // Clear any drawn paths since we're using uploaded image
         setPaths([]);
+        pathsRef.current = [];
         setCurrentPoints([]);
         setTotalPoints(0);
         setSaveStatus('idle');
       }
-    } catch (error) {
-      console.error('[Signature] Image picker error:', error);
+    } catch (error: any) {
+      console.error('[SignatureCapture] Image picker error:', error);
       Alert.alert('Error', 'Failed to load image. Please try again.');
     }
   }, []);
 
   // Close handler
   const handleClose = useCallback(() => {
-    if (paths.length > 0 && !signatureImage) {
+    if (pathsRef.current.length > 0 && !signatureImageRef.current) {
       Alert.alert(
         'Discard Signature?',
-        'Discard your drawn signature?',
+        'You have an unsaved signature. Discard it?',
         [
-          { text: 'Keep', style: 'cancel' },
+          { text: 'Keep Drawing', style: 'cancel' },
           {
             text: 'Discard',
             style: 'destructive',
@@ -385,27 +432,30 @@ export default function SignatureCapture({
     } else {
       onClose();
     }
-  }, [paths.length, signatureImage, handleClear, onClose]);
+  }, [handleClear, onClose]);
 
   // Current path SVG string
   const currentPathStr = pointsToPath(currentPoints);
 
-  // Status badge text
+  // Status badge
   const getStatusBadge = () => {
     if (saveStatus === 'capturing') {
-      return { icon: 'sync', color: '#2563EB', bg: '#DBEAFE', text: 'Capturing...' };
+      return { icon: 'camera', color: '#2563EB', bg: '#DBEAFE', text: 'Capturing...' };
+    }
+    if (saveStatus === 'validating') {
+      return { icon: 'checkmark-done', color: '#2563EB', bg: '#DBEAFE', text: 'Validating...' };
     }
     if (saveStatus === 'success') {
       return { icon: 'checkmark-circle', color: '#16A34A', bg: '#DCFCE7', text: 'Captured!' };
     }
     if (saveStatus === 'error') {
-      return { icon: 'alert-circle', color: '#DC2626', bg: '#FEE2E2', text: 'Failed' };
+      return { icon: 'alert-circle', color: '#DC2626', bg: '#FEE2E2', text: 'Failed - Try Again' };
     }
     if (currentPoints.length > 0) {
-      return { icon: 'pencil', color: '#2563EB', bg: '#DBEAFE', text: `Drawing (${currentPoints.length} pts)...` };
+      return { icon: 'pencil', color: '#2563EB', bg: '#DBEAFE', text: 'Drawing...' };
     }
     if (hasValidSignature) {
-      return { icon: 'checkmark-circle', color: '#16A34A', bg: '#DCFCE7', text: 'Signature ready!' };
+      return { icon: 'checkmark-circle', color: '#16A34A', bg: '#DCFCE7', text: 'Ready to save' };
     }
     if (hasDrawnAnything) {
       return { icon: 'time-outline', color: '#D97706', bg: '#FEF3C7', text: 'Keep drawing...' };
@@ -511,7 +561,7 @@ export default function SignatureCapture({
             {!hasDrawnAnything && !signatureImage && (
               <View style={styles.placeholder} pointerEvents="none">
                 <Ionicons name="create-outline" size={36} color="#CBD5E1" />
-                <Text style={styles.placeholderText}>Draw here</Text>
+                <Text style={styles.placeholderText}>Draw your signature here</Text>
               </View>
             )}
           </View>
@@ -522,6 +572,11 @@ export default function SignatureCapture({
               <Ionicons name={statusBadge.icon as any} size={14} color={statusBadge.color} />
               <Text style={[styles.badgeText, { color: statusBadge.color }]}>{statusBadge.text}</Text>
             </View>
+            {paths.length > 0 && (
+              <Text style={styles.statsText}>
+                {paths.length} stroke{paths.length !== 1 ? 's' : ''}, {totalPoints} points
+              </Text>
+            )}
           </View>
 
           {/* Upload button */}
@@ -534,7 +589,7 @@ export default function SignatureCapture({
         {/* Signature Preview */}
         {signatureImage && (
           <View style={styles.previewSection}>
-            <Text style={styles.previewLabel}>✓ Captured Signature:</Text>
+            <Text style={styles.previewLabel}>✓ Captured Signature Preview:</Text>
             <View style={styles.previewBox}>
               <Image
                 source={{ uri: signatureImage }}
@@ -542,15 +597,7 @@ export default function SignatureCapture({
                 resizeMode="contain"
               />
             </View>
-          </View>
-        )}
-
-        {/* Debug info for development */}
-        {__DEV__ && (
-          <View style={styles.debugInfo}>
-            <Text style={styles.debugText}>
-              Paths: {paths.length} | Points: {totalPoints} | Image: {signatureImage ? `${(signatureImage.length / 1024).toFixed(1)}KB` : 'none'}
-            </Text>
+            <Text style={styles.previewSize}>{signatureImage.length.toLocaleString()} bytes</Text>
           </View>
         )}
 
@@ -558,7 +605,7 @@ export default function SignatureCapture({
         <View style={styles.legalBox}>
           <Ionicons name="shield-checkmark-outline" size={16} color="#64748B" />
           <Text style={styles.legalText}>
-            By saving, you confirm this is your legal signature for the Scope of Appointment.
+            By saving, you confirm this is your legal handwritten signature for the Scope of Appointment document.
           </Text>
         </View>
 
@@ -568,7 +615,8 @@ export default function SignatureCapture({
             style={[
               styles.saveBtn, 
               !hasValidSignature && styles.saveBtnDisabled,
-              saveStatus === 'success' && styles.saveBtnSuccess
+              saveStatus === 'success' && styles.saveBtnSuccess,
+              saveStatus === 'error' && styles.saveBtnError,
             ]}
             onPress={handleSave}
             disabled={!hasValidSignature || isSaving}
@@ -576,7 +624,9 @@ export default function SignatureCapture({
             {isSaving ? (
               <>
                 <ActivityIndicator color="#FFFFFF" size="small" />
-                <Text style={styles.saveBtnText}>Capturing Signature...</Text>
+                <Text style={styles.saveBtnText}>
+                  {saveStatus === 'capturing' ? 'Capturing...' : 'Validating...'}
+                </Text>
               </>
             ) : saveStatus === 'success' ? (
               <>
@@ -599,7 +649,7 @@ export default function SignatureCapture({
 
           {!hasValidSignature && !signatureImage && (
             <Text style={styles.hint}>
-              Draw signature or upload image to continue
+              Draw at least {MIN_POINTS} points or upload an image
             </Text>
           )}
         </View>
@@ -718,10 +768,12 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     height: 32,
     marginTop: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
+    gap: 12,
   },
   badge: {
     flexDirection: 'row',
@@ -734,6 +786,10 @@ const styles = StyleSheet.create({
   badgeText: {
     fontSize: 12,
     fontWeight: '600',
+  },
+  statsText: {
+    fontSize: 11,
+    color: '#94A3B8',
   },
   uploadBtn: {
     flexDirection: 'row',
@@ -752,12 +808,14 @@ const styles = StyleSheet.create({
   previewSection: {
     paddingHorizontal: 20,
     paddingTop: 10,
+    alignItems: 'center',
   },
   previewLabel: {
     fontSize: 12,
     fontWeight: '600',
     color: '#16A34A',
     marginBottom: 6,
+    alignSelf: 'flex-start',
   },
   previewBox: {
     backgroundColor: '#FFFFFF',
@@ -766,20 +824,16 @@ const styles = StyleSheet.create({
     borderColor: '#22C55E',
     padding: 6,
     alignItems: 'center',
+    width: '100%',
   },
   previewImg: {
     width: CANVAS_WIDTH - 50,
     height: 60,
   },
-  debugInfo: {
-    paddingHorizontal: 20,
-    paddingTop: 8,
-    alignItems: 'center',
-  },
-  debugText: {
+  previewSize: {
     fontSize: 10,
     color: '#94A3B8',
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    marginTop: 4,
   },
   legalBox: {
     flexDirection: 'row',
@@ -817,6 +871,9 @@ const styles = StyleSheet.create({
   },
   saveBtnSuccess: {
     backgroundColor: '#16A34A',
+  },
+  saveBtnError: {
+    backgroundColor: '#DC2626',
   },
   saveBtnText: {
     fontSize: 17,
