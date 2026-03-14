@@ -1635,44 +1635,54 @@ async def get_all_scopes(
     }
 
 async def generate_scope_pdf(scope: dict, lead: dict, agent: dict) -> dict:
-    """Generate CMS-compliant Scope of Sales Appointment Confirmation Form PDF"""
+    """Generate SOA PDF using the exact carrier form template with signatures overlaid"""
     from reportlab.lib.pagesizes import letter
     from reportlab.pdfgen import canvas
-    from reportlab.lib import colors
     from reportlab.lib.utils import ImageReader
     from io import BytesIO
     import base64
+    import os
     
     lead_name = lead.get("name", "Unknown") if lead else "Unknown"
-    agent_name = agent.get("name", "Unknown") if agent else "Unknown"
     scope_id = scope.get("id", "")
     form_fields = scope.get("form_fields", {})
     
-    # Debug logging for signature payloads
+    # Debug: Log signature payloads
     beneficiary_sig = scope.get("signature", "")
     agent_sig = scope.get("agent_signature", "")
-    logger.info(f"[PDF Generation] Beneficiary signature present: {bool(beneficiary_sig)}, length: {len(beneficiary_sig) if beneficiary_sig else 0}")
-    logger.info(f"[PDF Generation] Agent signature present: {bool(agent_sig)}, length: {len(agent_sig) if agent_sig else 0}")
+    logger.info(f"[SOA Template] Beneficiary signature payload received: {bool(beneficiary_sig)}, length: {len(beneficiary_sig) if beneficiary_sig else 0}")
+    logger.info(f"[SOA Template] Agent signature payload received: {bool(agent_sig)}, length: {len(agent_sig) if agent_sig else 0}")
     
     buffer = BytesIO()
     p = canvas.Canvas(buffer, pagesize=letter)
-    width, height = letter
+    width, height = letter  # 612 x 792 points
     
-    # Colors - professional black/gray theme for carrier-style document
-    black = colors.HexColor("#000000")
-    dark_gray = colors.HexColor("#333333")
-    medium_gray = colors.HexColor("#666666")
-    light_gray = colors.HexColor("#999999")
-    line_gray = colors.HexColor("#CCCCCC")
-    box_gray = colors.HexColor("#F5F5F5")
+    # Load the exact carrier form template
+    template_path = os.path.join(os.path.dirname(__file__), 'soa_template.jpg')
+    if not os.path.exists(template_path):
+        # Fallback: try to download it
+        logger.warning(f"[SOA Template] Template not found at {template_path}, using fallback")
+        template_path = '/app/backend/soa_template.jpg'
+    
+    logger.info(f"[SOA Template] Loading carrier form template: {template_path}")
+    
+    # Draw the exact carrier form as background
+    try:
+        template_img = ImageReader(template_path)
+        # Draw template to fill the entire page
+        p.drawImage(template_img, 0, 0, width=width, height=height, preserveAspectRatio=False)
+        logger.info("[SOA Template] Carrier form template loaded and rendered as background")
+    except Exception as e:
+        logger.error(f"[SOA Template] Failed to load template: {e}")
+        # Cannot proceed without template
+        raise ValueError(f"Failed to load SOA template form: {e}")
     
     # Helper function to process signature image
     def process_signature_image(signature_data: str) -> BytesIO:
-        """Process signature data and return BytesIO ready for ReportLab"""
+        """Process signature data and return BytesIO ready for PDF"""
         from PIL import Image as PILImage
         
-        logger.info(f"[PDF Generation] Processing signature, length: {len(signature_data)}")
-        logger.info(f"[PDF Generation] Signature prefix: {signature_data[:60] if signature_data else 'EMPTY'}")
+        logger.info(f"[SOA Template] Processing signature, length: {len(signature_data)}")
         
         is_svg = False
         if signature_data.startswith("data:"):
@@ -1689,28 +1699,28 @@ async def generate_scope_pdf(scope: dict, lead: dict, agent: dict) -> dict:
         sig_bytes = base64.b64decode(encoded)
         
         if is_svg:
-            logger.info("[PDF Generation] Processing SVG signature...")
+            logger.info("[SOA Template] Processing SVG signature...")
             try:
                 import cairosvg
-                png_bytes = cairosvg.svg2png(bytestring=sig_bytes, output_width=300, output_height=80)
+                png_bytes = cairosvg.svg2png(bytestring=sig_bytes, output_width=200, output_height=50)
                 sig_bytes = png_bytes
             except ImportError:
-                logger.warning("[PDF Generation] cairosvg not installed, creating fallback")
-                pil_img = PILImage.new('RGB', (300, 80), (255, 255, 255))
+                logger.warning("[SOA Template] cairosvg not installed, creating fallback")
+                pil_img = PILImage.new('RGB', (200, 50), (255, 255, 255))
                 output = BytesIO()
                 pil_img.save(output, format='PNG')
                 output.seek(0)
                 return output
             except Exception as e:
-                logger.error(f"[PDF Generation] SVG conversion failed: {e}")
-                pil_img = PILImage.new('RGB', (300, 80), (255, 255, 255))
+                logger.error(f"[SOA Template] SVG conversion failed: {e}")
+                pil_img = PILImage.new('RGB', (200, 50), (255, 255, 255))
                 output = BytesIO()
                 pil_img.save(output, format='PNG')
                 output.seek(0)
                 return output
         
         pil_img = PILImage.open(BytesIO(sig_bytes))
-        logger.info(f"[PDF Generation] Loaded signature: mode={pil_img.mode}, size={pil_img.size}")
+        logger.info(f"[SOA Template] Loaded signature: mode={pil_img.mode}, size={pil_img.size}")
         
         # Convert RGBA to RGB with white background
         if pil_img.mode in ('RGBA', 'LA', 'PA'):
@@ -1726,422 +1736,83 @@ async def generate_scope_pdf(scope: dict, lead: dict, agent: dict) -> dict:
         output = BytesIO()
         pil_img.save(output, format='PNG')
         output.seek(0)
-        logger.info(f"[PDF Generation] Signature processed successfully")
         return output
     
-    # ========== PAGE 1 - CMS SCOPE OF SALES APPOINTMENT CONFIRMATION FORM ==========
-    y = height - 40
+    # ==========================================================================
+    # SIGNATURE PLACEMENT COORDINATES (based on template image analysis)
+    # Template image: 1167 x 1463 pixels -> mapped to 612 x 792 points (letter)
+    # Scale factor: 612/1167 = 0.524 (width), 792/1463 = 0.541 (height)
+    # 
+    # From the form image analysis:
+    # - Beneficiary signature box: approximately at y=55% from top, x=5-45% from left
+    # - Agent signature box: approximately at y=82% from top (in the LSR section grid)
+    # ==========================================================================
     
-    # Title
-    p.setFont("Helvetica-Bold", 14)
-    p.setFillColor(black)
-    p.drawCentredString(width/2, y, "Scope of Sales Appointment Confirmation Form")
+    # Beneficiary Signature Position (after "Beneficiary or Authorized Representative Signature")
+    # Based on form layout: signature line is at roughly 55% down from top
+    # In PDF coordinates (0,0 is bottom-left): y = height - (height * 0.55) = 792 - 435 = 357
+    beneficiary_sig_x = 35  # Left margin
+    beneficiary_sig_y = 340  # Position from bottom
+    beneficiary_sig_width = 180  # Width of signature box
+    beneficiary_sig_height = 35  # Height of signature box
     
-    # Page number
-    p.setFont("Helvetica", 9)
-    p.setFillColor(medium_gray)
-    p.drawRightString(width - 40, y, "Page 1 of 1")
+    # Agent/LSR Signature Position (in the "Licensed Sales Representative Signature" row)
+    # Based on form layout: this is at roughly 82% down from top
+    # In PDF coordinates: y = height - (height * 0.82) = 792 - 649 = 143
+    agent_sig_x = 35  # Left margin
+    agent_sig_y = 118  # Position from bottom (lower on page)
+    agent_sig_width = 480  # Width (full width of grid row)
+    agent_sig_height = 30  # Height of signature box
     
-    y -= 25
-    
-    # Introductory paragraph
-    p.setFont("Helvetica", 9)
-    p.setFillColor(dark_gray)
-    intro_text = ("The Centers for Medicare & Medicaid Services requires agents to document the scope "
-                  "of a marketing appointment prior to any face-to-face sales meeting. All information "
-                  "provided on this form is confidential and should be completed by the beneficiary or "
-                  "authorized representative.")
-    
-    # Word wrap the intro text
-    from reportlab.lib.utils import simpleSplit
-    lines = simpleSplit(intro_text, "Helvetica", 9, width - 80)
-    for line in lines:
-        p.drawString(40, y, line)
-        y -= 12
-    
-    y -= 10
-    
-    # ========== PRODUCT SELECTION SECTION ==========
-    p.setFont("Helvetica-Bold", 10)
-    p.setFillColor(black)
-    p.drawString(40, y, "Please initial below beside the type of product(s) you want the Licensed Sales")
-    y -= 12
-    p.drawString(40, y, "Representative to discuss.")
-    y -= 8
-    p.setFont("Helvetica-Oblique", 8)
-    p.setFillColor(medium_gray)
-    p.drawString(40, y, "(Refer to page 2 for product type descriptions)")
-    y -= 18
-    
-    # Product checkboxes in two columns
-    def draw_product_checkbox(checked, label, x, y):
-        # Draw checkbox
-        p.setStrokeColor(dark_gray)
-        p.setFillColor(colors.white)
-        p.rect(x, y - 2, 10, 10, stroke=1, fill=1)
-        if checked:
-            p.setFillColor(black)
-            p.setFont("Helvetica-Bold", 10)
-            p.drawString(x + 2, y - 1, "✓")
-        p.setFont("Helvetica", 9)
-        p.setFillColor(dark_gray)
-        p.drawString(x + 15, y, label)
-    
-    # Left column products
-    col1_x = 50
-    col2_x = 300
-    
-    draw_product_checkbox(form_fields.get('prescription_drug', False), 
-                         "Stand-alone Medicare Prescription Drug Plans (Part D)", col1_x, y)
-    draw_product_checkbox(form_fields.get('hospital_indemnity', False), 
-                         "Hospital Indemnity Products", col2_x, y)
-    y -= 16
-    
-    draw_product_checkbox(form_fields.get('medicare_advantage', False), 
-                         "Medicare Advantage Plans (Part C) and Cost Plans", col1_x, y)
-    draw_product_checkbox(form_fields.get('medicare_supplement', False), 
-                         "Medicare Supplement (Medigap) Products", col2_x, y)
-    y -= 16
-    
-    draw_product_checkbox(form_fields.get('dental_vision_hearing', False), 
-                         "Dental/Vision/Hearing Products", col1_x, y)
-    y -= 20
-    
-    # ========== AGREEMENT TEXT ==========
-    p.setFont("Helvetica", 8)
-    p.setFillColor(dark_gray)
-    agreement_text = ("By signing this form, you agree to a meeting with a Licensed Sales Representative to discuss "
-                      "the types of products you initialed above. Please note, the person who will discuss the products "
-                      "is either employed or contracted by a Medicare plan. They do not work directly for the Federal "
-                      "government. This individual may also be paid based on your enrollment in a plan. Signing this form "
-                      "does NOT obligate you to enroll in a plan, affect your current enrollment, or enroll you in a "
-                      "Medicare plan.")
-    
-    lines = simpleSplit(agreement_text, "Helvetica", 8, width - 80)
-    for line in lines:
-        p.drawString(40, y, line)
-        y -= 11
-    
-    y -= 12
-    
-    # ========== BENEFICIARY SIGNATURE SECTION ==========
-    p.setFont("Helvetica-Bold", 10)
-    p.setFillColor(black)
-    p.drawString(40, y, "Beneficiary or Authorized Representative Signature and Signature Date:")
-    y -= 20
-    
-    # Signature and date boxes
-    sig_box_width = 250
-    sig_box_height = 50
-    date_box_width = 100
-    
-    # Signature box
-    p.setStrokeColor(line_gray)
-    p.setLineWidth(1)
-    p.rect(40, y - sig_box_height, sig_box_width, sig_box_height, stroke=1, fill=0)
-    
-    # Draw beneficiary signature image
-    beneficiary_signature_data = scope.get("signature", "")
-    if beneficiary_signature_data and len(beneficiary_signature_data) > 100:
+    # Overlay beneficiary signature onto the exact form
+    if beneficiary_sig and len(beneficiary_sig) > 100:
         try:
-            logger.info("[PDF Generation] Injecting beneficiary signature into PDF...")
-            sig_buffer = process_signature_image(beneficiary_signature_data)
-            sig_image = ImageReader(sig_buffer)
-            # Draw centered in the box with correct aspect ratio
-            p.drawImage(
-                sig_image,
-                45,
-                y - sig_box_height + 5,
-                width=sig_box_width - 10,
-                height=sig_box_height - 10,
-                preserveAspectRatio=True,
-                mask=None
-            )
-            logger.info("[PDF Generation] Beneficiary signature successfully injected")
-        except Exception as e:
-            logger.error(f"[PDF Generation] Error injecting beneficiary signature: {e}")
-            # Fallback: draw typed name
-            p.setFont("Helvetica-Oblique", 16)
-            p.setFillColor(dark_gray)
-            typed_name = scope.get('typed_name', form_fields.get('beneficiary_name', ''))
-            p.drawString(50, y - sig_box_height/2 - 5, typed_name or "")
-    else:
-        # Draw typed name as fallback
-        p.setFont("Helvetica-Oblique", 16)
-        p.setFillColor(dark_gray)
-        typed_name = scope.get('typed_name', form_fields.get('beneficiary_name', ''))
-        p.drawString(50, y - sig_box_height/2 - 5, typed_name or "Signature Required")
-    
-    # Signature label
-    p.setFont("Helvetica", 8)
-    p.setFillColor(medium_gray)
-    p.drawString(40, y - sig_box_height - 10, "Signature")
-    
-    # Date box
-    date_x = 310
-    p.setStrokeColor(line_gray)
-    p.rect(date_x, y - sig_box_height, date_box_width, sig_box_height, stroke=1, fill=0)
-    
-    # Format signature date
-    sig_date = form_fields.get('signature_date', '')
-    if sig_date:
-        try:
-            sig_parsed = datetime.strptime(sig_date, '%Y-%m-%d')
-            sig_formatted = sig_parsed.strftime('%m/%d/%Y')
-        except:
-            sig_formatted = sig_date
-    else:
-        created_date = scope.get("created_date", datetime.utcnow())
-        if isinstance(created_date, str):
-            try:
-                created_date = datetime.fromisoformat(created_date.replace('Z', '+00:00'))
-            except:
-                created_date = datetime.utcnow()
-        sig_formatted = created_date.strftime('%m/%d/%Y')
-    
-    p.setFont("Helvetica", 12)
-    p.setFillColor(dark_gray)
-    p.drawString(date_x + 10, y - sig_box_height/2 - 5, sig_formatted)
-    
-    p.setFont("Helvetica", 8)
-    p.setFillColor(medium_gray)
-    p.drawString(date_x, y - sig_box_height - 10, "Signature Date")
-    
-    y -= sig_box_height + 25
-    
-    # ========== AUTHORIZED REP SECTION ==========
-    p.setFont("Helvetica-Oblique", 9)
-    p.setFillColor(dark_gray)
-    p.drawString(40, y, "If you are the authorized representative, please sign above and print clearly and legibly below:")
-    y -= 18
-    
-    # Name and Relationship fields
-    name_width = 220
-    rel_width = 220
-    
-    p.setStrokeColor(line_gray)
-    p.line(40, y, 40 + name_width, y)
-    p.line(280, y, 280 + rel_width, y)
-    
-    # Fill in values
-    p.setFont("Helvetica", 10)
-    p.setFillColor(dark_gray)
-    auth_rep_name = form_fields.get('auth_rep_name', '')
-    auth_rep_rel = form_fields.get('auth_rep_relationship', '')
-    if auth_rep_name:
-        p.drawString(45, y + 3, auth_rep_name)
-    if auth_rep_rel:
-        p.drawString(285, y + 3, auth_rep_rel)
-    
-    # Labels
-    p.setFont("Helvetica", 8)
-    p.setFillColor(medium_gray)
-    p.drawString(40, y - 12, "Name (First_Last)")
-    p.drawString(280, y - 12, "Relationship to Beneficiary")
-    
-    y -= 30
-    
-    # ========== LSR SECTION ==========
-    p.setFont("Helvetica-Bold", 10)
-    p.setFillColor(black)
-    p.drawString(40, y, "To be completed by Licensed Sales Representative (please print clearly and legibly)")
-    y -= 5
-    
-    # Draw grid border
-    grid_height = 130
-    p.setStrokeColor(line_gray)
-    p.rect(40, y - grid_height, width - 80, grid_height, stroke=1, fill=0)
-    
-    # Grid lines
-    row_height = 26
-    
-    # Row 1: LSR Name, Phone, ID
-    row_y = y - row_height
-    p.line(40, row_y, width - 40, row_y)
-    p.line(220, y, 220, row_y)  # vertical
-    p.line(380, y, 380, row_y)  # vertical
-    
-    # Row 1 values
-    p.setFont("Helvetica", 10)
-    p.setFillColor(dark_gray)
-    p.drawString(45, row_y + 10, form_fields.get('agent_name', agent_name))
-    p.drawString(225, row_y + 10, form_fields.get('agent_phone', agent.get('phone', '') if agent else ''))
-    p.drawString(385, row_y + 10, form_fields.get('agent_id_number', ''))
-    
-    # Row 1 labels
-    p.setFont("Helvetica", 7)
-    p.setFillColor(medium_gray)
-    p.drawString(45, y - 8, "Licensed Sales Representative Name (First_Last)")
-    p.drawString(225, y - 8, "Licensed Sales Representative Phone")
-    p.drawString(385, y - 8, "Licensed Sales Representative ID")
-    
-    # Row 2: Beneficiary Name, Phone, Appointment Date
-    row2_y = row_y - row_height
-    p.setStrokeColor(line_gray)
-    p.line(40, row2_y, width - 40, row2_y)
-    p.line(220, row_y, 220, row2_y)
-    p.line(380, row_y, 380, row2_y)
-    
-    # Row 2 values
-    p.setFont("Helvetica", 10)
-    p.setFillColor(dark_gray)
-    p.drawString(45, row2_y + 10, form_fields.get('beneficiary_name', lead_name))
-    p.drawString(225, row2_y + 10, form_fields.get('beneficiary_phone', lead.get('phone', '') if lead else ''))
-    
-    apt_date = form_fields.get('appointment_date', '')
-    if apt_date:
-        try:
-            apt_parsed = datetime.strptime(apt_date, '%Y-%m-%d')
-            apt_formatted = apt_parsed.strftime('%m/%d/%Y')
-        except:
-            apt_formatted = apt_date
-    else:
-        apt_formatted = ''
-    p.drawString(385, row2_y + 10, apt_formatted)
-    
-    # Row 2 labels
-    p.setFont("Helvetica", 7)
-    p.setFillColor(medium_gray)
-    p.drawString(45, row_y - 8, "Beneficiary Name (First_Last)")
-    p.drawString(225, row_y - 8, "Beneficiary Phone (Optional)")
-    p.drawString(385, row_y - 8, "Date Appointment will be Completed")
-    
-    # Row 3: Beneficiary Address
-    row3_y = row2_y - row_height
-    p.setStrokeColor(line_gray)
-    p.line(40, row3_y, width - 40, row3_y)
-    
-    # Row 3 values
-    p.setFont("Helvetica", 10)
-    p.setFillColor(dark_gray)
-    p.drawString(45, row3_y + 10, form_fields.get('beneficiary_address', lead.get('address', '') if lead else ''))
-    
-    # Row 3 labels
-    p.setFont("Helvetica", 7)
-    p.setFillColor(medium_gray)
-    p.drawString(45, row2_y - 8, "Beneficiary Address (Optional)")
-    
-    # Row 4: Initial Contact, Plans to Represent
-    row4_y = row3_y - row_height
-    p.setStrokeColor(line_gray)
-    p.line(40, row4_y, width - 40, row4_y)
-    p.line(280, row3_y, 280, row4_y)
-    
-    # Row 4 values
-    p.setFont("Helvetica", 10)
-    p.setFillColor(dark_gray)
-    contact_method = form_fields.get('initial_contact_method', 'phone')
-    contact_labels = {'phone': 'Phone', 'in_person': 'In Person', 'email': 'Email', 
-                      'mail': 'Direct Mail', 'referral': 'Referral', 'other': 'Other'}
-    p.drawString(45, row4_y + 10, contact_labels.get(contact_method, contact_method))
-    p.drawString(285, row4_y + 10, form_fields.get('plans_to_represent', 'Medicare Advantage, Medicare Supplement'))
-    
-    # Row 4 labels
-    p.setFont("Helvetica", 7)
-    p.setFillColor(medium_gray)
-    p.drawString(45, row3_y - 8, "Initial Method of Contact")
-    p.drawString(285, row3_y - 8, "Plan(s) the Licensed Sales Representative will represent during the meeting")
-    
-    # Row 5: LSR Signature
-    lsr_sig_y = row4_y - row_height - 10
-    
-    # LSR Signature box
-    lsr_sig_box_height = 45
-    p.setStrokeColor(line_gray)
-    p.rect(40, lsr_sig_y, width - 80, lsr_sig_box_height, stroke=1, fill=0)
-    
-    # Draw agent signature image
-    agent_signature_data = scope.get("agent_signature", "")
-    if agent_signature_data and len(agent_signature_data) > 100:
-        try:
-            logger.info("[PDF Generation] Injecting agent signature into PDF...")
-            sig_buffer = process_signature_image(agent_signature_data)
+            logger.info("[SOA Template] Mapping beneficiary signature to form field...")
+            sig_buffer = process_signature_image(beneficiary_sig)
             sig_image = ImageReader(sig_buffer)
             p.drawImage(
                 sig_image,
-                45,
-                lsr_sig_y + 5,
-                width=width - 90,
-                height=lsr_sig_box_height - 10,
+                beneficiary_sig_x,
+                beneficiary_sig_y,
+                width=beneficiary_sig_width,
+                height=beneficiary_sig_height,
                 preserveAspectRatio=True,
-                mask=None
+                mask='auto'  # Use auto mask to handle transparency
             )
-            logger.info("[PDF Generation] Agent signature successfully injected")
+            logger.info(f"[SOA Template] Beneficiary signature placed at ({beneficiary_sig_x}, {beneficiary_sig_y})")
         except Exception as e:
-            logger.error(f"[PDF Generation] Error injecting agent signature: {e}")
-            p.setFont("Helvetica-Oblique", 16)
-            p.setFillColor(dark_gray)
-            agent_typed = scope.get('agent_typed_name', form_fields.get('agent_name', agent_name))
-            p.drawString(50, lsr_sig_y + lsr_sig_box_height/2 - 5, agent_typed or "")
+            logger.error(f"[SOA Template] Failed to place beneficiary signature: {e}")
     else:
-        p.setFont("Helvetica-Oblique", 16)
-        p.setFillColor(dark_gray)
-        agent_typed = scope.get('agent_typed_name', form_fields.get('agent_name', agent_name))
-        p.drawString(50, lsr_sig_y + lsr_sig_box_height/2 - 5, agent_typed or "Signature Required")
+        logger.warning("[SOA Template] No beneficiary signature payload to place")
     
-    # LSR Signature label
-    p.setFont("Helvetica", 7)
-    p.setFillColor(medium_gray)
-    p.drawString(40, row4_y - 8, "Licensed Sales Representative Signature")
+    # Overlay agent signature onto the exact form
+    if agent_sig and len(agent_sig) > 100:
+        try:
+            logger.info("[SOA Template] Mapping agent signature to form field...")
+            sig_buffer = process_signature_image(agent_sig)
+            sig_image = ImageReader(sig_buffer)
+            p.drawImage(
+                sig_image,
+                agent_sig_x,
+                agent_sig_y,
+                width=agent_sig_width,
+                height=agent_sig_height,
+                preserveAspectRatio=True,
+                mask='auto'
+            )
+            logger.info(f"[SOA Template] Agent signature placed at ({agent_sig_x}, {agent_sig_y})")
+        except Exception as e:
+            logger.error(f"[SOA Template] Failed to place agent signature: {e}")
+    else:
+        logger.warning("[SOA Template] No agent signature payload to place")
     
-    y = lsr_sig_y - 15
-    
-    # ========== SOA NOTES SECTION ==========
-    p.setFont("Helvetica-Bold", 8)
-    p.setFillColor(dark_gray)
-    p.drawString(40, y, "Scope of appointment (SOA) is subject to CMS Record Retention Requirements")
-    y -= 12
-    
-    p.setFont("Helvetica", 7)
-    p.setFillColor(medium_gray)
-    soa_note = ("Licensed Sales Representative, if the form was not signed by the beneficiary prior to the "
-                "appointment, provide explanation why SOA was not documented prior to meeting:")
-    lines = simpleSplit(soa_note, "Helvetica", 7, width - 80)
-    for line in lines:
-        p.drawString(40, y, line)
-        y -= 9
-    
-    y -= 5
-    p.setFont("Helvetica-Bold", 7)
-    p.drawString(40, y, "Please check all that apply:")
-    y -= 12
-    
-    # Exception checkboxes
-    def draw_small_checkbox(checked, label, x, y_pos):
-        p.setStrokeColor(dark_gray)
-        p.setFillColor(colors.white)
-        p.rect(x, y_pos - 1, 8, 8, stroke=1, fill=1)
-        if checked:
-            p.setFillColor(black)
-            p.setFont("Helvetica", 7)
-            p.drawString(x + 1, y_pos, "✓")
-        p.setFont("Helvetica", 7)
-        p.setFillColor(dark_gray)
-        p.drawString(x + 12, y_pos, label)
-        return y_pos
-    
-    draw_small_checkbox(False, "Unplanned Attendee", 50, y)
-    draw_small_checkbox(False, "New SOA required (consumer requested other Health Product information)", 200, y)
-    y -= 12
-    draw_small_checkbox(False, "Walk-in", 50, y)
-    draw_small_checkbox(False, "Other (please explain): ________________", 200, y)
-    
-    y -= 20
-    
-    # ========== FOOTER ==========
-    p.setFont("Helvetica", 7)
-    p.setFillColor(light_gray)
-    p.drawString(40, 25, f"Document ID: {scope_id[:16].upper()}")
-    p.drawRightString(width - 40, 25, f"Generated: {datetime.utcnow().strftime('%m/%d/%Y %I:%M %p UTC')}")
-    p.drawCentredString(width/2, 15, "CMS-Compliant Scope of Appointment • Retain for 10 Years • AgentRoute AI")
-    
-    logger.info("[PDF Generation] Final PDF generated successfully")
+    logger.info("[SOA Template] Final document generated successfully with carrier form template")
     
     p.save()
     buffer.seek(0)
     pdf_base64 = base64.b64encode(buffer.read()).decode()
     
-    logger.info(f"[PDF Generation] PDF created successfully, size: {len(pdf_base64)} chars")
+    logger.info(f"[SOA Template] PDF created, size: {len(pdf_base64)} chars")
     
     return {
         "pdf_base64": pdf_base64, 
