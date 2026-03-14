@@ -141,13 +141,20 @@ class ApiService {
   }
 
   // Scope of Appointment
-  async createScope(data: { lead_id: string; form_fields: Record<string, any>; typed_name: string; signature?: string }) {
+  async createScope(data: { 
+    lead_id: string; 
+    form_fields: Record<string, any>; 
+    typed_name: string; 
+    signature: string;
+    agent_typed_name?: string;
+    agent_signature?: string;
+  }) {
     const response = await apiClient.post('/scope', data);
     return response.data;
   }
 
-  async getScope(id: string) {
-    const response = await apiClient.get(`/scope/${id}`);
+  async getScope(scopeId: string) {
+    const response = await apiClient.get(`/scope/${scopeId}`);
     return response.data;
   }
 
@@ -156,8 +163,13 @@ class ApiService {
     return response.data;
   }
 
-  async getScopePdf(id: string) {
-    const response = await apiClient.get(`/scope/${id}/pdf`);
+  async getScopePdf(scopeId: string) {
+    const response = await apiClient.get(`/scope/${scopeId}/pdf`);
+    return response.data;
+  }
+
+  async getAllScopes(skip: number = 0, limit: number = 50) {
+    const response = await apiClient.get(`/scope/admin/all?skip=${skip}&limit=${limit}`);
     return response.data;
   }
 
