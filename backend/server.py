@@ -460,6 +460,90 @@ class BulkLeadUpload(BaseModel):
     auto_assign: bool = False
     territory_based: bool = False
 
+# ==================== ACTIVITY & COMPLIANCE MODELS ====================
+
+class LeadActivityEntry(BaseModel):
+    id: str
+    lead_id: str
+    activity_type: str  # created, assigned, contacted, stage_changed, note_added, appointment_set, soa_completed
+    description: str
+    performed_by: str
+    performed_by_name: str
+    old_value: Optional[str] = None
+    new_value: Optional[str] = None
+    created_at: datetime
+
+class LeadActivityCreate(BaseModel):
+    lead_id: str
+    activity_type: str
+    description: str
+    old_value: Optional[str] = None
+    new_value: Optional[str] = None
+
+class ComplianceRecord(BaseModel):
+    lead_id: str
+    lead_name: str
+    appointment_id: Optional[str] = None
+    appointment_date: Optional[str] = None
+    appointment_time: Optional[str] = None
+    soa_id: Optional[str] = None
+    soa_signed: bool = False
+    soa_signature_timestamp: Optional[datetime] = None
+    soa_pdf_available: bool = False
+    compliance_status: str  # missing_soa, pending_signature, signed, compliant
+    agent_id: str
+    agent_name: str
+    created_date: datetime
+    last_updated: datetime
+
+class ComplianceSummary(BaseModel):
+    total_leads: int
+    leads_with_soa: int
+    leads_without_soa: int
+    signed_soas: int
+    pending_soas: int
+    appointments_without_soa: int
+    compliant_appointments: int
+    compliance_rate: float
+
+class LeadDistributionSummary(BaseModel):
+    total_leads: int
+    unassigned_leads: int
+    assigned_leads: int
+    leads_by_stage: Dict[str, int]
+    leads_by_agent: List[Dict[str, Any]]
+    distribution_methods_used: Dict[str, int]
+    avg_leads_per_agent: float
+    top_performing_agents: List[Dict[str, Any]]
+
+class AgentPerformanceMetrics(BaseModel):
+    agent_id: str
+    agent_name: str
+    agent_email: str
+    total_leads: int
+    leads_by_stage: Dict[str, int]
+    conversion_rate: float
+    avg_response_time_hours: Optional[float]
+    soa_completion_rate: float
+    closed_won: int
+    closed_lost: int
+    active_pipeline: int
+    last_activity: Optional[datetime]
+
+class SmartDistributionRequest(BaseModel):
+    lead_ids: List[str]
+    method: str = "equal"  # equal, territory, availability, manager_group
+    target_agent_ids: Optional[List[str]] = None
+    manager_id: Optional[str] = None  # For manager_group distribution
+    respect_territories: bool = True
+    balance_workload: bool = True
+
+class SmartDistributionResult(BaseModel):
+    total_distributed: int
+    assignments: List[Dict[str, Any]]
+    skipped: List[Dict[str, str]]  # Lead IDs and reasons for skipping
+    method_used: str
+
 # ==================== HELPER FUNCTIONS ====================
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
