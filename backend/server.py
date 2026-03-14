@@ -1751,7 +1751,8 @@ async def generate_stamped_pdf(scope_id: str, current_user: dict = Depends(get_c
     
     def stamp_sig_p2(sig_data, field_name):
         """
-        Stamp signature cropped to actual ink bounds, with transparency preserved.
+        Stamp signature with full transparency preserved end-to-end.
+        SVG → transparent PNG → RGBA → stamp with mask='auto'
         """
         import cairosvg
         from datetime import datetime
@@ -1769,19 +1770,18 @@ async def generate_stamped_pdf(scope_id: str, current_user: dict = Depends(get_c
             sig_data = sig_data.strip()
             logger.info(f"[PDF Gen] PAGE 2: SIG '{field_name}' - payload length={len(sig_data)}")
             
-            # ==================== 1. SIGNATURE DECODING ====================
+            # ==================== 1. DECODE TO PNG BYTES ====================
             if sig_data.startswith('data:image/svg+xml;base64,'):
                 sig_b64 = sig_data.split(',', 1)[1]
                 sig_bytes = base64.b64decode(sig_b64)
+                # CairoSVG: convert SVG to transparent PNG
                 sig_bytes = cairosvg.svg2png(bytestring=sig_bytes, output_width=300, output_height=80)
-                img = Image.open(BytesIO(sig_bytes))
-                logger.info(f"[PDF Gen] PAGE 2: SIG '{field_name}' - SVG converted to PNG")
+                logger.info(f"[PDF Gen] PAGE 2: SIG '{field_name}' - SVG→PNG ({len(sig_bytes)} bytes)")
                 
             elif sig_data.startswith('data:image/png;base64,'):
                 sig_b64 = sig_data.split(',', 1)[1]
                 sig_bytes = base64.b64decode(sig_b64)
-                img = Image.open(BytesIO(sig_bytes))
-                logger.info(f"[PDF Gen] PAGE 2: SIG '{field_name}' - PNG loaded")
+                logger.info(f"[PDF Gen] PAGE 2: SIG '{field_name}' - PNG ({len(sig_bytes)} bytes)")
                 
             elif sig_data.startswith('data:image'):
                 parts = sig_data.split(',', 1)
@@ -1791,60 +1791,49 @@ async def generate_stamped_pdf(scope_id: str, current_user: dict = Depends(get_c
                 if 'svg+xml' in sig_data:
                     sig_bytes = base64.b64decode(parts[1])
                     sig_bytes = cairosvg.svg2png(bytestring=sig_bytes, output_width=300, output_height=80)
-                    img = Image.open(BytesIO(sig_bytes))
                 else:
                     sig_bytes = base64.b64decode(parts[1])
-                    img = Image.open(BytesIO(sig_bytes))
             else:
                 sig_bytes = base64.b64decode(sig_data)
-                img = Image.open(BytesIO(sig_bytes))
             
-            # ==================== 2. CONVERT TO RGBA ====================
+            # ==================== 2. LOAD AS RGBA (preserve alpha) ====================
+            img = Image.open(BytesIO(sig_bytes))
             img = img.convert('RGBA')
-            logger.info(f"[PDF Gen] PAGE 2: SIG '{field_name}' - original size: {img.size}")
+            logger.info(f"[PDF Gen] PAGE 2: SIG '{field_name}' - RGBA size: {img.size}, mode: {img.mode}")
             
-            # ==================== 3. CROP TO ACTUAL INK BOUNDS ====================
-            # Use alpha channel to find bounding box of non-transparent pixels
-            alpha = img.split()[-1]  # Get alpha channel
-            bbox = alpha.getbbox()   # Get bounding box of non-zero alpha
-            
+            # ==================== 3. CROP TO INK BOUNDS (optional) ====================
+            alpha = img.split()[-1]
+            bbox = alpha.getbbox()
             if bbox:
                 img = img.crop(bbox)
-                logger.info(f"[PDF Gen] PAGE 2: SIG '{field_name}' - cropped to ink bounds: {img.size}")
-            else:
-                logger.warning(f"[PDF Gen] PAGE 2: SIG '{field_name}' - no ink found, using original")
+                logger.info(f"[PDF Gen] PAGE 2: SIG '{field_name}' - cropped: {img.size}")
             
-            # ==================== 4. SAVE CROPPED TRANSPARENT PNG ====================
+            # ==================== 4. SAVE AS RGBA PNG TO BUFFER ====================
             buffer = BytesIO()
             img.save(buffer, format='PNG')
             buffer.seek(0)
             
-            # ==================== 5. STAMP SIGNATURE ====================
+            # ==================== 5. STAMP WITH REPORTLAB ====================
             sig_x = coords['x']
             sig_y = coords['y']
             
             c2.drawImage(
-                ImageReader(buffer), 
-                sig_x, 
-                sig_y, 
-                width=160, 
-                height=40, 
-                mask='auto',
-                preserveAspectRatio=True,
-                anchor='sw'
+                ImageReader(buffer),
+                sig_x,
+                sig_y,
+                width=160,
+                height=40,
+                mask='auto'
             )
             
-            # ==================== 6. TIMESTAMP TEXT BELOW SIGNATURE ====================
+            # Timestamp below signature
             server_timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
-            confirmation_text = f"Signed electronically on {server_timestamp} via mobile application"
             c2.setFont("Helvetica", 5)
             c2.setFillColorRGB(0.5, 0.5, 0.5)
-            # Place text BELOW the signature (sig_y - 12 to clear the signature area)
-            c2.drawString(sig_x, sig_y - 12, confirmation_text)
+            c2.drawString(sig_x, sig_y - 12, f"Signed electronically on {server_timestamp} via mobile application")
             
             stamped_items.append(f"PAGE 2: SIG '{field_name}' @ ({sig_x}, {sig_y})")
             logger.info(f"[PDF Gen] PAGE 2: STAMPED SIG '{field_name}' @ ({sig_x}, {sig_y})")
-            
             return True
             
         except Exception as e:
