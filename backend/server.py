@@ -1563,6 +1563,37 @@ async def get_scope(scope_id: str, current_user: dict = Depends(get_current_user
     scope.setdefault("delivery_history", [])
     return scope
 
+@api_router.get("/soa-template")
+async def get_soa_template():
+    """Get the SOA PDF template as base64 for frontend pdf-lib generation"""
+    import os
+    template_path = '/app/backend/soa_template.pdf'
+    
+    if not os.path.exists(template_path):
+        # Create the PDF template from the image if it doesn't exist
+        from reportlab.lib.pagesizes import letter
+        from reportlab.pdfgen import canvas as pdfcanvas
+        from reportlab.lib.utils import ImageReader
+        
+        jpg_path = '/app/backend/soa_template.jpg'
+        if os.path.exists(jpg_path):
+            c = pdfcanvas.Canvas(template_path, pagesize=letter)
+            width, height = letter
+            template_img = ImageReader(jpg_path)
+            c.drawImage(template_img, 0, 0, width=width, height=height)
+            c.save()
+            logger.info("[SOA Template] Created PDF template from JPG")
+        else:
+            raise HTTPException(status_code=404, detail="SOA template not found")
+    
+    with open(template_path, 'rb') as f:
+        pdf_bytes = f.read()
+    
+    import base64
+    pdf_base64 = base64.b64encode(pdf_bytes).decode()
+    
+    return {"template_base64": pdf_base64}
+
 @api_router.get("/scope/lead/{lead_id}")
 async def get_lead_scopes(lead_id: str, current_user: dict = Depends(get_current_user)):
     scopes = await db.scope_forms.find({"lead_id": lead_id}).to_list(100)
