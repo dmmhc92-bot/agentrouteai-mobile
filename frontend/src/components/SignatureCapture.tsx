@@ -7,10 +7,12 @@ import {
   Dimensions,
   Modal,
   GestureResponderEvent,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import Svg, { Path, Text as SvgText, Rect } from 'react-native-svg';
+import Svg, { Path, Text as SvgText, Rect, G } from 'react-native-svg';
+import ViewShot, { captureRef } from 'react-native-view-shot';
 
 interface SignatureCaptureProps {
   visible: boolean;
@@ -22,7 +24,7 @@ interface SignatureCaptureProps {
 }
 
 const { width: screenWidth } = Dimensions.get('window');
-const CANVAS_WIDTH = screenWidth - 32;
+const CANVAS_WIDTH = Math.min(screenWidth - 32, 400);
 const CANVAS_HEIGHT = 200;
 
 export default function SignatureCapture({
@@ -39,6 +41,7 @@ export default function SignatureCapture({
   const [isSaving, setIsSaving] = useState(false);
   const isDrawingRef = useRef(false);
   const canvasRef = useRef<View>(null);
+  const viewShotRef = useRef<ViewShot>(null);
   const layoutRef = useRef({ x: 0, y: 0, width: CANVAS_WIDTH, height: CANVAS_HEIGHT });
 
   // Reset state when modal opens
@@ -89,7 +92,7 @@ export default function SignatureCapture({
     setCurrentPath('');
   }, []);
 
-  const handleSave = useCallback(() => {
+  const handleSave = useCallback(async () => {
     if (paths.length === 0) {
       return;
     }
@@ -97,24 +100,37 @@ export default function SignatureCapture({
     setIsSaving(true);
     
     try {
-      // Generate clean SVG with white background
-      const allPaths = paths.map(p => 
-        `<path d="${p}" stroke="#000000" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`
-      ).join('');
+      // Capture the signature canvas as a PNG image using view-shot
+      // This creates a proper raster image that ReportLab can handle
+      const uri = await captureRef(viewShotRef, {
+        format: 'png',
+        quality: 1,
+        result: 'base64',
+      });
       
-      const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" width="${CANVAS_WIDTH}" height="${CANVAS_HEIGHT}" viewBox="0 0 ${CANVAS_WIDTH} ${CANVAS_HEIGHT}"><rect fill="#FFFFFF" width="100%" height="100%"/>${allPaths}</svg>`;
-      
-      // Encode to base64
-      const base64 = btoa(unescape(encodeURIComponent(svgContent)));
-      const dataUri = `data:image/svg+xml;base64,${base64}`;
-      
+      // Return as proper PNG data URI that backend can decode
+      const dataUri = `data:image/png;base64,${uri}`;
       onSave(dataUri);
     } catch (error) {
-      console.error('Error saving signature:', error);
-      // Fallback with simpler encoding
-      const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" width="${CANVAS_WIDTH}" height="${CANVAS_HEIGHT}"><rect fill="white" width="100%" height="100%"/>${paths.map(p => `<path d="${p}" stroke="black" stroke-width="2" fill="none"/>`).join('')}</svg>`;
-      const base64 = btoa(svgContent);
-      onSave(`data:image/svg+xml;base64,${base64}`);
+      console.error('Error capturing signature:', error);
+      
+      // Fallback: Generate a simple SVG with explicit dimensions
+      // Convert to PNG-compatible format using a cleaner SVG
+      try {
+        const pathsStr = paths.map(p => 
+          `<path d="${p}" stroke="#000000" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`
+        ).join('');
+        
+        const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" width="${CANVAS_WIDTH}" height="${CANVAS_HEIGHT}" viewBox="0 0 ${CANVAS_WIDTH} ${CANVAS_HEIGHT}"><rect fill="#FFFFFF" width="100%" height="100%"/>${pathsStr}</svg>`;
+        
+        // Use TextEncoder for proper encoding
+        const base64 = btoa(unescape(encodeURIComponent(svgContent)));
+        const dataUri = `data:image/svg+xml;base64,${base64}`;
+        
+        onSave(dataUri);
+      } catch (fallbackError) {
+        console.error('Fallback signature save failed:', fallbackError);
+      }
     } finally {
       setIsSaving(false);
     }
@@ -126,7 +142,6 @@ export default function SignatureCapture({
   }, [onClose, handleClear]);
 
   const handleCanvasLayout = useCallback((event: any) => {
-    const layout = event.nativeEvent.layout;
     canvasRef.current?.measureInWindow((x, y, width, height) => {
       layoutRef.current = { x, y, width, height };
     });
@@ -185,57 +200,55 @@ export default function SignatureCapture({
             onResponderRelease={handleTouchEnd}
             onResponderTerminate={handleTouchEnd}
           >
-            <Svg 
-              width={CANVAS_WIDTH} 
-              height={CANVAS_HEIGHT}
-              style={styles.svg}
+            {/* ViewShot wrapper to capture the signature as PNG */}
+            <ViewShot 
+              ref={viewShotRef} 
+              options={{ format: 'png', quality: 1 }}
+              style={styles.viewShot}
             >
-              {/* White background */}
-              <Rect x="0" y="0" width={CANVAS_WIDTH} height={CANVAS_HEIGHT} fill="#FFFFFF" />
-              
-              {/* Signature line guide */}
-              <Path
-                d={`M 20 ${CANVAS_HEIGHT - 40} L ${CANVAS_WIDTH - 20} ${CANVAS_HEIGHT - 40}`}
-                stroke="#E2E8F0"
-                strokeWidth="1"
-                strokeDasharray="5,5"
-              />
-              
-              {/* X marker */}
-              <SvgText
-                x={15}
-                y={CANVAS_HEIGHT - 48}
-                fontSize={18}
-                fill="#94A3B8"
+              <Svg 
+                width={CANVAS_WIDTH} 
+                height={CANVAS_HEIGHT}
+                style={styles.svg}
               >
-                ✕
-              </SvgText>
-              
-              {/* Saved signature paths */}
-              {paths.map((path, index) => (
-                <Path
-                  key={`path-${index}`}
-                  d={path}
-                  stroke="#1F2937"
-                  strokeWidth={2.5}
-                  fill="none"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              ))}
-              
-              {/* Current path being drawn */}
-              {currentPath && (
-                <Path
-                  d={currentPath}
-                  stroke="#1F2937"
-                  strokeWidth={2.5}
-                  fill="none"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              )}
-            </Svg>
+                {/* White background - important for PDF */}
+                <Rect x="0" y="0" width={CANVAS_WIDTH} height={CANVAS_HEIGHT} fill="#FFFFFF" />
+                
+                {/* Signature paths group */}
+                <G>
+                  {/* Saved signature paths */}
+                  {paths.map((path, index) => (
+                    <Path
+                      key={`path-${index}`}
+                      d={path}
+                      stroke="#1F2937"
+                      strokeWidth={3}
+                      fill="none"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  ))}
+                  
+                  {/* Current path being drawn */}
+                  {currentPath && (
+                    <Path
+                      d={currentPath}
+                      stroke="#1F2937"
+                      strokeWidth={3}
+                      fill="none"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  )}
+                </G>
+              </Svg>
+            </ViewShot>
+            
+            {/* Signature line guide - outside viewshot so it's not captured */}
+            <View style={styles.signatureLine} pointerEvents="none">
+              <Text style={styles.xMarker}>✕</Text>
+              <View style={styles.dashedLine} />
+            </View>
             
             {/* Placeholder when empty */}
             {!hasSignature && (
@@ -245,7 +258,7 @@ export default function SignatureCapture({
               </View>
             )}
           </View>
-          <Text style={styles.signatureLine}>Signature</Text>
+          <Text style={styles.signatureLabel}>Signature</Text>
         </View>
 
         {/* Legal Notice */}
@@ -354,6 +367,7 @@ const styles = StyleSheet.create({
   canvasContainer: {
     paddingHorizontal: 16,
     marginTop: 8,
+    alignItems: 'center',
   },
   canvas: {
     width: CANVAS_WIDTH,
@@ -365,8 +379,33 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     position: 'relative',
   },
+  viewShot: {
+    width: CANVAS_WIDTH,
+    height: CANVAS_HEIGHT,
+    backgroundColor: '#FFFFFF',
+  },
   svg: {
     backgroundColor: '#FFFFFF',
+  },
+  signatureLine: {
+    position: 'absolute',
+    bottom: 40,
+    left: 20,
+    right: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  xMarker: {
+    fontSize: 16,
+    color: '#94A3B8',
+    marginRight: 8,
+  },
+  dashedLine: {
+    flex: 1,
+    height: 1,
+    borderStyle: 'dashed',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
   },
   placeholder: {
     ...StyleSheet.absoluteFillObject,
@@ -378,7 +417,7 @@ const styles = StyleSheet.create({
     color: '#CBD5E1',
     marginTop: 8,
   },
-  signatureLine: {
+  signatureLabel: {
     fontSize: 12,
     color: '#64748B',
     textAlign: 'center',

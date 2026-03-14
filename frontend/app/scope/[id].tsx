@@ -9,7 +9,7 @@ import {
   Alert,
   Share,
   Platform,
-  Modal,
+  Image,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -17,7 +17,6 @@ import { Ionicons } from '@expo/vector-icons';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import * as Print from 'expo-print';
-import { WebView } from 'react-native-webview';
 import { api } from '../../src/services/api';
 
 interface DeliveryLogEntry {
@@ -53,8 +52,6 @@ export default function ScopeDetailScreen() {
   const [lead, setLead] = useState<any>(null);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState<'print' | 'save' | 'share' | 'preview' | null>(null);
-  const [showPdfPreview, setShowPdfPreview] = useState(false);
-  const [pdfDataUri, setPdfDataUri] = useState<string | null>(null);
 
   useEffect(() => {
     loadScope();
@@ -109,19 +106,53 @@ export default function ScopeDetailScreen() {
     return `SOA_${leadName}_${date}.pdf`;
   };
 
+  // Save PDF to temp file and return the file path
+  const savePdfToTempFile = async (): Promise<string | null> => {
+    const pdfBase64 = await getPdfData();
+    if (!pdfBase64) {
+      return null;
+    }
+    
+    const filename = getFilename();
+    const fileUri = `${FileSystem.cacheDirectory}${filename}`;
+    
+    await FileSystem.writeAsStringAsync(fileUri, pdfBase64, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    
+    return fileUri;
+  };
+
+  // iOS-native PDF preview using Sharing (opens Quick Look)
   const handlePreview = async () => {
     setActionLoading('preview');
     try {
-      const pdfBase64 = await getPdfData();
-      if (!pdfBase64) {
+      const fileUri = await savePdfToTempFile();
+      if (!fileUri) {
         Alert.alert('Error', 'Could not load PDF document');
         return;
       }
-      setPdfDataUri(`data:application/pdf;base64,${pdfBase64}`);
-      setShowPdfPreview(true);
+      
+      // On iOS, expo-sharing opens the native share sheet which includes Quick Look preview
+      // This is the most reliable way to preview PDFs on iOS
+      const canShare = await Sharing.isAvailableAsync();
+      if (canShare) {
+        await Sharing.shareAsync(fileUri, {
+          mimeType: 'application/pdf',
+          dialogTitle: 'View Scope of Appointment',
+          UTI: 'com.adobe.pdf',
+        });
+      } else {
+        Alert.alert(
+          'Preview Unavailable',
+          'PDF preview is not available on this device. Use Print or Save to Files instead.'
+        );
+      }
     } catch (error: any) {
       console.error('Preview error:', error);
-      Alert.alert('Preview Error', 'Unable to preview document. Please try again.');
+      if (!error.message?.includes('canceled') && !error.message?.includes('cancelled')) {
+        Alert.alert('Preview Error', 'Unable to preview document. Please try again.');
+      }
     } finally {
       setActionLoading(null);
     }
@@ -130,26 +161,14 @@ export default function ScopeDetailScreen() {
   const handlePrint = async () => {
     setActionLoading('print');
     try {
-      const pdfBase64 = await getPdfData();
-      if (!pdfBase64) {
+      const fileUri = await savePdfToTempFile();
+      if (!fileUri) {
         Alert.alert('Error', 'Could not generate PDF for printing');
         return;
       }
 
-      // For iOS, use the print API directly with base64 data
-      if (Platform.OS === 'ios') {
-        await Print.printAsync({
-          uri: `data:application/pdf;base64,${pdfBase64}`,
-        });
-      } else {
-        // For Android, save to temp file first then print
-        const filename = getFilename();
-        const fileUri = `${FileSystem.cacheDirectory}${filename}`;
-        await FileSystem.writeAsStringAsync(fileUri, pdfBase64, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
-        await Print.printAsync({ uri: fileUri });
-      }
+      // Use file URI for printing (works on both iOS and Android)
+      await Print.printAsync({ uri: fileUri });
     } catch (error: any) {
       console.error('Print error:', error);
       if (!error.message?.includes('canceled') && !error.message?.includes('cancelled')) {
@@ -170,20 +189,20 @@ export default function ScopeDetailScreen() {
       }
 
       const filename = getFilename();
+      // Save to document directory for persistence
       const fileUri = `${FileSystem.documentDirectory}${filename}`;
       
-      // Write the file first
       await FileSystem.writeAsStringAsync(fileUri, pdfBase64, {
         encoding: FileSystem.EncodingType.Base64,
       });
       
-      // On iOS, sharing allows saving to Files app
+      // On iOS, Sharing.shareAsync with proper UTI allows "Save to Files"
       const canShare = await Sharing.isAvailableAsync();
       if (canShare) {
         await Sharing.shareAsync(fileUri, {
           mimeType: 'application/pdf',
           dialogTitle: 'Save Scope of Appointment',
-          UTI: 'com.adobe.pdf', // iOS-specific UTI for PDF
+          UTI: 'com.adobe.pdf',
         });
       } else {
         Alert.alert(
@@ -220,19 +239,11 @@ export default function ScopeDetailScreen() {
   const handleShare = async () => {
     setActionLoading('share');
     try {
-      const pdfBase64 = await getPdfData();
-      if (!pdfBase64) {
+      const fileUri = await savePdfToTempFile();
+      if (!fileUri) {
         Alert.alert('Error', 'Could not generate PDF');
         return;
       }
-
-      const filename = getFilename();
-      const fileUri = `${FileSystem.cacheDirectory}${filename}`;
-      
-      // Write to cache directory for sharing
-      await FileSystem.writeAsStringAsync(fileUri, pdfBase64, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
       
       const canShare = await Sharing.isAvailableAsync();
       if (canShare) {
@@ -264,29 +275,32 @@ export default function ScopeDetailScreen() {
   };
 
   const handleEmailDocument = async () => {
-    const pdfBase64 = await getPdfData();
-    if (!pdfBase64) {
-      Alert.alert('Error', 'Could not generate PDF');
-      return;
+    setActionLoading('share');
+    try {
+      const fileUri = await savePdfToTempFile();
+      if (!fileUri) {
+        Alert.alert('Error', 'Could not generate PDF');
+        return;
+      }
+
+      // Use share to open email with attachment
+      await Sharing.shareAsync(fileUri, {
+        mimeType: 'application/pdf',
+        dialogTitle: 'Send via Email',
+        UTI: 'com.adobe.pdf',
+      });
+      
+      // Log delivery after user opens email dialog
+      const leadEmail = lead?.email || scope?.form_fields?.beneficiary_email;
+      await logDelivery('email', leadEmail, 'Sent via email');
+    } catch (error: any) {
+      console.error('Email error:', error);
+      if (!error.message?.includes('canceled') && !error.message?.includes('cancelled')) {
+        Alert.alert('Email Error', 'Unable to send email. Please try again.');
+      }
+    } finally {
+      setActionLoading(null);
     }
-
-    const filename = getFilename();
-    const fileUri = `${FileSystem.cacheDirectory}${filename}`;
-    
-    await FileSystem.writeAsStringAsync(fileUri, pdfBase64, {
-      encoding: FileSystem.EncodingType.Base64,
-    });
-
-    // Use share to open email with attachment
-    await Sharing.shareAsync(fileUri, {
-      mimeType: 'application/pdf',
-      dialogTitle: 'Send via Email',
-      UTI: 'com.adobe.pdf',
-    });
-    
-    // Log delivery after user opens email dialog
-    const leadEmail = lead?.email || scope?.form_fields?.beneficiary_email;
-    await logDelivery('email', leadEmail, 'Sent via email');
   };
 
   const formatDate = (dateString: string) => {
@@ -301,48 +315,27 @@ export default function ScopeDetailScreen() {
     });
   };
 
-  // PDF Preview Modal
-  const renderPdfPreview = () => (
-    <Modal
-      visible={showPdfPreview}
-      animationType="slide"
-      presentationStyle="pageSheet"
-      onRequestClose={() => setShowPdfPreview(false)}
-    >
-      <View style={[styles.previewContainer, { paddingTop: insets.top }]}>
-        <View style={styles.previewHeader}>
-          <TouchableOpacity onPress={() => setShowPdfPreview(false)}>
-            <Text style={styles.previewCloseText}>Close</Text>
-          </TouchableOpacity>
-          <Text style={styles.previewTitle}>PDF Preview</Text>
-          <TouchableOpacity onPress={handlePrint}>
-            <Ionicons name="print" size={24} color="#3B82F6" />
-          </TouchableOpacity>
+  // Render signature preview from base64
+  const renderSignaturePreview = (signatureData: string | undefined, label: string) => {
+    if (!signatureData) {
+      return (
+        <View style={styles.noSignatureContainer}>
+          <Text style={styles.noSignatureText}>No signature</Text>
         </View>
-        
-        {pdfDataUri && (
-          <WebView
-            source={{ uri: pdfDataUri }}
-            style={styles.webview}
-            originWhitelist={['*']}
-            javaScriptEnabled={true}
-            scalesPageToFit={true}
-          />
-        )}
-        
-        <View style={styles.previewActions}>
-          <TouchableOpacity style={styles.previewActionBtn} onPress={handleSaveToFiles}>
-            <Ionicons name="download" size={22} color="#FFFFFF" />
-            <Text style={styles.previewActionText}>Save to Files</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.previewActionBtn} onPress={handleShare}>
-            <Ionicons name="share-social" size={22} color="#FFFFFF" />
-            <Text style={styles.previewActionText}>Share</Text>
-          </TouchableOpacity>
-        </View>
+      );
+    }
+    
+    return (
+      <View style={styles.signaturePreviewContainer}>
+        <Image
+          source={{ uri: signatureData }}
+          style={styles.signatureImage}
+          resizeMode="contain"
+        />
+        <Text style={styles.signaturePreviewLabel}>{label}</Text>
       </View>
-    </Modal>
-  );
+    );
+  };
 
   if (loading) {
     return (
@@ -370,15 +363,14 @@ export default function ScopeDetailScreen() {
     { key: 'medicare_advantage', label: 'Medicare Advantage Plans (Part C)' },
     { key: 'medicare_supplement', label: 'Medicare Supplement Insurance' },
     { key: 'prescription_drug', label: 'Prescription Drug Plans (Part D)' },
-    { key: 'dental_vision', label: 'Dental, Vision, and Hearing Products' },
+    { key: 'dental_vision_hearing', label: 'Dental, Vision, and Hearing Products' },
+    { key: 'hospital_indemnity', label: 'Hospital Indemnity Insurance' },
   ];
   const selectedProducts = products.filter(p => formFields[p.key]);
   const hasPdf = !!scope.pdf_base64;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      {renderPdfPreview()}
-      
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
@@ -403,7 +395,7 @@ export default function ScopeDetailScreen() {
           </View>
         </View>
 
-        {/* PDF Status */}
+        {/* PDF Status & Quick Actions */}
         <View style={styles.pdfStatusCard}>
           <View style={styles.pdfStatusLeft}>
             <Ionicons 
@@ -484,6 +476,7 @@ export default function ScopeDetailScreen() {
           <TouchableOpacity 
             style={styles.emailButton}
             onPress={handleEmailDocument}
+            disabled={actionLoading !== null}
           >
             <Ionicons name="mail" size={20} color="#3B82F6" />
             <Text style={styles.emailButtonText}>Send via Email</Text>
@@ -514,10 +507,14 @@ export default function ScopeDetailScreen() {
             <Text style={styles.infoLabel}>Typed Name</Text>
             <Text style={[styles.infoValue, styles.signatureText]}>{scope.typed_name}</Text>
           </View>
-          <View style={styles.signatureIndicator}>
-            <Ionicons name="create" size={16} color="#22C55E" />
-            <Text style={styles.signedIndicatorText}>Digital signature on file</Text>
-          </View>
+          
+          {/* Beneficiary Signature Preview */}
+          {scope.signature && (
+            <View style={styles.signatureSection}>
+              <Text style={styles.signatureSectionLabel}>Signature</Text>
+              {renderSignaturePreview(scope.signature, 'Beneficiary Signature')}
+            </View>
+          )}
         </View>
 
         {/* Agent Info */}
@@ -540,10 +537,12 @@ export default function ScopeDetailScreen() {
             <Text style={styles.infoLabel}>Typed Name</Text>
             <Text style={[styles.infoValue, styles.signatureText]}>{scope.agent_typed_name || 'N/A'}</Text>
           </View>
+          
+          {/* Agent Signature Preview */}
           {scope.agent_signature && (
-            <View style={styles.signatureIndicator}>
-              <Ionicons name="create" size={16} color="#22C55E" />
-              <Text style={styles.signedIndicatorText}>Digital signature on file</Text>
+            <View style={styles.signatureSection}>
+              <Text style={styles.signatureSectionLabel}>Signature</Text>
+              {renderSignaturePreview(scope.agent_signature, 'Agent Signature')}
             </View>
           )}
         </View>
@@ -867,19 +866,43 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     color: '#3B82F6',
   },
-  signatureIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 8,
-    backgroundColor: '#22C55E15',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
+  signatureSection: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#334155',
   },
-  signedIndicatorText: {
-    color: '#22C55E',
-    fontSize: 13,
+  signatureSectionLabel: {
+    color: '#94A3B8',
+    fontSize: 12,
+    marginBottom: 8,
+  },
+  signaturePreviewContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    padding: 8,
+    alignItems: 'center',
+  },
+  signatureImage: {
+    width: '100%',
+    height: 80,
+    backgroundColor: '#FFFFFF',
+  },
+  signaturePreviewLabel: {
+    color: '#64748B',
+    fontSize: 10,
+    marginTop: 4,
+  },
+  noSignatureContainer: {
+    backgroundColor: '#334155',
+    borderRadius: 8,
+    padding: 16,
+    alignItems: 'center',
+  },
+  noSignatureText: {
+    color: '#64748B',
+    fontSize: 12,
+    fontStyle: 'italic',
   },
   productItem: {
     flexDirection: 'row',
@@ -948,56 +971,6 @@ const styles = StyleSheet.create({
     color: '#94A3B8',
     fontSize: 12,
     lineHeight: 18,
-  },
-  // PDF Preview Modal Styles
-  previewContainer: {
-    flex: 1,
-    backgroundColor: '#0F172A',
-  },
-  previewHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#1E293B',
-  },
-  previewCloseText: {
-    color: '#3B82F6',
-    fontSize: 16,
-  },
-  previewTitle: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  webview: {
-    flex: 1,
-    backgroundColor: '#1E293B',
-  },
-  previewActions: {
-    flexDirection: 'row',
-    padding: 16,
-    gap: 12,
-    backgroundColor: '#1E293B',
-    borderTopWidth: 1,
-    borderTopColor: '#334155',
-  },
-  previewActionBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#8B5CF6',
-    paddingVertical: 14,
-    borderRadius: 12,
-    gap: 8,
-  },
-  previewActionText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '500',
   },
   // Delivery History Styles
   deliveryItem: {
