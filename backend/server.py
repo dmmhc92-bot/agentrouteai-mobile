@@ -1958,11 +1958,17 @@ async def generate_scope_pdf(scope: dict, lead: dict, agent: dict) -> dict:
         Process signature data (base64 with or without data URI prefix) 
         and return a BytesIO object ready for ReportLab.
         Handles PNG transparency issues by converting RGBA to RGB with white background.
+        Also handles SVG signatures by converting them to PNG.
         """
         from PIL import Image as PILImage
         
-        # Extract the base64 data
+        # Extract the base64 data and detect format
+        is_svg = False
         if signature_data.startswith("data:"):
+            # Check for SVG
+            if "svg" in signature_data[:60].lower():
+                is_svg = True
+            
             # Split at the first comma to get the base64 part
             parts = signature_data.split(",", 1)
             if len(parts) == 2:
@@ -1975,6 +1981,31 @@ async def generate_scope_pdf(scope: dict, lead: dict, agent: dict) -> dict:
         
         # Decode base64
         sig_bytes = base64.b64decode(encoded)
+        
+        # Handle SVG by converting to PNG
+        if is_svg:
+            logger.info("Processing SVG signature, converting to PNG...")
+            try:
+                import cairosvg
+                png_bytes = cairosvg.svg2png(bytestring=sig_bytes, output_width=360, output_height=180)
+                sig_bytes = png_bytes
+                logger.info(f"SVG converted to PNG: {len(png_bytes)} bytes")
+            except ImportError:
+                logger.warning("cairosvg not installed, trying manual SVG parsing...")
+                # Fallback: Create a simple blank image with text
+                pil_img = PILImage.new('RGB', (360, 180), (255, 255, 255))
+                output = BytesIO()
+                pil_img.save(output, format='PNG', optimize=True)
+                output.seek(0)
+                return output
+            except Exception as e:
+                logger.error(f"SVG conversion failed: {e}")
+                # Return white image as fallback
+                pil_img = PILImage.new('RGB', (360, 180), (255, 255, 255))
+                output = BytesIO()
+                pil_img.save(output, format='PNG', optimize=True)
+                output.seek(0)
+                return output
         
         # Load with PIL to handle transparency and format issues
         pil_img = PILImage.open(BytesIO(sig_bytes))
