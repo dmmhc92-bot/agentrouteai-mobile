@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   PanResponder,
   GestureResponderEvent,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -57,6 +58,7 @@ export default function SignatureCapture({
   const [isSaving, setIsSaving] = useState(false);
   const [signatureImage, setSignatureImage] = useState<string | null>(null);
   const [totalPoints, setTotalPoints] = useState(0);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'capturing' | 'success' | 'error'>('idle');
   
   // Use refs for values that PanResponder needs to access
   const isDrawingRef = useRef(false);
@@ -79,6 +81,7 @@ export default function SignatureCapture({
       setCurrentPoints([]);
       setIsSaving(false);
       setTotalPoints(0);
+      setSaveStatus('idle');
       isDrawingRef.current = false;
       currentPointsRef.current = [];
       
@@ -118,12 +121,13 @@ export default function SignatureCapture({
     // Touch start
     onPanResponderGrant: (event: GestureResponderEvent) => {
       const { locationX, locationY } = event.nativeEvent;
-      console.log('Touch START:', locationX, locationY);
+      console.log('[Signature] Touch START:', locationX.toFixed(0), locationY.toFixed(0));
       
       isDrawingRef.current = true;
       const point = { x: locationX, y: locationY };
       currentPointsRef.current = [point];
       setCurrentPoints([point]);
+      setSaveStatus('idle');
       
       // Clear existing saved image since user is drawing new
       if (signatureImageRef.current) {
@@ -146,16 +150,11 @@ export default function SignatureCapture({
       const newPoints = [...currentPointsRef.current, newPoint];
       currentPointsRef.current = newPoints;
       setCurrentPoints(newPoints);
-      
-      // Log every 10th point for debugging
-      if (newPoints.length % 10 === 0) {
-        console.log('Touch MOVE point count:', newPoints.length);
-      }
     },
     
     // Touch end
     onPanResponderRelease: () => {
-      console.log('Touch END, total points:', currentPointsRef.current.length);
+      console.log('[Signature] Touch END, points:', currentPointsRef.current.length);
       
       if (currentPointsRef.current.length > 0) {
         const pathStr = pointsToPath(currentPointsRef.current);
@@ -172,7 +171,7 @@ export default function SignatureCapture({
     
     // Touch cancelled
     onPanResponderTerminate: () => {
-      console.log('Touch TERMINATED');
+      console.log('[Signature] Touch TERMINATED');
       
       if (currentPointsRef.current.length > 0) {
         const pathStr = pointsToPath(currentPointsRef.current);
@@ -193,6 +192,7 @@ export default function SignatureCapture({
 
   // Clear signature
   const handleClear = useCallback(() => {
+    console.log('[Signature] Clearing signature');
     setPaths([]);
     setCurrentPoints([]);
     setTotalPoints(0);
@@ -200,6 +200,7 @@ export default function SignatureCapture({
     signatureImageRef.current = null;
     isDrawingRef.current = false;
     currentPointsRef.current = [];
+    setSaveStatus('idle');
   }, []);
 
   // Check if signature is valid
@@ -208,8 +209,26 @@ export default function SignatureCapture({
 
   const hasDrawnAnything = paths.length > 0 || currentPoints.length > 0;
 
-  // Save signature
+  // Generate SVG string for fallback
+  const generateSvgDataUri = useCallback((): string | null => {
+    if (paths.length === 0) return null;
+    
+    const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" width="${CANVAS_WIDTH}" height="${CANVAS_HEIGHT}" viewBox="0 0 ${CANVAS_WIDTH} ${CANVAS_HEIGHT}">
+      <rect width="${CANVAS_WIDTH}" height="${CANVAS_HEIGHT}" fill="white"/>
+      ${paths.map(d => `<path d="${d}" stroke="#111111" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`).join('')}
+    </svg>`;
+    
+    const base64 = btoa(unescape(encodeURIComponent(svgContent)));
+    return `data:image/svg+xml;base64,${base64}`;
+  }, [paths]);
+
+  // Save signature - with multiple fallback methods
   const handleSave = useCallback(async () => {
+    console.log('[Signature] === SAVE INITIATED ===');
+    console.log('[Signature] Paths:', paths.length);
+    console.log('[Signature] Total points:', totalPoints);
+    console.log('[Signature] Has uploaded image:', !!signatureImage);
+
     if (!hasValidSignature) {
       Alert.alert(
         'Signature Required',
@@ -220,49 +239,93 @@ export default function SignatureCapture({
     }
 
     setIsSaving(true);
-    console.log('=== SAVING SIGNATURE ===');
-    console.log('Paths count:', paths.length);
-    console.log('Total points:', totalPoints);
-    console.log('Has uploaded image:', !!signatureImage);
+    setSaveStatus('capturing');
 
     try {
       // If we have an uploaded/existing image and no new drawing, use it
       if (signatureImage && paths.length === 0) {
-        console.log('Using uploaded/existing image');
-        console.log('Image data length:', signatureImage.length);
+        console.log('[Signature] Using existing/uploaded image');
+        console.log('[Signature] Image length:', signatureImage.length);
+        setSaveStatus('success');
+        
+        // Small delay to show success state
+        await new Promise(resolve => setTimeout(resolve, 300));
         onSave(signatureImage);
         return;
       }
 
-      // Capture the canvas as PNG
-      console.log('Capturing canvas as PNG...');
-      const uri = await captureRef(canvasRef, {
-        format: 'png',
-        quality: 1,
-        result: 'base64',
-      });
+      // Try to capture the canvas as PNG using react-native-view-shot
+      console.log('[Signature] Attempting captureRef...');
+      
+      let dataUri: string | null = null;
+      
+      try {
+        if (canvasRef.current) {
+          const uri = await captureRef(canvasRef, {
+            format: 'png',
+            quality: 1,
+            result: 'base64',
+          });
+          
+          if (uri && uri.length > 100) {
+            dataUri = `data:image/png;base64,${uri}`;
+            console.log('[Signature] captureRef SUCCESS, length:', dataUri.length);
+          } else {
+            console.warn('[Signature] captureRef returned empty/short result');
+          }
+        }
+      } catch (captureError) {
+        console.warn('[Signature] captureRef failed:', captureError);
+      }
+      
+      // Fallback: Generate SVG data URI if PNG capture failed
+      if (!dataUri || dataUri.length < 500) {
+        console.log('[Signature] Using SVG fallback');
+        const svgUri = generateSvgDataUri();
+        if (svgUri) {
+          dataUri = svgUri;
+          console.log('[Signature] SVG fallback length:', dataUri.length);
+        }
+      }
+      
+      // Validate we have valid data
+      if (!dataUri || dataUri.length < 500) {
+        throw new Error('Failed to capture signature image');
+      }
 
-      const dataUri = `data:image/png;base64,${uri}`;
-      console.log('Signature captured successfully');
-      console.log('Data URI length:', dataUri.length);
-      console.log('Data URI prefix:', dataUri.substring(0, 50));
+      console.log('[Signature] Final data URI length:', dataUri.length);
+      console.log('[Signature] Data URI prefix:', dataUri.substring(0, 50));
       
       setSignatureImage(dataUri);
-      onSave(dataUri);
+      setSaveStatus('success');
       
-      console.log('Signature saved and callback invoked');
-    } catch (error) {
-      console.error('=== SIGNATURE CAPTURE ERROR ===');
-      console.error('Error:', error);
-      Alert.alert('Error', 'Failed to capture signature. Please try again.');
+      // Small delay to show success state
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      console.log('[Signature] Calling onSave callback...');
+      onSave(dataUri);
+      console.log('[Signature] === SAVE COMPLETE ===');
+      
+    } catch (error: any) {
+      console.error('[Signature] === SAVE ERROR ===');
+      console.error('[Signature] Error:', error?.message || error);
+      setSaveStatus('error');
+      
+      Alert.alert(
+        'Capture Failed', 
+        'Failed to capture your signature. Please try again or use the upload option.',
+        [{ text: 'OK' }]
+      );
     } finally {
       setIsSaving(false);
     }
-  }, [hasValidSignature, signatureImage, paths.length, totalPoints, onSave]);
+  }, [hasValidSignature, signatureImage, paths.length, totalPoints, onSave, generateSvgDataUri]);
 
   // Upload signature image from device
   const handleUploadImage = useCallback(async () => {
     try {
+      console.log('[Signature] Opening image picker...');
+      
       // Request permission
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
@@ -285,15 +348,18 @@ export default function SignatureCapture({
 
       if (!result.canceled && result.assets[0].base64) {
         const dataUri = `data:image/png;base64,${result.assets[0].base64}`;
+        console.log('[Signature] Image picked, length:', dataUri.length);
+        
         setSignatureImage(dataUri);
         signatureImageRef.current = dataUri;
         // Clear any drawn paths since we're using uploaded image
         setPaths([]);
         setCurrentPoints([]);
         setTotalPoints(0);
+        setSaveStatus('idle');
       }
     } catch (error) {
-      console.error('Error picking image:', error);
+      console.error('[Signature] Image picker error:', error);
       Alert.alert('Error', 'Failed to load image. Please try again.');
     }
   }, []);
@@ -323,6 +389,31 @@ export default function SignatureCapture({
 
   // Current path SVG string
   const currentPathStr = pointsToPath(currentPoints);
+
+  // Status badge text
+  const getStatusBadge = () => {
+    if (saveStatus === 'capturing') {
+      return { icon: 'sync', color: '#2563EB', bg: '#DBEAFE', text: 'Capturing...' };
+    }
+    if (saveStatus === 'success') {
+      return { icon: 'checkmark-circle', color: '#16A34A', bg: '#DCFCE7', text: 'Captured!' };
+    }
+    if (saveStatus === 'error') {
+      return { icon: 'alert-circle', color: '#DC2626', bg: '#FEE2E2', text: 'Failed' };
+    }
+    if (currentPoints.length > 0) {
+      return { icon: 'pencil', color: '#2563EB', bg: '#DBEAFE', text: `Drawing (${currentPoints.length} pts)...` };
+    }
+    if (hasValidSignature) {
+      return { icon: 'checkmark-circle', color: '#16A34A', bg: '#DCFCE7', text: 'Signature ready!' };
+    }
+    if (hasDrawnAnything) {
+      return { icon: 'time-outline', color: '#D97706', bg: '#FEF3C7', text: 'Keep drawing...' };
+    }
+    return { icon: 'hand-left-outline', color: '#94A3B8', bg: '#F1F5F9', text: 'Touch to draw' };
+  };
+
+  const statusBadge = getStatusBadge();
 
   return (
     <Modal
@@ -362,7 +453,7 @@ export default function SignatureCapture({
           </View>
         )}
 
-        {/* Canvas Container - NO ScrollView parent, pointerEvents box-none */}
+        {/* Canvas Container */}
         <View style={styles.canvasOuter}>
           <View
             ref={canvasRef}
@@ -427,27 +518,10 @@ export default function SignatureCapture({
 
           {/* Status row */}
           <View style={styles.statusRow}>
-            {currentPoints.length > 0 ? (
-              <View style={[styles.badge, styles.badgeDrawing]}>
-                <Ionicons name="pencil" size={14} color="#2563EB" />
-                <Text style={styles.badgeTextBlue}>Drawing ({currentPoints.length} pts)...</Text>
-              </View>
-            ) : hasValidSignature ? (
-              <View style={[styles.badge, styles.badgeValid]}>
-                <Ionicons name="checkmark-circle" size={14} color="#16A34A" />
-                <Text style={styles.badgeTextGreen}>Signature ready!</Text>
-              </View>
-            ) : hasDrawnAnything ? (
-              <View style={[styles.badge, styles.badgePending]}>
-                <Ionicons name="time-outline" size={14} color="#D97706" />
-                <Text style={styles.badgeTextOrange}>Keep drawing...</Text>
-              </View>
-            ) : (
-              <View style={[styles.badge, styles.badgeEmpty]}>
-                <Ionicons name="hand-left-outline" size={14} color="#94A3B8" />
-                <Text style={styles.badgeTextGray}>Touch to draw</Text>
-              </View>
-            )}
+            <View style={[styles.badge, { backgroundColor: statusBadge.bg }]}>
+              <Ionicons name={statusBadge.icon as any} size={14} color={statusBadge.color} />
+              <Text style={[styles.badgeText, { color: statusBadge.color }]}>{statusBadge.text}</Text>
+            </View>
           </View>
 
           {/* Upload button */}
@@ -471,6 +545,15 @@ export default function SignatureCapture({
           </View>
         )}
 
+        {/* Debug info for development */}
+        {__DEV__ && (
+          <View style={styles.debugInfo}>
+            <Text style={styles.debugText}>
+              Paths: {paths.length} | Points: {totalPoints} | Image: {signatureImage ? `${(signatureImage.length / 1024).toFixed(1)}KB` : 'none'}
+            </Text>
+          </View>
+        )}
+
         {/* Legal text */}
         <View style={styles.legalBox}>
           <Ionicons name="shield-checkmark-outline" size={16} color="#64748B" />
@@ -482,12 +565,24 @@ export default function SignatureCapture({
         {/* Save button */}
         <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
           <TouchableOpacity
-            style={[styles.saveBtn, !hasValidSignature && styles.saveBtnDisabled]}
+            style={[
+              styles.saveBtn, 
+              !hasValidSignature && styles.saveBtnDisabled,
+              saveStatus === 'success' && styles.saveBtnSuccess
+            ]}
             onPress={handleSave}
             disabled={!hasValidSignature || isSaving}
           >
             {isSaving ? (
-              <ActivityIndicator color="#FFFFFF" size="small" />
+              <>
+                <ActivityIndicator color="#FFFFFF" size="small" />
+                <Text style={styles.saveBtnText}>Capturing Signature...</Text>
+              </>
+            ) : saveStatus === 'success' ? (
+              <>
+                <Ionicons name="checkmark-circle" size={24} color="#FFFFFF" />
+                <Text style={styles.saveBtnText}>Signature Saved!</Text>
+              </>
             ) : (
               <>
                 <Ionicons
@@ -636,37 +731,9 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     gap: 5,
   },
-  badgeDrawing: {
-    backgroundColor: '#DBEAFE',
-  },
-  badgeValid: {
-    backgroundColor: '#DCFCE7',
-  },
-  badgePending: {
-    backgroundColor: '#FEF3C7',
-  },
-  badgeEmpty: {
-    backgroundColor: '#F1F5F9',
-  },
-  badgeTextBlue: {
+  badgeText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#2563EB',
-  },
-  badgeTextGreen: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#16A34A',
-  },
-  badgeTextOrange: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#D97706',
-  },
-  badgeTextGray: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#94A3B8',
   },
   uploadBtn: {
     flexDirection: 'row',
@@ -704,6 +771,16 @@ const styles = StyleSheet.create({
     width: CANVAS_WIDTH - 50,
     height: 60,
   },
+  debugInfo: {
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    alignItems: 'center',
+  },
+  debugText: {
+    fontSize: 10,
+    color: '#94A3B8',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
   legalBox: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -737,6 +814,9 @@ const styles = StyleSheet.create({
   },
   saveBtnDisabled: {
     backgroundColor: '#E2E8F0',
+  },
+  saveBtnSuccess: {
+    backgroundColor: '#16A34A',
   },
   saveBtnText: {
     fontSize: 17,
