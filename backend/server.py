@@ -1321,15 +1321,17 @@ async def get_all_scopes(
     }
 
 async def generate_scope_pdf(scope: dict, lead: dict, agent: dict) -> dict:
-    """Generate professional PDF for Scope of Appointment"""
+    """Generate professional PDF for Scope of Appointment with dual signatures"""
     from reportlab.lib.pagesizes import letter
     from reportlab.pdfgen import canvas
     from reportlab.lib import colors
+    from reportlab.lib.utils import ImageReader
     from io import BytesIO
     import base64
     
-    lead_name = lead["name"] if lead else "Unknown"
-    agent_name = agent["name"] if agent else "Unknown"
+    lead_name = lead.get("name", "Unknown") if lead else "Unknown"
+    agent_name = agent.get("name", "Unknown") if agent else "Unknown"
+    scope_id = scope.get("id", "")
     
     buffer = BytesIO()
     p = canvas.Canvas(buffer, pagesize=letter)
@@ -1345,97 +1347,230 @@ async def generate_scope_pdf(scope: dict, lead: dict, agent: dict) -> dict:
     p.drawCentredString(width/2, height - 55, "SCOPE OF APPOINTMENT")
     p.setFillColor(colors.HexColor("#475569"))
     p.setFont("Helvetica", 10)
-    p.drawCentredString(width/2, height - 75, "Medicare Sales Appointment Confirmation")
+    p.drawCentredString(width/2, height - 75, "Medicare Sales Appointment Confirmation Document")
     
     p.setFillColor(colors.black)
     p.setFont("Helvetica", 8)
     p.drawString(40, height - 95, f"Doc ID: {scope_id[:8].upper()}")
-    p.drawRightString(width - 40, height - 95, f"Date: {scope['created_date'].strftime('%B %d, %Y')}")
+    created_date = scope.get("created_date", datetime.utcnow())
+    if isinstance(created_date, str):
+        created_date = datetime.fromisoformat(created_date.replace('Z', '+00:00'))
+    p.drawRightString(width - 40, height - 95, f"Date: {created_date.strftime('%B %d, %Y')}")
     
     y = height - 130
     
-    # Sections
-    sections = [
-        ("BENEFICIARY INFORMATION", [
-            ("Name", form_fields.get("beneficiary_name", lead_name)),
-            ("Phone", form_fields.get("beneficiary_phone", lead.get("phone", "") if lead else "")),
-        ]),
-        ("AGENT INFORMATION", [
-            ("Agent Name", form_fields.get("agent_name", current_user["name"])),
-            ("License #", form_fields.get("agent_license", "")),
-        ]),
-    ]
-    
-    for section_title, fields in sections:
-        p.setFillColor(colors.HexColor("#1E40AF"))
-        p.setFont("Helvetica-Bold", 12)
-        p.drawString(40, y, section_title)
-        y -= 5
-        p.line(40, y, width - 40, y)
-        y -= 20
-        p.setFillColor(colors.black)
-        p.setFont("Helvetica", 10)
-        for label, value in fields:
-            p.drawString(40, y, f"{label}: {value}")
-            y -= 18
-        y -= 15
-    
-    # Products
+    # Section 1: Beneficiary Information
     p.setFillColor(colors.HexColor("#1E40AF"))
     p.setFont("Helvetica-Bold", 12)
-    p.drawString(40, y, "PRODUCTS TO BE DISCUSSED")
+    p.drawString(40, y, "SECTION 1: BENEFICIARY/AUTHORIZED REPRESENTATIVE")
     y -= 5
     p.line(40, y, width - 40, y)
     y -= 20
     p.setFillColor(colors.black)
     p.setFont("Helvetica", 10)
-    
-    products = [
-        ("medicare_advantage", "Medicare Advantage Plans (Part C)"),
-        ("medicare_supplement", "Medicare Supplement Insurance"),
-        ("prescription_drug", "Prescription Drug Plans (Part D)"),
-        ("dental_vision", "Dental/Vision/Hearing Products"),
-    ]
-    for key, label in products:
-        checked = "X" if form_fields.get(key) else " "
-        p.drawString(50, y, f"[{checked}] {label}")
+    p.drawString(40, y, f"Name: {form_fields.get('beneficiary_name', lead_name)}")
+    y -= 18
+    p.drawString(40, y, f"Phone: {form_fields.get('beneficiary_phone', lead.get('phone', 'N/A') if lead else 'N/A')}")
+    y -= 18
+    if lead and lead.get("address"):
+        p.drawString(40, y, f"Address: {lead.get('address', 'N/A')}")
         y -= 18
-    y -= 30
+    y -= 15
     
-    # Signature
+    # Section 2: Agent Information
     p.setFillColor(colors.HexColor("#1E40AF"))
     p.setFont("Helvetica-Bold", 12)
-    p.drawString(40, y, "SIGNATURE")
+    p.drawString(40, y, "SECTION 2: LICENSED SALES REPRESENTATIVE")
     y -= 5
     p.line(40, y, width - 40, y)
-    y -= 40
+    y -= 20
+    p.setFillColor(colors.black)
+    p.setFont("Helvetica", 10)
+    p.drawString(40, y, f"Agent/Broker Name: {form_fields.get('agent_name', agent_name)}")
+    y -= 18
+    p.drawString(40, y, f"License Number: {form_fields.get('agent_license', 'N/A')}")
+    y -= 18
+    p.drawString(40, y, f"Agency: AgentRoute AI Insurance Services")
+    y -= 25
+    
+    # Section 3: Products
+    p.setFillColor(colors.HexColor("#1E40AF"))
+    p.setFont("Helvetica-Bold", 12)
+    p.drawString(40, y, "SECTION 3: PRODUCTS TO BE DISCUSSED")
+    y -= 5
+    p.line(40, y, width - 40, y)
+    y -= 15
+    p.setFillColor(colors.HexColor("#475569"))
+    p.setFont("Helvetica-Oblique", 9)
+    p.drawString(40, y, "Please indicate the type(s) of product(s) you want the agent/broker to discuss:")
+    y -= 18
+    p.setFillColor(colors.black)
+    p.setFont("Helvetica", 10)
+    
+    products = [
+        ("medicare_advantage", "Medicare Advantage Plans (Part C) - HMO, PPO, PFFS, SNP"),
+        ("medicare_supplement", "Medicare Supplement (Medigap) Insurance"),
+        ("prescription_drug", "Medicare Prescription Drug Plans (Part D)"),
+        ("dental_vision", "Dental, Vision, and/or Hearing Products"),
+    ]
+    for key, label in products:
+        checked = "☑" if form_fields.get(key) else "☐"
+        p.drawString(50, y, f"{checked} {label}")
+        y -= 16
+    
+    if form_fields.get("other_products"):
+        p.drawString(50, y, f"☑ Other: {form_fields.get('other_products')}")
+        y -= 16
+    y -= 15
+    
+    # Section 4: Consent
+    p.setFillColor(colors.HexColor("#1E40AF"))
+    p.setFont("Helvetica-Bold", 12)
+    p.drawString(40, y, "SECTION 4: CONSENT & ACKNOWLEDGMENT")
+    y -= 5
+    p.line(40, y, width - 40, y)
+    y -= 15
+    
+    # Consent box
+    p.setFillColor(colors.HexColor("#F8FAFC"))
+    p.rect(40, y - 60, width - 80, 60, stroke=0, fill=1)
+    p.setFillColor(colors.HexColor("#475569"))
+    p.setFont("Helvetica", 8)
+    consent_text = [
+        "By signing below, I agree to a meeting with a sales agent to discuss the types of products I have",
+        "selected above. I understand that this is not an enrollment form and I am under no obligation to",
+        "enroll in any plan. The agent may only discuss the products I have indicated above. I understand",
+        "that the Centers for Medicare & Medicaid Services (CMS) requires documentation of specific",
+        "product types prior to any Medicare sales appointment."
+    ]
+    text_y = y - 12
+    for line in consent_text:
+        p.drawString(50, text_y, line)
+        text_y -= 10
+    y -= 75
+    
+    # Section 5: Signatures
+    p.setFillColor(colors.HexColor("#1E40AF"))
+    p.setFont("Helvetica-Bold", 12)
+    p.drawString(40, y, "SECTION 5: SIGNATURES")
+    y -= 5
+    p.line(40, y, width - 40, y)
+    y -= 25
     
     p.setFillColor(colors.black)
+    
+    # Beneficiary Signature
+    p.setFont("Helvetica-Bold", 10)
+    p.drawString(40, y, "Beneficiary/Authorized Representative:")
+    y -= 5
+    
+    # Draw signature if exists
     if scope.get("signature"):
         try:
             sig_data = scope["signature"]
-            if sig_data.startswith("data:"): sig_data = sig_data.split(",")[1]
+            if sig_data.startswith("data:"):
+                sig_data = sig_data.split(",")[1]
             sig_bytes = base64.b64decode(sig_data)
             sig_image = ImageReader(BytesIO(sig_bytes))
-            p.drawImage(sig_image, 40, y - 40, width=150, height=50, preserveAspectRatio=True)
-        except: pass
+            p.drawImage(sig_image, 40, y - 45, width=140, height=40, preserveAspectRatio=True)
+        except Exception as e:
+            logger.error(f"Error drawing beneficiary signature: {e}")
     
     p.line(40, y - 50, 200, y - 50)
-    p.setFont("Helvetica", 9)
-    p.drawString(40, y - 65, "Beneficiary Signature")
-    p.drawString(250, y - 50, f"Date: {scope['created_date'].strftime('%m/%d/%Y')}")
-    p.drawString(400, y - 50, f"Name: {scope['typed_name']}")
+    p.setFont("Helvetica", 8)
+    p.drawString(40, y - 60, "Signature")
     
+    p.line(220, y - 50, 320, y - 50)
+    p.drawString(220, y - 60, "Date")
+    p.setFont("Helvetica", 10)
+    p.drawString(220, y - 45, created_date.strftime('%m/%d/%Y'))
+    
+    p.line(340, y - 50, 550, y - 50)
+    p.setFont("Helvetica", 8)
+    p.drawString(340, y - 60, "Printed Name")
+    p.setFont("Helvetica", 10)
+    p.drawString(340, y - 45, scope.get('typed_name', ''))
+    
+    y -= 80
+    
+    # Agent Signature
+    p.setFont("Helvetica-Bold", 10)
+    p.drawString(40, y, "Licensed Sales Representative:")
+    y -= 5
+    
+    # Draw agent signature if exists
+    if scope.get("agent_signature"):
+        try:
+            sig_data = scope["agent_signature"]
+            if sig_data.startswith("data:"):
+                sig_data = sig_data.split(",")[1]
+            sig_bytes = base64.b64decode(sig_data)
+            sig_image = ImageReader(BytesIO(sig_bytes))
+            p.drawImage(sig_image, 40, y - 45, width=140, height=40, preserveAspectRatio=True)
+        except Exception as e:
+            logger.error(f"Error drawing agent signature: {e}")
+    
+    p.line(40, y - 50, 200, y - 50)
+    p.setFont("Helvetica", 8)
+    p.drawString(40, y - 60, "Signature")
+    
+    p.line(220, y - 50, 320, y - 50)
+    p.drawString(220, y - 60, "Date")
+    p.setFont("Helvetica", 10)
+    p.drawString(220, y - 45, created_date.strftime('%m/%d/%Y'))
+    
+    p.line(340, y - 50, 550, y - 50)
+    p.setFont("Helvetica", 8)
+    p.drawString(340, y - 60, "Printed Name")
+    p.setFont("Helvetica", 10)
+    p.drawString(340, y - 45, scope.get('agent_typed_name', agent_name))
+    
+    # Footer
     p.setFont("Helvetica", 8)
     p.setFillColor(colors.HexColor("#64748B"))
-    p.drawCentredString(width/2, 30, f"AgentRoute AI - Document ID: {scope_id}")
+    p.drawCentredString(width/2, 30, f"AgentRoute AI - Document ID: {scope_id} - This document is valid for the appointment date listed")
     
     p.save()
     buffer.seek(0)
     pdf_base64 = base64.b64encode(buffer.read()).decode()
-    return {"pdf_base64": pdf_base64, "filename": f"SOA_{lead_name.replace(' ', '_')}_{scope['created_date'].strftime('%Y%m%d')}.pdf"}
+    
+    return {
+        "pdf_base64": pdf_base64, 
+        "filename": f"SOA_{lead_name.replace(' ', '_')}_{created_date.strftime('%Y%m%d')}.pdf"
+    }
 
-# ==================== AI ASSISTANT ROUTES ====================
+@api_router.get("/scope/{scope_id}/pdf")
+async def get_scope_pdf(scope_id: str, current_user: dict = Depends(get_current_user)):
+    """Get or regenerate PDF for a scope document"""
+    scope = await db.scope_forms.find_one({"id": scope_id})
+    if not scope:
+        raise HTTPException(status_code=404, detail="Scope not found")
+    
+    # If PDF is already stored, return it
+    if scope.get("pdf_base64"):
+        lead = await db.leads.find_one({"id": scope["lead_id"]})
+        lead_name = lead.get("name", "Unknown") if lead else "Unknown"
+        created_date = scope.get("created_date", datetime.utcnow())
+        if isinstance(created_date, str):
+            created_date = datetime.fromisoformat(created_date.replace('Z', '+00:00'))
+        return {
+            "pdf_base64": scope["pdf_base64"],
+            "filename": f"SOA_{lead_name.replace(' ', '_')}_{created_date.strftime('%Y%m%d')}.pdf"
+        }
+    
+    # Otherwise, generate it
+    lead = await db.leads.find_one({"id": scope["lead_id"]})
+    agent = await db.users.find_one({"id": scope.get("created_by_user")})
+    
+    pdf_data = await generate_scope_pdf(scope, lead, agent)
+    
+    # Store the generated PDF
+    await db.scope_forms.update_one(
+        {"id": scope_id},
+        {"$set": {"pdf_base64": pdf_data["pdf_base64"]}}
+    )
+    
+    return pdf_data
 
 @api_router.post("/ai/chat")
 async def ai_chat(request: dict, current_user: dict = Depends(get_current_user)):
