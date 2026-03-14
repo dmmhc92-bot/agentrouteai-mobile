@@ -895,8 +895,249 @@ class APITester:
                     print(f"  • {result['test']}: {result['details']}")
         
         return failed_tests == 0
+    
+    def test_soa_pdf_page_mapping(self):
+        """Test the critical SOA PDF page mapping fix"""
+        print("\n🔍 Testing SOA PDF Page Mapping Fix")
+        print("=" * 50)
+        
+        # Step 1: Login with admin credentials
+        try:
+            response = self.session.post(f"{BASE_URL}/auth/login", json=SOA_TEST_CREDENTIALS)
+            if response.status_code == 200:
+                data = response.json()
+                self.auth_token = data["access_token"]
+                self.session.headers.update({"Authorization": f"Bearer {self.auth_token}"})
+                self.log_result("SOA Admin Login", True, f"Logged in as {SOA_TEST_CREDENTIALS['email']}")
+            else:
+                self.log_result("SOA Admin Login", False, f"Login failed: {response.status_code}")
+                return False
+        except Exception as e:
+            self.log_result("SOA Admin Login", False, f"Login error: {str(e)}")
+            return False
+        
+        # Step 2: Verify test scope exists
+        try:
+            response = self.session.get(f"{BASE_URL}/scope/{SOA_TEST_SCOPE_ID}")
+            if response.status_code == 200:
+                scope_data = response.json()
+                form_fields = scope_data.get("form_fields", {})
+                beneficiary_name = form_fields.get("beneficiary_name", "")
+                beneficiary_phone = form_fields.get("beneficiary_phone", "")
+                
+                if "Jane Test Beneficiary" in beneficiary_name and "555-999-8888" in beneficiary_phone:
+                    self.log_result("Test Scope Data Verification", True, 
+                                  f"Test scope contains expected data: {beneficiary_name}, {beneficiary_phone}")
+                else:
+                    self.log_result("Test Scope Data Verification", False, 
+                                  f"Missing expected test data - Name: {beneficiary_name}, Phone: {beneficiary_phone}")
+                    return False
+            else:
+                self.log_result("Test Scope Retrieval", False, f"Could not retrieve test scope: {response.status_code}")
+                return False
+        except Exception as e:
+            self.log_result("Test Scope Retrieval", False, f"Scope retrieval error: {str(e)}")
+            return False
+        
+        # Step 3: Test PDF generation (MAIN TEST)
+        try:
+            response = self.session.post(f"{BASE_URL}/scope/{SOA_TEST_SCOPE_ID}/generate-pdf")
+            
+            if response.status_code == 200:
+                data = response.json()
+                
+                # Check if pdf_base64 exists and is substantial
+                pdf_base64 = data.get("pdf_base64")
+                if pdf_base64 and len(pdf_base64) > 1000:
+                    self.log_result("PDF Generation Success", True, 
+                                  f"PDF generated successfully, size: {len(pdf_base64)} chars")
+                    
+                    # Check items_stamped count
+                    items_stamped = data.get("items_stamped", 0)
+                    if items_stamped >= 14:  # Should have 11+ text fields + 2 signatures + 3 checkboxes
+                        self.log_result("Items Stamped Count", True, 
+                                      f"Items stamped: {items_stamped} (expected 14+ items)")
+                    else:
+                        self.log_result("Items Stamped Count", False, 
+                                      f"Items stamped: {items_stamped} (expected 14+ items)")
+                    
+                    # Try to analyze PDF content
+                    self.analyze_pdf_page_mapping(pdf_base64)
+                    
+                else:
+                    self.log_result("PDF Generation Success", False, 
+                                  "PDF generation returned null or empty pdf_base64")
+                    return False
+            else:
+                self.log_result("PDF Generation Success", False, 
+                              f"PDF generation failed with status {response.status_code}: {response.text}")
+                return False
+                
+        except Exception as e:
+            self.log_result("PDF Generation Success", False, f"PDF generation error: {str(e)}")
+            return False
+        
+        # Step 4: Check backend logs for page assignment
+        self.check_backend_logs_for_page_mapping()
+        
+        return True
+    
+    def analyze_pdf_page_mapping(self, pdf_base64):
+        """Analyze PDF content to verify correct page mapping"""
+        try:
+            # Decode the PDF
+            pdf_bytes = base64.b64decode(pdf_base64)
+            
+            # Save temporarily for analysis
+            temp_pdf_path = f"/tmp/test_soa_{SOA_TEST_SCOPE_ID}.pdf"
+            with open(temp_pdf_path, "wb") as f:
+                f.write(pdf_bytes)
+            
+            self.log_result("PDF Decode", True, f"PDF decoded successfully, size: {len(pdf_bytes)} bytes")
+            
+            # Try to extract text using pdfplumber if available
+            try:
+                import pdfplumber
+                
+                with pdfplumber.open(temp_pdf_path) as pdf:
+                    if len(pdf.pages) >= 2:
+                        # Extract text from page 1 (index 0) - should have checkboxes only
+                        page1_text = pdf.pages[0].extract_text() or ""
+                        
+                        # Extract text from page 2 (index 1) - should have all text fields
+                        page2_text = pdf.pages[1].extract_text() or ""
+                        
+                        # Verify page 1 contains Medicare references but NOT beneficiary/agent names
+                        page1_has_medicare = "Medicare" in page1_text
+                        page1_has_beneficiary_name = "Jane Test Beneficiary" in page1_text
+                        
+                        if page1_has_medicare and not page1_has_beneficiary_name:
+                            self.log_result("Page 1 Content Separation", True, 
+                                          "Page 1 contains Medicare references but NOT beneficiary names (CORRECT)")
+                        else:
+                            self.log_result("Page 1 Content Separation", False, 
+                                          f"Page 1 content issue - Medicare: {page1_has_medicare}, Beneficiary name: {page1_has_beneficiary_name}")
+                        
+                        # Verify page 2 contains beneficiary and agent info
+                        page2_has_beneficiary = "Jane Test Beneficiary" in page2_text
+                        page2_has_phone = "555-999-8888" in page2_text
+                        page2_has_agent = "Mark Test Agent" in page2_text
+                        
+                        if page2_has_beneficiary and page2_has_phone and page2_has_agent:
+                            self.log_result("Page 2 Content Verification", True, 
+                                          "Page 2 contains beneficiary name, phone, and agent info (CORRECT)")
+                        else:
+                            self.log_result("Page 2 Content Verification", False, 
+                                          f"Page 2 missing content - Beneficiary: {page2_has_beneficiary}, Phone: {page2_has_phone}, Agent: {page2_has_agent}")
+                        
+                        print(f"   📄 Page 1 text preview: {page1_text[:150]}...")
+                        print(f"   📄 Page 2 text preview: {page2_text[:150]}...")
+                        
+                    else:
+                        self.log_result("PDF Page Count", False, f"PDF has {len(pdf.pages)} pages, expected at least 2")
+                        
+            except ImportError:
+                self.log_result("PDF Text Extraction", False, 
+                              "pdfplumber not available - install with: pip install pdfplumber")
+            
+            # Clean up
+            if os.path.exists(temp_pdf_path):
+                os.remove(temp_pdf_path)
+                
+        except Exception as e:
+            self.log_result("PDF Analysis", False, f"PDF analysis error: {str(e)}")
+    
+    def check_backend_logs_for_page_mapping(self):
+        """Check backend logs for page assignment confirmation"""
+        try:
+            print(f"\n📋 Checking backend logs for page assignment...")
+            
+            # Check supervisor backend logs
+            import subprocess
+            result = subprocess.run(
+                ["tail", "-n", "100", "/var/log/supervisor/backend.err.log"], 
+                capture_output=True, 
+                text=True
+            )
+            
+            if result.returncode == 0:
+                log_content = result.stdout
+                
+                # Look for PAGE 1 and PAGE 2 entries
+                page1_entries = [line for line in log_content.split('\n') if 'PAGE 1:' in line]
+                page2_entries = [line for line in log_content.split('\n') if 'PAGE 2:' in line]
+                
+                if page1_entries:
+                    # Count checkbox items on page 1
+                    checkbox_count = sum(1 for line in page1_entries if 'CHECK' in line)
+                    self.log_result("Backend Logs - Page 1 Checkboxes", True, 
+                                  f"Found {checkbox_count} checkbox items on PAGE 1 (expected 3+)")
+                    if page1_entries:
+                        print(f"   Latest PAGE 1 entry: {page1_entries[-1]}")
+                else:
+                    self.log_result("Backend Logs - Page 1", False, "No PAGE 1 log entries found")
+                
+                if page2_entries:
+                    # Count text field and signature items on page 2
+                    text_field_count = sum(1 for line in page2_entries if any(field in line for field in ['beneficiary_name', 'beneficiary_phone', 'agent_name']))
+                    signature_count = sum(1 for line in page2_entries if 'SIG' in line)
+                    
+                    self.log_result("Backend Logs - Page 2 Content", True, 
+                                  f"Found {text_field_count} text fields and {signature_count} signatures on PAGE 2")
+                    if page2_entries:
+                        print(f"   Latest PAGE 2 entry: {page2_entries[-1]}")
+                else:
+                    self.log_result("Backend Logs - Page 2", False, "No PAGE 2 log entries found")
+                    
+            else:
+                self.log_result("Backend Logs Check", False, "Could not access backend logs")
+                
+        except Exception as e:
+            self.log_result("Backend Logs Check", False, f"Log check error: {str(e)}")
+
+    def run_soa_pdf_test_only(self):
+        """Run only the SOA PDF page mapping test"""
+        print("🚀 Starting SOA PDF Page Mapping Test")
+        print(f"Base URL: {BASE_URL}")
+        print(f"Test Scope ID: {SOA_TEST_SCOPE_ID}")
+        print("=" * 60)
+        
+        success = self.test_soa_pdf_page_mapping()
+        
+        # Print summary
+        print("=" * 60)
+        print("📊 SOA PDF TEST SUMMARY")
+        print("=" * 60)
+        
+        total_tests = len([r for r in self.results if 'SOA' in r['test'] or 'PDF' in r['test'] or 'Page' in r['test']])
+        passed_tests = sum(1 for r in self.results if ('SOA' in r['test'] or 'PDF' in r['test'] or 'Page' in r['test']) and r["success"])
+        failed_tests = total_tests - passed_tests
+        
+        print(f"SOA PDF Tests: {total_tests}")
+        print(f"✅ Passed: {passed_tests}")
+        print(f"❌ Failed: {failed_tests}")
+        print(f"Success Rate: {(passed_tests/total_tests)*100:.1f}%" if total_tests > 0 else "No tests run")
+        
+        if failed_tests > 0:
+            print("\n🔍 FAILED SOA PDF TESTS:")
+            for result in self.results:
+                if not result["success"] and ('SOA' in result['test'] or 'PDF' in result['test'] or 'Page' in result['test']):
+                    print(f"  • {result['test']}: {result['details']}")
+        
+        if success and failed_tests == 0:
+            print("\n🎉 SOA PDF PAGE MAPPING FIX VERIFIED SUCCESSFULLY!")
+        else:
+            print("\n⚠️  SOA PDF page mapping test had issues - see details above")
+        
+        return failed_tests == 0
 
 if __name__ == "__main__":
     tester = APITester()
-    success = tester.run_all_tests()
+    
+    # Check if we should run only SOA PDF test
+    if len(sys.argv) > 1 and sys.argv[1] == "--soa-pdf-only":
+        success = tester.run_soa_pdf_test_only()
+    else:
+        success = tester.run_all_tests()
+    
     sys.exit(0 if success else 1)
