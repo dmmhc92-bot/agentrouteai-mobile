@@ -2517,9 +2517,9 @@ async def scan_document(request: dict, current_user: dict = Depends(get_current_
             logger.error(f"Base64 decode error: {decode_error}")
             raise HTTPException(status_code=400, detail="Invalid image format. Please try capturing the image again.")
         
-        # Validate minimum image size (at least 1KB for a meaningful image)
-        if len(image_bytes) < 1000:
-            raise HTTPException(status_code=400, detail="Image is too small to scan. Please capture a clearer image.")
+        # Validate minimum image size (at least 500 bytes for a meaningful image)
+        if len(image_bytes) < 500:
+            raise HTTPException(status_code=400, detail="Image is too small to scan. Please capture a clearer image with more detail.")
         
         with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp_file:
             tmp_file.write(image_bytes)
