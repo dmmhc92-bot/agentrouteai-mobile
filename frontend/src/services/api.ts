@@ -542,6 +542,23 @@ class ApiService {
     const response = await apiClient.get('/agency-command-center/full');
     return response.data;
   }
+
+  // ==================== NEEDS ATTENTION / COACHING ALERTS ====================
+  
+  async getNeedsAttentionAlerts() {
+    const response = await apiClient.get('/needs-attention');
+    return response.data;
+  }
+
+  async getNeedsAttentionCategory(category: string) {
+    const response = await apiClient.get(`/needs-attention/category/${category}`);
+    return response.data;
+  }
+
+  async getNeedsAttentionSummary() {
+    const response = await apiClient.get('/needs-attention/summary');
+    return response.data;
+  }
 }
 
 export const api = new ApiService();
