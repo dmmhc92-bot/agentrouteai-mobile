@@ -54,6 +54,7 @@ export default function ScopeDetailScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { user, isLoading: authLoading } = useAuth();
 
   const [loading, setLoading] = useState(true);
   const [scope, setScope] = useState<ScopeData | null>(null);
@@ -62,8 +63,16 @@ export default function ScopeDetailScreen() {
   const [actionLoading, setActionLoading] = useState<'print' | 'save' | 'share' | 'preview' | null>(null);
 
   useEffect(() => {
-    loadScope();
-  }, [id]);
+    // Wait for auth to be loaded before fetching scope
+    if (!authLoading && id) {
+      if (user) {
+        loadScope();
+      } else {
+        // Not authenticated, redirect to login
+        router.replace('/');
+      }
+    }
+  }, [id, authLoading, user]);
 
   const loadScope = async () => {
     try {
