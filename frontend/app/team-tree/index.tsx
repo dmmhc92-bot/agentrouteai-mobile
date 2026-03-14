@@ -174,14 +174,13 @@ const TreeNodeComponent: React.FC<{
 export default function TeamTreeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { user } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
   
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [treeData, setTreeData] = useState<TreeData | null>(null);
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
 
-  const { isLoading: authLoading } = useAuth();
   const isManagerOrAdmin = user?.role === 'admin' || user?.role === 'manager';
 
   const loadData = async () => {
