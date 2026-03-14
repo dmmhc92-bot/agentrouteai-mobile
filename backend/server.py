@@ -296,6 +296,60 @@ class CommissionSplit(BaseModel):
     manager_rate: float = 0.2
     agency_rate: float = 0.2
 
+# Commission Status Enum
+class CommissionStatus(str, Enum):
+    ESTIMATED = "estimated"
+    PENDING = "pending"
+    APPROVED = "approved"
+    PAID = "paid"
+
+# Commission Tracking Models
+class CommissionRecordCreate(BaseModel):
+    lead_id: Optional[str] = None
+    production_id: Optional[str] = None
+    policy_type: str
+    carrier: str
+    premium: float
+    estimated_commission: float
+    commission_status: str = "estimated"
+    notes: Optional[str] = ""
+
+class CommissionRecordUpdate(BaseModel):
+    commission_status: Optional[str] = None
+    paid_amount: Optional[float] = None
+    payment_date: Optional[str] = None  # ISO date string
+    notes: Optional[str] = None
+
+class CommissionRecordResponse(BaseModel):
+    id: str
+    lead_id: Optional[str]
+    lead_name: Optional[str]
+    production_id: Optional[str]
+    policy_type: str
+    carrier: str
+    premium: float
+    estimated_commission: float
+    agent_commission: float
+    manager_override: float
+    agency_share: float
+    paid_amount: Optional[float]
+    commission_status: str
+    payment_date: Optional[datetime]
+    created_by_user: str
+    agent_name: Optional[str]
+    created_date: datetime
+    notes: str
+
+class CommissionSummary(BaseModel):
+    total_estimated: float
+    total_pending: float
+    total_approved: float
+    total_paid: float
+    records_count: int
+    by_status: Dict[str, int]
+    by_carrier: Dict[str, float]
+    by_policy_type: Dict[str, float]
+
 # Training Models
 class TrainingResource(BaseModel):
     id: str
