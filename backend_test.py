@@ -348,7 +348,8 @@ class APITester:
             return
         
         # 1. Geocode lead address
-        response = self.make_request("POST", f"/routes/geocode", params={"lead_id": self.lead_id})
+        geocode_data = {"lead_id": self.lead_id}
+        response = self.make_request("POST", "/routes/geocode", geocode_data)
         if response and response.status_code == 200:
             data = response.json()
             success = data.get("success", False)
