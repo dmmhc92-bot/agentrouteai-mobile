@@ -13,6 +13,21 @@ const apiClient = axios.create({
 class ApiService {
   private authToken: string | null = null;
 
+  constructor() {
+    // Add request interceptor to ensure auth token is always sent
+    apiClient.interceptors.request.use(
+      (config) => {
+        if (this.authToken) {
+          config.headers.Authorization = `Bearer ${this.authToken}`;
+        }
+        return config;
+      },
+      (error) => {
+        return Promise.reject(error);
+      }
+    );
+  }
+
   setAuthToken(token: string | null) {
     this.authToken = token;
     if (token) {
@@ -20,6 +35,10 @@ class ApiService {
     } else {
       delete apiClient.defaults.headers.common['Authorization'];
     }
+  }
+
+  getAuthToken(): string | null {
+    return this.authToken;
   }
 
   // Auth
