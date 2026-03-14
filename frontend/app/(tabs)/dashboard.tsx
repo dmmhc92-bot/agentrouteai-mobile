@@ -209,6 +209,97 @@ export default function DashboardScreen() {
           </View>
         </View>
 
+        {/* Compliance Dashboard Cards for Admin/Manager */}
+        {isAdminOrManager && complianceCards && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Medicare Compliance</Text>
+              <TouchableOpacity onPress={() => router.push('/compliance')}>
+                <Text style={styles.seeAll}>View Details</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.complianceGrid}>
+              <TouchableOpacity 
+                style={[styles.complianceCard, { borderLeftColor: '#EF4444' }]}
+                onPress={() => router.push('/compliance')}
+              >
+                <Ionicons name="alert-circle" size={24} color="#EF4444" />
+                <Text style={styles.complianceValue}>{complianceCards.missing_soa.count}</Text>
+                <Text style={styles.complianceLabel}>Missing SOA</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.complianceCard, { borderLeftColor: '#22C55E' }]}
+                onPress={() => router.push('/compliance')}
+              >
+                <Ionicons name="checkmark-circle" size={24} color="#22C55E" />
+                <Text style={styles.complianceValue}>{complianceCards.signed_soa.count}</Text>
+                <Text style={styles.complianceLabel}>Signed SOA</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.complianceCard, { borderLeftColor: '#F59E0B' }]}
+                onPress={() => router.push('/compliance')}
+              >
+                <Ionicons name="warning" size={24} color="#F59E0B" />
+                <Text style={styles.complianceValue}>{complianceCards.pending_no_soa.count}</Text>
+                <Text style={styles.complianceLabel}>Pending</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.complianceCard, { borderLeftColor: '#3B82F6' }]}
+                onPress={() => router.push('/compliance')}
+              >
+                <Ionicons name="shield-checkmark" size={24} color="#3B82F6" />
+                <Text style={styles.complianceValue}>{complianceCards.compliant_appointments.count}</Text>
+                <Text style={styles.complianceLabel}>Compliant</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
+        {/* Admin/Manager Quick Links */}
+        {isAdminOrManager && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Agency Management</Text>
+            <View style={styles.managementGrid}>
+              <TouchableOpacity 
+                style={styles.managementCard}
+                onPress={() => router.push('/lead-distribution')}
+              >
+                <View style={[styles.managementIcon, { backgroundColor: '#8B5CF620' }]}>
+                  <Ionicons name="git-network" size={24} color="#8B5CF6" />
+                </View>
+                <Text style={styles.managementText}>Lead Distribution</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.managementCard}
+                onPress={() => router.push('/compliance')}
+              >
+                <View style={[styles.managementIcon, { backgroundColor: '#22C55E20' }]}>
+                  <Ionicons name="shield-checkmark" size={24} color="#22C55E" />
+                </View>
+                <Text style={styles.managementText}>Compliance</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.managementCard}
+                onPress={() => router.push('/agency-command-center')}
+              >
+                <View style={[styles.managementIcon, { backgroundColor: '#3B82F620' }]}>
+                  <Ionicons name="analytics" size={24} color="#3B82F6" />
+                </View>
+                <Text style={styles.managementText}>Command Center</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.managementCard}
+                onPress={() => router.push('/team-tree')}
+              >
+                <View style={[styles.managementIcon, { backgroundColor: '#F59E0B20' }]}>
+                  <Ionicons name="people" size={24} color="#F59E0B" />
+                </View>
+                <Text style={styles.managementText}>Team Tree</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
         {/* Today's Route */}
         {upcomingAppointments.length > 0 && (
           <TouchableOpacity 
