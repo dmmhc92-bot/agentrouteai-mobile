@@ -2675,7 +2675,16 @@ Rules:
         raise
     except Exception as e:
         logger.error(f"OCR error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"OCR processing failed: {str(e)}")
+        error_message = str(e)
+        # Provide user-friendly error messages
+        if "BadRequestError" in error_message or "INVALID_ARGUMENT" in error_message:
+            raise HTTPException(status_code=400, detail="The image could not be processed. Please ensure the image is clear, well-lit, and contains readable text.")
+        elif "not valid" in error_message.lower():
+            raise HTTPException(status_code=400, detail="Invalid image format. Please try capturing the image again with the camera or selecting a different image.")
+        elif "timeout" in error_message.lower():
+            raise HTTPException(status_code=504, detail="Processing took too long. Please try again with a simpler image.")
+        else:
+            raise HTTPException(status_code=500, detail="Failed to process image. Please try again.")
 
 # ==================== ROUTING ROUTES ====================
 
