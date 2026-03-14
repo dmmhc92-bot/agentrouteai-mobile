@@ -999,4 +999,39 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
   },
+  // Delivery History Styles
+  deliveryItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#334155',
+  },
+  deliveryIconContainer: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#3B82F620',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  deliveryInfo: {
+    flex: 1,
+  },
+  deliveryMethod: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  deliveryDate: {
+    color: '#94A3B8',
+    fontSize: 12,
+    marginTop: 2,
+  },
+  deliveryRecipient: {
+    color: '#64748B',
+    fontSize: 12,
+    marginTop: 2,
+  },
 });
