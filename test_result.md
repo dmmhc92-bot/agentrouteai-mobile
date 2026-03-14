@@ -238,9 +238,10 @@ metadata:
   run_ui: false
 
 test_plan:
-  current_focus: []
+  current_focus: 
+    - "SOA Delivery Logging"
   stuck_tasks: []
-  test_all: true
+  test_all: false
   test_priority: "high_first"
 
 agent_communication:
@@ -252,3 +253,5 @@ agent_communication:
       message: "Policy Sales Pipeline API testing completed successfully. Tested all 3 requested endpoints: GET /api/pipeline (individual and team views), PUT /api/pipeline/move (stage transitions with premium/commission tracking), and GET /api/pipeline/stats (production statistics). All 11 pipeline-specific tests passed (100% success rate). Role-based access control verified - agents restricted to individual view, admin/manager users granted team view access. Commission calculations working correctly with proper splits. Stage transitions through all 10 pipeline stages working properly. Production totals updating accurately. Test flow completed: login → pipeline view → lead creation → stage movements (new_lead → appointment_scheduled → application_submitted → policy_issued) → commission verification → stats validation. All functionality working as specified in the review request."
     - agent: "testing"
       message: "SOA workflow testing completed successfully. Fixed ObjectId serialization issue in GET /api/scope/{id} and GET /api/scope/lead/{lead_id} endpoints by removing MongoDB _id field from responses. All 9 SOA-specific tests now pass (100% success rate). Comprehensive backend test suite also shows 30/30 tests passing (100% success rate). All requested SOA endpoints working correctly: POST /api/scope (creates SOA with dual signatures), GET /api/scope/{id} (retrieves complete SOA), GET /api/scope/lead/{lead_id} (gets all SOAs for lead), GET /api/scope/{id}/pdf (generates/retrieves PDF), GET /api/scope/admin/all (admin view with enriched data). Dual signature support verified - both beneficiary and agent signatures properly processed. PDF generation working with valid base64 encoding. Admin credentials (demo@agentroute.com) working with proper role-based access control."
+    - agent: "main"
+      message: "Implemented SOA Delivery Logging feature. Two new endpoints added: POST /api/scope/{scope_id}/log-delivery (to log when document is sent to client) and GET /api/scope/{scope_id}/delivery-history (to retrieve delivery history). Frontend updated to call log-delivery on Share and Email actions, and UI displays delivery history in the scope detail screen. Manual curl tests confirmed both endpoints work correctly. Please test: 1) POST log-delivery with email/share methods, 2) GET delivery-history, 3) Verify delivery_history is included when fetching scope document via GET /api/scope/{id}."
