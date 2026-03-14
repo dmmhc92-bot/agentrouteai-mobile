@@ -1700,11 +1700,33 @@ async def generate_scope_pdf(scope: dict, lead: dict, agent: dict) -> dict:
     if scope.get("signature"):
         try:
             sig_data = scope["signature"]
+            # Parse data URI format: data:image/type;base64,DATA
             if sig_data.startswith("data:"):
-                sig_data = sig_data.split(",")[1]
-            sig_bytes = base64.b64decode(sig_data)
-            sig_image = ImageReader(BytesIO(sig_bytes))
-            p.drawImage(sig_image, 45, y - 42, width=170, height=35, preserveAspectRatio=True, mask='auto')
+                # Extract mime type and base64 data
+                header, encoded = sig_data.split(",", 1)
+                mime_type = header.split(";")[0].split(":")[1] if ":" in header else ""
+                sig_bytes = base64.b64decode(encoded)
+                
+                # Handle SVG by converting to PNG using simple rasterization
+                if "svg" in mime_type.lower():
+                    # SVG cannot be directly used by ReportLab
+                    # Draw a placeholder or skip - frontend should send PNG
+                    logger.warning("SVG signature detected - frontend should send PNG format")
+                    # Draw the typed name as fallback
+                    p.setFont("Helvetica-Oblique", 14)
+                    p.setFillColor(dark_gray)
+                    typed_name = scope.get('typed_name', '')
+                    if typed_name:
+                        p.drawString(50, y - 30, typed_name)
+                else:
+                    # PNG/JPEG can be used directly
+                    sig_image = ImageReader(BytesIO(sig_bytes))
+                    p.drawImage(sig_image, 45, y - 42, width=170, height=35, preserveAspectRatio=True, mask='auto')
+            else:
+                # Raw base64 without data URI prefix
+                sig_bytes = base64.b64decode(sig_data)
+                sig_image = ImageReader(BytesIO(sig_bytes))
+                p.drawImage(sig_image, 45, y - 42, width=170, height=35, preserveAspectRatio=True, mask='auto')
         except Exception as e:
             logger.error(f"Error drawing beneficiary signature: {e}")
     
