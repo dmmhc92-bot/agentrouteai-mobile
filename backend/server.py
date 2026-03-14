@@ -1569,6 +1569,202 @@ async def get_scope(scope_id: str, current_user: dict = Depends(get_current_user
     logger.info(f"[Scope Get] Scope found: {scope_id}, typed_name: {scope.get('typed_name')}")
     return scope
 
+async def _generate_pdf_internal(scope: dict) -> dict:
+    """
+    Internal PDF generation - shared by create_scope and generate-pdf endpoint.
+    Uses the main stamping pipeline with transparent signatures.
+    """
+    import os
+    from reportlab.pdfgen import canvas as rl_canvas
+    from reportlab.lib.utils import ImageReader
+    from PIL import Image
+    from io import BytesIO
+    from PyPDF2 import PdfReader, PdfWriter
+    import base64
+    import cairosvg
+    from datetime import datetime
+    
+    scope_id = scope.get("id", "unknown")
+    logger.info(f"[PDF Gen Internal] Starting for scope {scope_id}")
+    
+    # Extract field values
+    form_fields = scope.get('form_fields', {})
+    beneficiary_name = scope.get('beneficiary_name') or scope.get('typed_name') or form_fields.get('beneficiary_name') or ''
+    beneficiary_phone = scope.get('beneficiary_phone') or form_fields.get('beneficiary_phone') or ''
+    beneficiary_address = scope.get('beneficiary_address') or form_fields.get('beneficiary_address') or ''
+    agent_name = scope.get('agent_name') or scope.get('agent_typed_name') or form_fields.get('agent_name') or ''
+    agent_phone = scope.get('agent_phone') or form_fields.get('agent_phone') or ''
+    appointment_date = scope.get('appointment_date') or form_fields.get('appointment_date') or ''
+    signature_date = scope.get('signature_date') or form_fields.get('signature_date') or ''
+    contact_method = scope.get('initial_contact_method') or form_fields.get('initial_contact_method') or ''
+    plans_to_represent = scope.get('plans_to_represent') or form_fields.get('plans_to_represent') or ''
+    auth_rep_name = scope.get('auth_rep_name') or form_fields.get('auth_rep_name') or ''
+    auth_rep_relationship = scope.get('auth_rep_relationship') or form_fields.get('auth_rep_relationship') or ''
+    products = scope.get('products_to_discuss') or form_fields.get('products') or []
+    beneficiary_sig = scope.get('signature') or ''
+    agent_sig = scope.get('agent_signature') or ''
+    
+    # Load template PDF
+    template_path = '/app/backend/original_soa_form.pdf'
+    if not os.path.exists(template_path):
+        raise ValueError(f"Template not found: {template_path}")
+    
+    reader = PdfReader(template_path)
+    writer = PdfWriter()
+    
+    # Page dimensions
+    page_width = float(reader.pages[0].mediabox.width)
+    page_height = float(reader.pages[0].mediabox.height)
+    
+    # PAGE 1 COORDS (checkboxes)
+    PAGE_1_COORDS = {
+        'checkbox_medicare_advantage': {'x': 53, 'y': 533},
+        'checkbox_prescription_drug': {'x': 53, 'y': 452},
+        'checkbox_hospital_indemnity': {'x': 53, 'y': 343},
+        'checkbox_dental_vision_hearing': {'x': 53, 'y': 255},
+        'checkbox_medicare_supplement': {'x': 53, 'y': 210},
+    }
+    
+    # PAGE 2 COORDS (text + signatures)
+    PAGE_2_COORDS = {
+        'beneficiary_name': {'x': 75, 'y': 696, 'size': 10, 'max': 30},
+        'beneficiary_phone': {'x': 347, 'y': 696, 'size': 10, 'max': 20},
+        'beneficiary_address': {'x': 86, 'y': 669, 'size': 9, 'max': 60},
+        'beneficiary_signature': {'x': 80, 'y': 620, 'w': 200, 'h': 45},
+        'signature_date': {'x': 450, 'y': 630, 'size': 10},
+        'auth_rep_name': {'x': 168, 'y': 582, 'size': 9, 'max': 35},
+        'auth_rep_relationship': {'x': 220, 'y': 554, 'size': 9, 'max': 30},
+        'agent_name': {'x': 108, 'y': 476, 'size': 10, 'max': 25},
+        'agent_phone': {'x': 379, 'y': 476, 'size': 10, 'max': 15},
+        'contact_method': {'x': 381, 'y': 446, 'size': 9, 'max': 20},
+        'plans_to_represent': {'x': 282, 'y': 387, 'size': 9, 'max': 35},
+        'appointment_date': {'x': 480, 'y': 387, 'size': 9},
+        'agent_signature': {'x': 80, 'y': 410, 'w': 200, 'h': 40},
+    }
+    
+    stamped_items = []
+    
+    # Create PAGE 1 overlay (checkboxes)
+    p1_buf = BytesIO()
+    c1 = rl_canvas.Canvas(p1_buf, pagesize=(page_width, page_height))
+    
+    product_map = {
+        'medicare_advantage': 'checkbox_medicare_advantage',
+        'prescription_drug': 'checkbox_prescription_drug',
+        'hospital_indemnity': 'checkbox_hospital_indemnity',
+        'dental_vision_hearing': 'checkbox_dental_vision_hearing',
+        'medicare_supplement': 'checkbox_medicare_supplement',
+    }
+    
+    for prod in products:
+        key = product_map.get(prod)
+        if key and key in PAGE_1_COORDS:
+            coords = PAGE_1_COORDS[key]
+            c1.setFont("Helvetica-Bold", 14)
+            c1.setFillColorRGB(0, 0, 0)
+            c1.drawString(coords['x'], coords['y'], "✓")
+            stamped_items.append(f"PAGE 1: CHECK @ ({coords['x']}, {coords['y']})")
+    
+    c1.save()
+    p1_buf.seek(0)
+    
+    # Create PAGE 2 overlay (text + signatures)
+    p2_buf = BytesIO()
+    c2 = rl_canvas.Canvas(p2_buf, pagesize=(page_width, page_height))
+    
+    def stamp_text(field_name, value):
+        if not value:
+            return
+        coords = PAGE_2_COORDS.get(field_name)
+        if not coords:
+            return
+        text = str(value)[:coords.get('max', 50)]
+        c2.setFont("Helvetica", coords.get('size', 10))
+        c2.setFillColorRGB(0, 0, 0)
+        c2.drawString(coords['x'], coords['y'], text)
+        stamped_items.append(f"PAGE 2: '{field_name}' @ ({coords['x']}, {coords['y']})")
+    
+    def stamp_sig(sig_data, field_name):
+        if not sig_data or len(sig_data) < 50:
+            return
+        coords = PAGE_2_COORDS.get(field_name)
+        if not coords:
+            return
+        try:
+            # Decode
+            if sig_data.startswith('data:image/svg+xml;base64,'):
+                sig_b64 = sig_data.split(',', 1)[1]
+                sig_bytes = base64.b64decode(sig_b64)
+                sig_bytes = cairosvg.svg2png(bytestring=sig_bytes, output_width=300, output_height=80)
+            elif sig_data.startswith('data:image'):
+                sig_b64 = sig_data.split(',', 1)[1]
+                sig_bytes = base64.b64decode(sig_b64)
+            else:
+                sig_bytes = base64.b64decode(sig_data)
+            
+            # Load as RGBA, crop to ink, save transparent PNG
+            img = Image.open(BytesIO(sig_bytes)).convert('RGBA')
+            bbox = img.split()[-1].getbbox()
+            if bbox:
+                img = img.crop(bbox)
+            
+            buffer = BytesIO()
+            img.save(buffer, format='PNG')
+            buffer.seek(0)
+            
+            c2.drawImage(ImageReader(buffer), coords['x'], coords['y'], width=160, height=40, mask='auto')
+            
+            # Timestamp below
+            ts = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+            c2.setFont("Helvetica", 5)
+            c2.setFillColorRGB(0.5, 0.5, 0.5)
+            c2.drawString(coords['x'], coords['y'] - 12, f"Signed electronically on {ts} via mobile application")
+            
+            stamped_items.append(f"PAGE 2: SIG '{field_name}' @ ({coords['x']}, {coords['y']})")
+        except Exception as e:
+            logger.error(f"[PDF Gen Internal] SIG '{field_name}' failed: {e}")
+    
+    # Stamp text fields
+    stamp_text('beneficiary_name', beneficiary_name)
+    stamp_text('beneficiary_phone', beneficiary_phone)
+    stamp_text('beneficiary_address', beneficiary_address)
+    stamp_text('signature_date', signature_date)
+    stamp_text('auth_rep_name', auth_rep_name)
+    stamp_text('auth_rep_relationship', auth_rep_relationship)
+    stamp_text('agent_name', agent_name)
+    stamp_text('agent_phone', agent_phone)
+    stamp_text('contact_method', contact_method)
+    stamp_text('plans_to_represent', plans_to_represent)
+    stamp_text('appointment_date', appointment_date)
+    
+    # Stamp signatures
+    stamp_sig(beneficiary_sig, 'beneficiary_signature')
+    stamp_sig(agent_sig, 'agent_signature')
+    
+    c2.save()
+    p2_buf.seek(0)
+    
+    # Merge overlays with template
+    p1_overlay = PdfReader(p1_buf)
+    p2_overlay = PdfReader(p2_buf)
+    
+    for i, page in enumerate(reader.pages):
+        if i == 0 and len(p1_overlay.pages) > 0:
+            page.merge_page(p1_overlay.pages[0])
+        elif i == 1 and len(p2_overlay.pages) > 0:
+            page.merge_page(p2_overlay.pages[0])
+        writer.add_page(page)
+    
+    # Write final PDF
+    output = BytesIO()
+    writer.write(output)
+    output.seek(0)
+    pdf_base64 = base64.b64encode(output.read()).decode()
+    
+    logger.info(f"[PDF Gen Internal] Complete - {len(stamped_items)} items, {len(pdf_base64)} chars")
+    
+    return {"pdf_base64": pdf_base64, "items_stamped": len(stamped_items)}
+
 @api_router.post("/scope/{scope_id}/generate-pdf")
 async def generate_stamped_pdf(scope_id: str, current_user: dict = Depends(get_current_user)):
     """
