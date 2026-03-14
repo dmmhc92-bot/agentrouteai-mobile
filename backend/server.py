@@ -278,6 +278,28 @@ class TrainingResource(BaseModel):
     id: str
     title: str
     description: str
+
+# Pipeline Models
+class PipelineStageInfo(BaseModel):
+    stage: str
+    label: str
+    count: int
+    total_premium: float
+    total_commission: float
+    leads: List[Dict[str, Any]]
+
+class PipelineResponse(BaseModel):
+    stages: List[PipelineStageInfo]
+    summary: Dict[str, Any]
+    is_team_view: bool
+
+class PipelineCaseUpdate(BaseModel):
+    lead_id: str
+    new_stage: str
+    notes: Optional[str] = None
+    premium: Optional[float] = None
+    commission: Optional[float] = None
+    policy_type: Optional[str] = None
     resource_type: str
     url: Optional[str]
     content: Optional[str]
