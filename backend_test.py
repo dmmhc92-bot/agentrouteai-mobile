@@ -614,7 +614,7 @@ class APITester:
                            "delivery_history field missing from SOA document")
             return False
         
-        # Test 6: Test with invalid scope ID
+        # Test 6: Test with invalid scope ID (should return 404 when authenticated)
         invalid_scope_id = str(uuid.uuid4())
         invalid_delivery = {
             "scope_id": invalid_scope_id,
@@ -625,6 +625,7 @@ class APITester:
         
         response = self.make_request("POST", f"/scope/{invalid_scope_id}/log-delivery", invalid_delivery)
         if response:
+            # Should return 404 for invalid scope ID when properly authenticated
             invalid_scope_test_passed = response.status_code == 404
             self.log_result("SOA Invalid Scope ID Test", invalid_scope_test_passed, 
                            f"Status: {response.status_code} (expected 404)")
