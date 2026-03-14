@@ -509,7 +509,6 @@ export default function LeadDetailScreen() {
               </TouchableOpacity>
             ))
           )}
-          )}
         </View>
       </ScrollView>
 
