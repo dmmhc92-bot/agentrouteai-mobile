@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL || 'https://sales-agent-app-1.preview.emergentagent.com';
+const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL || 'https://sales-pipeline-app-11.preview.emergentagent.com';
 
 const apiClient = axios.create({
   baseURL: `${BACKEND_URL}/api`,
