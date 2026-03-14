@@ -14,7 +14,7 @@ import * as Print from 'expo-print';
 import Constants from 'expo-constants';
 
 // Lazy-loaded pdf-lib to avoid bundling issues
-let PDFLib: any = null;
+let PDFLib = null;
 
 async function getPdfLib() {
   if (!PDFLib) {
