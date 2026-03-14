@@ -483,6 +483,27 @@ class ApiService {
     });
     return response.data;
   }
+
+  // AI Daily Planner
+  async getDailyPlanner() {
+    const response = await apiClient.get('/daily-planner');
+    return response.data;
+  }
+
+  async completePlannerAction(actionType: string, recordId: string, leadId?: string, notes?: string) {
+    const response = await apiClient.post('/daily-planner/complete-action', {
+      action_type: actionType,
+      record_id: recordId,
+      lead_id: leadId,
+      notes,
+    });
+    return response.data;
+  }
+
+  async getTeamPlannerSummary() {
+    const response = await apiClient.get('/daily-planner/team-summary');
+    return response.data;
+  }
 }
 
 export const api = new ApiService();
