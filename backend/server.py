@@ -378,6 +378,65 @@ class PipelineCaseUpdate(BaseModel):
     commission: Optional[float] = None
     policy_type: Optional[str] = None
 
+# ==================== TERRITORY MODELS ====================
+
+class TerritoryCreate(BaseModel):
+    name: str
+    description: Optional[str] = ""
+    geographic_type: str = "zip_codes"  # zip_codes, cities, counties, states, custom
+    zip_codes: Optional[List[str]] = []
+    cities: Optional[List[str]] = []
+    counties: Optional[List[str]] = []
+    states: Optional[List[str]] = []
+    custom_areas: Optional[List[str]] = []  # For custom service areas
+    assigned_agents: Optional[List[str]] = []  # Agent IDs
+
+class TerritoryResponse(BaseModel):
+    id: str
+    name: str
+    description: str
+    geographic_type: str
+    zip_codes: List[str]
+    cities: List[str]
+    counties: List[str]
+    states: List[str]
+    custom_areas: List[str]
+    assigned_agents: List[str]
+    agent_names: List[str]
+    lead_count: int
+    created_by: str
+    created_date: datetime
+
+class TerritoryUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    geographic_type: Optional[str] = None
+    zip_codes: Optional[List[str]] = None
+    cities: Optional[List[str]] = None
+    counties: Optional[List[str]] = None
+    states: Optional[List[str]] = None
+    custom_areas: Optional[List[str]] = None
+    assigned_agents: Optional[List[str]] = None
+
+class LeadAssignment(BaseModel):
+    lead_id: str
+    agent_id: str
+    notes: Optional[str] = None
+
+class BulkLeadAssignment(BaseModel):
+    lead_ids: List[str]
+    agent_id: str
+
+class LeadDistributionRequest(BaseModel):
+    lead_ids: List[str]
+    agent_ids: List[str]
+    method: str = "round_robin"  # round_robin, territory_based, workload_balanced
+
+class BulkLeadUpload(BaseModel):
+    leads: List[Dict[str, Any]]
+    auto_assign: bool = False
+    territory_based: bool = False
+
 # ==================== HELPER FUNCTIONS ====================
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
