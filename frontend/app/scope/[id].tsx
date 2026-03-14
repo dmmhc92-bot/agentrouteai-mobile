@@ -19,6 +19,7 @@ import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import * as Print from 'expo-print';
 import { api } from '../../src/services/api';
+import { useAuth } from '../../src/contexts/AuthContext';
 
 // NO CLIENT-SIDE PDF GENERATION - All PDF operations use backend-generated document
 // The backend stamps typed fields and signatures onto the EXACT original PDF form
