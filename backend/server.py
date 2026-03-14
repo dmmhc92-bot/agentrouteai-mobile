@@ -1546,8 +1546,11 @@ async def create_scope(scope_data: ScopeCreate, current_user: dict = Depends(get
 
 @api_router.get("/scope/{scope_id}")
 async def get_scope(scope_id: str, current_user: dict = Depends(get_current_user)):
+    logger.info(f"[Scope Get] Fetching scope: {scope_id}, user: {current_user.get('id')}")
+    
     scope = await db.scope_forms.find_one({"id": scope_id})
     if not scope:
+        logger.warning(f"[Scope Get] Scope not found: {scope_id}")
         raise HTTPException(status_code=404, detail="Scope not found")
     
     # Remove MongoDB ObjectId to prevent serialization issues
@@ -1561,6 +1564,8 @@ async def get_scope(scope_id: str, current_user: dict = Depends(get_current_user
     scope.setdefault("agent_signed_at", None)
     scope.setdefault("status", "signed" if scope.get("signature") else "draft")
     scope.setdefault("delivery_history", [])
+    
+    logger.info(f"[Scope Get] Scope found: {scope_id}, typed_name: {scope.get('typed_name')}")
     return scope
 
 @api_router.post("/scope/{scope_id}/generate-pdf")
