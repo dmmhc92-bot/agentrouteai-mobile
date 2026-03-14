@@ -1188,7 +1188,7 @@ Rules:
             api_key=api_key,
             session_id=f"ocr_{uuid.uuid4().hex[:8]}",
             system_message=system_prompt
-        ).with_model("openai", "gpt-4o")
+        ).with_model("gemini", "gemini-2.0-flash")
         
         # Create ImageContent for the image (correct approach for vision)
         image_content = ImageContent(
