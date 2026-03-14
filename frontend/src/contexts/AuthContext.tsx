@@ -25,7 +25,7 @@ interface AuthContextType {
   isManager: boolean;
   isAgent: boolean;
   canViewDownline: boolean;
-  signIn: (email: string, password: string) => Promise<void>;
+  signIn: (email: string, password: string) => Promise<User>;
   signUp: (name: string, email: string, password: string, role?: string, managerId?: string) => Promise<void>;
   signOut: () => Promise<void>;
   forgotPassword: (email: string) => Promise<{ dev_token?: string }>;
