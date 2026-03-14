@@ -241,7 +241,7 @@ class ApiService {
   }
 
   async geocodeLeadAddress(leadId: string) {
-    const response = await apiClient.post(`/routes/geocode?lead_id=${leadId}`);
+    const response = await apiClient.post('/routes/geocode', { lead_id: leadId });
     return response.data;
   }
 
