@@ -190,7 +190,7 @@ class ApiService {
 
   // AI Coach
   async sendChatMessage(message: string, leadContext?: string, leadId?: string) {
-    const response = await apiClient.post('/ai-coach/chat', { 
+    const response = await apiClient.post('/ai/chat', { 
       message, 
       lead_context: leadContext,
       lead_id: leadId
@@ -199,12 +199,12 @@ class ApiService {
   }
 
   async getLeadSuggestions(leadId: string) {
-    const response = await apiClient.post(`/ai-coach/lead-suggestions/${leadId}`);
+    const response = await apiClient.post(`/ai/appointment-prep/${leadId}`);
     return response.data;
   }
 
   async getChatHistory() {
-    const response = await apiClient.get('/ai-coach/history');
+    const response = await apiClient.get('/ai/chat-history');
     return response.data;
   }
 
