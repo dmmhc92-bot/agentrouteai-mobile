@@ -320,6 +320,9 @@ export async function generateSOAPdf(
   console.log('[PDFGenerator] Agent signature present:', !!signatures.agentSignature);
   
   try {
+    // Load pdf-lib dynamically
+    const { PDFDocument, rgb, StandardFonts } = await getPdfLib();
+    
     // Step 1: Load the template
     const templateBytes = await loadTemplate();
     console.log('[PDFGenerator] Template loaded, size:', templateBytes.length, 'bytes');
