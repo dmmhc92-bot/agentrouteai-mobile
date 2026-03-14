@@ -81,6 +81,12 @@ export default function LeadDetailScreen() {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [scopes, setScopes] = useState<Scope[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  
+  // Stage update modal state
+  const [stageModalVisible, setStageModalVisible] = useState(false);
+  const [selectedStage, setSelectedStage] = useState<string>('');
+  const [stageNotes, setStageNotes] = useState('');
+  const [updatingStage, setUpdatingStage] = useState(false);
 
   const loadData = async () => {
     if (!id || id === 'new') return;
@@ -106,6 +112,34 @@ export default function LeadDetailScreen() {
       loadData();
     }, [id])
   );
+
+  const handleUpdateStage = async () => {
+    if (!selectedStage || !lead) return;
+    
+    setUpdatingStage(true);
+    try {
+      await api.movePipelineCase({
+        lead_id: lead.id,
+        new_stage: selectedStage,
+        notes: stageNotes || undefined,
+      });
+      setStageModalVisible(false);
+      setStageNotes('');
+      loadData(); // Refresh lead data
+      Alert.alert('Success', 'Pipeline stage updated');
+    } catch (error: any) {
+      const message = error.response?.data?.detail || 'Failed to update stage';
+      Alert.alert('Error', message);
+    } finally {
+      setUpdatingStage(false);
+    }
+  };
+
+  const openStageModal = () => {
+    setSelectedStage(lead?.stage || 'new_lead');
+    setStageNotes('');
+    setStageModalVisible(true);
+  };
 
   const handleDelete = () => {
     Alert.alert('Delete Lead', 'Are you sure you want to delete this lead?', [
