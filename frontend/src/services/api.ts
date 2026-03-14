@@ -559,6 +559,76 @@ class ApiService {
     const response = await apiClient.get('/needs-attention/summary');
     return response.data;
   }
+
+  // ==================== SMART LEAD DISTRIBUTION ====================
+
+  async getDistributionSummary() {
+    const response = await apiClient.get('/smart-distribution/summary');
+    return response.data;
+  }
+
+  async getAgentPerformanceMetrics() {
+    const response = await apiClient.get('/smart-distribution/agents');
+    return response.data;
+  }
+
+  async smartDistributeLeads(data: {
+    lead_ids: string[];
+    method: string;
+    target_agent_ids?: string[];
+    manager_id?: string;
+    respect_territories?: boolean;
+    balance_workload?: boolean;
+  }) {
+    const response = await apiClient.post('/smart-distribution/distribute', data);
+    return response.data;
+  }
+
+  async getLeadActivityHistory(leadId: string) {
+    const response = await apiClient.get(`/smart-distribution/activity/${leadId}`);
+    return response.data;
+  }
+
+  async logLeadActivity(data: {
+    lead_id: string;
+    activity_type: string;
+    description: string;
+    old_value?: string;
+    new_value?: string;
+  }) {
+    const response = await apiClient.post('/smart-distribution/activity', data);
+    return response.data;
+  }
+
+  // ==================== MEDICARE COMPLIANCE TRACKING ====================
+
+  async getComplianceSummary() {
+    const response = await apiClient.get('/compliance/summary');
+    return response.data;
+  }
+
+  async getComplianceRecords(status?: string, limit?: number) {
+    const params = new URLSearchParams();
+    if (status) params.append('status', status);
+    if (limit) params.append('limit', limit.toString());
+    const response = await apiClient.get(`/compliance/records?${params.toString()}`);
+    return response.data;
+  }
+
+  async getLeadComplianceStatus(leadId: string) {
+    const response = await apiClient.get(`/compliance/lead/${leadId}`);
+    return response.data;
+  }
+
+  async getAppointmentComplianceStatus(appointmentId: string) {
+    const response = await apiClient.get(`/compliance/appointment/${appointmentId}`);
+    return response.data;
+  }
+
+  async getComplianceDashboardCards() {
+    const response = await apiClient.get('/compliance/dashboard-cards');
+    return response.data;
+  }
 }
 
 export const api = new ApiService();
