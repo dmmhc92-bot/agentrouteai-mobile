@@ -856,6 +856,7 @@ class APITester:
             self.test_appointments_crud()
             self.test_scope_operations()
             self.test_soa_delivery_logging()
+            self.test_commission_tracking()
             self.test_route_planning()
             self.test_ai_functionality()
             self.test_subscription()
