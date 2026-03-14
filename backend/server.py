@@ -1621,9 +1621,8 @@ async def generate_stamped_pdf(scope_id: str, current_user: dict = Depends(get_c
         reader = PdfReader(f)
         writer = PdfWriter()
         
-        # Copy all pages
-        for page in reader.pages:
-            writer.add_page(page)
+        # Clone the entire document including AcroForm
+        writer.clone_document_from_reader(reader)
         
         # Get form field mapping from scope data
         # Map our scope fields to the PDF form field names
@@ -1655,8 +1654,12 @@ async def generate_stamped_pdf(scope_id: str, current_user: dict = Depends(get_c
         
         logger.info(f"[PDF Stamp] Filling form fields: {list(field_mapping.keys())}")
         
-        # Fill form fields
-        writer.update_page_form_field_values(writer.pages[0], field_mapping)
+        # Fill form fields on the cloned document
+        try:
+            writer.update_page_form_field_values(writer.pages[0], field_mapping)
+            logger.info("[PDF Stamp] Form fields filled successfully")
+        except Exception as e:
+            logger.warning(f"[PDF Stamp] Could not fill form fields: {e}")
         
         # Now we need to add signature images as overlays
         # Create a signature overlay PDF
