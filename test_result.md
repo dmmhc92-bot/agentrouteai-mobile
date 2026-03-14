@@ -257,9 +257,13 @@ metadata:
 
 test_plan:
   current_focus: 
-    - "Commission Tracking API"
+    - "Role-Based End-to-End Audit"
+    - "Lead Distribution System"
+    - "Medicare Compliance Tracking"
+    - "SOA Workflow per Role"
+    - "Dashboard Visibility per Role"
   stuck_tasks: []
-  test_all: false
+  test_all: true
   test_priority: "high_first"
 
 agent_communication:
