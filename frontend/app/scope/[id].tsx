@@ -146,46 +146,42 @@ export default function ScopeDetailScreen() {
     }
   };
 
+  /**
+   * Get PDF data from the BACKEND ONLY.
+   * The backend stamps typed fields and signatures onto the EXACT original PDF form.
+   * NO client-side PDF generation.
+   */
   const getPdfData = async (): Promise<string | null> => {
-    console.log('[ScopeView] Getting PDF data...');
+    console.log('[ScopeView] Requesting stamped PDF from backend...');
     
-    // First, try to generate PDF locally using pdf-lib (this is the source of truth)
     setPdfLoading(true);
     try {
-      const localPdf = await generatePdfLocally();
-      if (localPdf && localPdf.length > 1000) {
-        console.log('[ScopeView] Using locally generated PDF (pdf-lib)');
-        setPdfLoading(false);
-        return localPdf;
+      // Call the backend to generate/retrieve the stamped PDF
+      const response = await api.generateScopePdf(id!);
+      
+      if (response.pdf_base64 && response.pdf_base64.length > 1000) {
+        console.log('[ScopeView] Backend PDF received:');
+        console.log('  - Filename:', response.filename);
+        console.log('  - Size:', response.size_bytes, 'bytes');
+        console.log('  - Generated at:', response.generated_at);
+        
+        // Cache the PDF in scope state
+        setScope(prev => prev ? { ...prev, pdf_base64: response.pdf_base64 } : null);
+        
+        return response.pdf_base64;
       }
-    } catch (e) {
-      console.warn('[ScopeView] Local generation failed, trying backend');
-    }
-    
-    // Fallback to cached PDF from scope
-    if (scope?.pdf_base64) {
-      console.log('[ScopeView] Using cached backend PDF, size:', scope.pdf_base64.length);
-      setPdfLoading(false);
-      return scope.pdf_base64;
-    }
-    
-    // Last resort: Fetch from backend
-    try {
-      console.log('[ScopeView] Fetching PDF from server...');
-      const pdfResponse = await api.getScopePdf(id!);
-      if (pdfResponse.pdf_base64) {
-        console.log('[ScopeView] PDF received from backend, size:', pdfResponse.pdf_base64.length);
-        setScope(prev => prev ? { ...prev, pdf_base64: pdfResponse.pdf_base64 } : null);
-        return pdfResponse.pdf_base64;
-      }
-      console.warn('[ScopeView] No PDF in response');
-    } catch (error) {
-      console.error('[ScopeView] Error getting PDF:', error);
-      Alert.alert('PDF Error', 'Could not generate or retrieve the PDF document.');
+      
+      console.error('[ScopeView] Invalid PDF response from backend');
+      Alert.alert('PDF Error', 'Failed to generate PDF document.');
+      return null;
+      
+    } catch (error: any) {
+      console.error('[ScopeView] Backend PDF generation failed:', error.message);
+      Alert.alert('PDF Error', `Could not generate PDF: ${error.message}`);
+      return null;
     } finally {
       setPdfLoading(false);
     }
-    return null;
   };
 
   const getFilename = () => {
