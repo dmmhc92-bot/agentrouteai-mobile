@@ -23,7 +23,40 @@ interface Lead {
   address: string;
   notes: string;
   created_date: string;
+  stage: string;
+  underwriting_status: string;
+  source: string;
+  last_contact_date?: string;
+  next_follow_up?: string;
 }
+
+// Pipeline stage configuration
+const STAGE_CONFIG: Record<string, { label: string; color: string; icon: string }> = {
+  new_lead: { label: 'Lead', color: '#6B7280', icon: 'person-add' },
+  appointment_scheduled: { label: 'Appointment Scheduled', color: '#3B82F6', icon: 'calendar' },
+  scope_completed: { label: 'SOA Completed', color: '#8B5CF6', icon: 'document-text' },
+  application_submitted: { label: 'Application Submitted', color: '#8B5CF6', icon: 'document-text' },
+  underwriting_review: { label: 'Underwriting Review', color: '#F59E0B', icon: 'hourglass' },
+  additional_requirements: { label: 'Additional Requirements', color: '#EF4444', icon: 'alert-circle' },
+  approved: { label: 'Approved', color: '#10B981', icon: 'checkmark-circle' },
+  policy_issued: { label: 'Policy Issued', color: '#06B6D4', icon: 'document' },
+  policy_placed: { label: 'Policy Placed', color: '#14B8A6', icon: 'checkmark-done' },
+  commission_pending: { label: 'Commission Pending', color: '#F97316', icon: 'cash' },
+  commission_paid: { label: 'Commission Paid', color: '#22C55E', icon: 'wallet' },
+};
+
+const ALL_STAGES = [
+  'new_lead',
+  'appointment_scheduled',
+  'application_submitted',
+  'underwriting_review',
+  'additional_requirements',
+  'approved',
+  'policy_issued',
+  'policy_placed',
+  'commission_pending',
+  'commission_paid',
+];
 
 interface Appointment {
   id: string;
