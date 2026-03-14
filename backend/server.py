@@ -2144,39 +2144,6 @@ async def generate_scope_pdf(scope: dict, lead: dict, agent: dict) -> dict:
         "filename": f"SOA_{lead_name.replace(' ', '_')}_{datetime.utcnow().strftime('%Y%m%d')}.pdf"
     }
 
-@api_router.get("/scope/{scope_id}/pdf")
-async def get_scope_pdf(scope_id: str, current_user: dict = Depends(get_current_user)):
-    """Get or regenerate PDF for a scope document"""
-    scope = await db.scope_forms.find_one({"id": scope_id})
-    if not scope:
-        raise HTTPException(status_code=404, detail="Scope not found")
-    
-    # If PDF is already stored, return it
-    if scope.get("pdf_base64"):
-        lead = await db.leads.find_one({"id": scope["lead_id"]})
-        lead_name = lead.get("name", "Unknown") if lead else "Unknown"
-        created_date = scope.get("created_date", datetime.utcnow())
-        if isinstance(created_date, str):
-            created_date = datetime.fromisoformat(created_date.replace('Z', '+00:00'))
-        return {
-            "pdf_base64": scope["pdf_base64"],
-            "filename": f"SOA_{lead_name.replace(' ', '_')}_{created_date.strftime('%Y%m%d')}.pdf"
-        }
-    
-    # Otherwise, generate it
-    lead = await db.leads.find_one({"id": scope["lead_id"]})
-    agent = await db.users.find_one({"id": scope.get("created_by_user")})
-    
-    pdf_data = await generate_scope_pdf(scope, lead, agent)
-    
-    # Store the generated PDF
-    await db.scope_forms.update_one(
-        {"id": scope_id},
-        {"$set": {"pdf_base64": pdf_data["pdf_base64"]}}
-    )
-    
-    return pdf_data
-
 # ==================== SOA DELIVERY LOGGING ====================
 
 @api_router.post("/scope/{scope_id}/log-delivery")
