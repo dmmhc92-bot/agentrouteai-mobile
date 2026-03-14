@@ -69,8 +69,14 @@ export default function ComplianceTrackingScreen() {
   };
 
   useEffect(() => {
-    loadData();
-  }, [activeFilter]);
+    // Wait for user to be loaded before fetching data
+    if (user && (user.role === 'admin' || user.role === 'manager')) {
+      loadData();
+    } else if (user && user.role === 'agent') {
+      // Agent doesn't have access, stop loading
+      setLoading(false);
+    }
+  }, [user, activeFilter]);
 
   const onRefresh = () => {
     setRefreshing(true);
