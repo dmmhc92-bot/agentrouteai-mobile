@@ -1751,8 +1751,11 @@ async def generate_stamped_pdf(scope_id: str, current_user: dict = Depends(get_c
     
     def stamp_sig_p2(sig_data, field_name):
         """
-        Stamp a signature image onto page 2 with WHITE background to ensure visibility.
+        Stamp a signature image onto page 2 with WHITE background.
+        Handles both PNG and SVG signatures.
         """
+        import cairosvg
+        
         if not sig_data or not isinstance(sig_data, str) or len(sig_data.strip()) < 20:
             logger.info(f"[PDF Gen] PAGE 2: SKIP '{field_name}' - empty or too short")
             return
@@ -1764,14 +1767,26 @@ async def generate_stamped_pdf(scope_id: str, current_user: dict = Depends(get_c
         
         try:
             sig_data = sig_data.strip()
+            logger.info(f"[PDF Gen] PAGE 2: SIG '{field_name}' - payload length={len(sig_data)}, starts with: {sig_data[:50]}")
             
-            # Step 1: Strip data:image/png;base64, prefix if present
-            if sig_data.startswith('data:image'):
+            # Step 1: Extract base64 and detect format
+            is_svg = False
+            if sig_data.startswith('data:image/svg+xml;base64,'):
+                is_svg = True
+                sig_b64 = sig_data.split(',', 1)[1]
+                logger.info(f"[PDF Gen] PAGE 2: SIG '{field_name}' - detected SVG format")
+            elif sig_data.startswith('data:image/png;base64,'):
+                sig_b64 = sig_data.split(',', 1)[1]
+                logger.info(f"[PDF Gen] PAGE 2: SIG '{field_name}' - detected PNG format")
+            elif sig_data.startswith('data:image'):
                 parts = sig_data.split(',', 1)
                 if len(parts) == 2:
                     sig_b64 = parts[1]
+                    # Check if it's SVG by looking at decoded content
+                    if 'svg+xml' in sig_data:
+                        is_svg = True
                 else:
-                    logger.error(f"[PDF Gen] PAGE 2: SIG '{field_name}' FAILED - malformed data URI, first 30: {sig_data[:30]}, len={len(sig_data)}")
+                    logger.error(f"[PDF Gen] PAGE 2: SIG '{field_name}' FAILED - malformed data URI")
                     return
             else:
                 sig_b64 = sig_data
@@ -1779,39 +1794,50 @@ async def generate_stamped_pdf(scope_id: str, current_user: dict = Depends(get_c
             # Step 2: Base64 decode
             try:
                 sig_bytes = base64.b64decode(sig_b64)
+                logger.info(f"[PDF Gen] PAGE 2: SIG '{field_name}' - decoded {len(sig_bytes)} bytes")
             except Exception as e:
-                logger.error(f"[PDF Gen] PAGE 2: SIG '{field_name}' FAILED - base64 decode: {e}, first 30: {sig_b64[:30]}, len={len(sig_b64)}")
+                logger.error(f"[PDF Gen] PAGE 2: SIG '{field_name}' FAILED - base64 decode: {e}")
                 return
             
-            # Step 3: Open with Pillow from BytesIO
+            # Step 3: Convert SVG to PNG if needed
+            if is_svg:
+                try:
+                    png_bytes = cairosvg.svg2png(bytestring=sig_bytes, output_width=300, output_height=80)
+                    sig_bytes = png_bytes
+                    logger.info(f"[PDF Gen] PAGE 2: SIG '{field_name}' - converted SVG to PNG ({len(png_bytes)} bytes)")
+                except Exception as e:
+                    logger.error(f"[PDF Gen] PAGE 2: SIG '{field_name}' FAILED - SVG to PNG conversion: {e}")
+                    return
+            
+            # Step 4: Open with Pillow
             try:
                 img = Image.open(BytesIO(sig_bytes))
+                logger.info(f"[PDF Gen] PAGE 2: SIG '{field_name}' - opened image: size={img.size}, mode={img.mode}")
             except Exception as e:
-                logger.error(f"[PDF Gen] PAGE 2: SIG '{field_name}' FAILED - Pillow open: {e}, first 30: {sig_b64[:30]}, len={len(sig_b64)}")
+                logger.error(f"[PDF Gen] PAGE 2: SIG '{field_name}' FAILED - Pillow open: {e}")
                 return
             
-            # Step 4: Convert to RGBA
+            # Step 5: Convert to RGBA
             img = img.convert('RGBA')
             
-            # Step 5: Composite onto solid WHITE background so transparency cannot make it invisible
+            # Step 6: Composite onto solid WHITE background
             bg = Image.new("RGB", img.size, "white")
-            bg.paste(img, mask=img.split()[-1] if img.mode == "RGBA" else None)
-            
+            bg.paste(img, mask=img.split()[-1])
             logger.info(f"[PDF Gen] PAGE 2: SIG '{field_name}' - flattened onto white bg, size={bg.size}")
             
-            # Step 6: Save flattened image into NEW BytesIO buffer as PNG
+            # Step 7: Save to NEW BytesIO buffer as PNG
             buffer = BytesIO()
             bg.save(buffer, format='PNG')
             buffer.seek(0)  # VERY IMPORTANT
             
-            # Step 7: Stamp with ReportLab
+            # Step 8: Stamp with ReportLab
             c2.drawImage(ImageReader(buffer), coords['x'], coords['y'], width=160, height=40, mask='auto')
             
             stamped_items.append(f"PAGE 2: SIG '{field_name}' @ ({coords['x']}, {coords['y']})")
             logger.info(f"[PDF Gen] PAGE 2: STAMPED SIG '{field_name}' @ ({coords['x']}, {coords['y']}) width=160 height=40")
             
         except Exception as e:
-            logger.error(f"[PDF Gen] PAGE 2: SIG '{field_name}' FAILED - {e}, first 30: {sig_data[:30] if sig_data else 'None'}, len={len(sig_data) if sig_data else 0}")
+            logger.error(f"[PDF Gen] PAGE 2: SIG '{field_name}' FAILED - {e}")
     
     # Stamp all text fields on page 2
     stamp_text_p2('beneficiary_name', beneficiary_name)
