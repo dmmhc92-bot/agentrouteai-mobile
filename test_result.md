@@ -201,6 +201,18 @@ backend:
           agent: "testing"
           comment: "All protected endpoints properly secured. Unauthorized requests return 403 Forbidden as expected. JWT authentication working correctly across all protected routes."
 
+  - task: "Policy Sales Pipeline API"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "testing"
+          comment: "Policy Sales Pipeline API endpoints fully tested and working correctly. GET /api/pipeline (200) with proper team_view role-based access control - agents see individual view, admin/manager see team view. PUT /api/pipeline/move (200) successfully moves leads through all 10 pipeline stages with proper premium/commission tracking. GET /api/pipeline/stats (200) provides accurate production statistics with daily/weekly/monthly breakdowns. Commission calculations working correctly with proper agent/manager/agency splits. Stage transitions logged properly. Production totals update accurately. Role-based access verified - agents restricted to individual view, admin users granted team view access. All 11 pipeline-specific test cases passed (100% success rate)."
+
 frontend:
   # No frontend testing performed as per instructions
 
