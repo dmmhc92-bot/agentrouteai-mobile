@@ -181,6 +181,7 @@ export default function TeamTreeScreen() {
   const [treeData, setTreeData] = useState<TreeData | null>(null);
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
 
+  const { isLoading: authLoading } = useAuth();
   const isManagerOrAdmin = user?.role === 'admin' || user?.role === 'manager';
 
   const loadData = async () => {
