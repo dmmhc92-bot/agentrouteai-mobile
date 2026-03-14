@@ -209,6 +209,14 @@ export default function ScopeDetailScreen() {
   const handlePrint = async () => {
     setActionLoading('print');
     try {
+      // On web, open in browser and let user print from there
+      if (isWeb) {
+        await openPdfInBrowser();
+        Alert.alert('Print', 'Use your browser\'s print function (Ctrl/Cmd + P) to print the document.');
+        setActionLoading(null);
+        return;
+      }
+      
       const fileUri = await savePdfToTempFile();
       if (!fileUri) {
         Alert.alert('Error', 'Could not generate PDF for printing');
