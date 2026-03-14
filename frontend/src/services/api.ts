@@ -173,6 +173,23 @@ class ApiService {
     return response.data;
   }
 
+  async logScopeDelivery(scopeId: string, data: {
+    delivery_method: string;
+    recipient_contact?: string;
+    notes?: string;
+  }) {
+    const response = await apiClient.post(`/scope/${scopeId}/log-delivery`, {
+      scope_id: scopeId,
+      ...data
+    });
+    return response.data;
+  }
+
+  async getScopeDeliveryHistory(scopeId: string) {
+    const response = await apiClient.get(`/scope/${scopeId}/delivery-history`);
+    return response.data;
+  }
+
   // Production
   async createProduction(data: { lead_id?: string; policy_type: string; premium: number; commission: number; carrier: string; policy_number?: string; status?: string; notes?: string }) {
     const response = await apiClient.post('/production', data);
