@@ -1,4 +1,4 @@
-import React, { useRef, useState, useCallback, useEffect } from 'react';
+import React, { useRef, useState, useCallback, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -11,12 +11,12 @@ import {
   ActivityIndicator,
   PanResponder,
   GestureResponderEvent,
-  PanResponderGestureState,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Path, Rect } from 'react-native-svg';
 import { captureRef } from 'react-native-view-shot';
+import * as ImagePicker from 'expo-image-picker';
 
 interface SignatureCaptureProps {
   visible: boolean;
@@ -38,7 +38,7 @@ const CANVAS_WIDTH = Math.min(screenWidth - 40, 360);
 const CANVAS_HEIGHT = 180;
 
 // Minimum requirements for a valid signature
-const MIN_POINTS = 15;
+const MIN_POINTS = 10;
 const MIN_PATHS = 1;
 
 export default function SignatureCapture({
@@ -53,27 +53,42 @@ export default function SignatureCapture({
   const insets = useSafeAreaInsets();
   const canvasRef = useRef<View>(null);
   const [paths, setPaths] = useState<string[]>([]);
-  const [currentPath, setCurrentPath] = useState<Point[]>([]);
-  const [isDrawing, setIsDrawing] = useState(false);
+  const [currentPoints, setCurrentPoints] = useState<Point[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [signatureImage, setSignatureImage] = useState<string | null>(null);
   const [totalPoints, setTotalPoints] = useState(0);
-  const canvasLayoutRef = useRef({ x: 0, y: 0, width: CANVAS_WIDTH, height: CANVAS_HEIGHT });
+  
+  // Use refs for values that PanResponder needs to access
+  const isDrawingRef = useRef(false);
+  const currentPointsRef = useRef<Point[]>([]);
+  const signatureImageRef = useRef<string | null>(null);
+
+  // Sync refs with state
+  useEffect(() => {
+    currentPointsRef.current = currentPoints;
+  }, [currentPoints]);
+
+  useEffect(() => {
+    signatureImageRef.current = signatureImage;
+  }, [signatureImage]);
 
   // Reset when modal opens
   useEffect(() => {
     if (visible) {
       setPaths([]);
-      setCurrentPath([]);
-      setIsDrawing(false);
+      setCurrentPoints([]);
       setIsSaving(false);
       setTotalPoints(0);
+      isDrawingRef.current = false;
+      currentPointsRef.current = [];
       
       // Load existing signature if available
       if (existingSignature && existingSignature.startsWith('data:image/')) {
         setSignatureImage(existingSignature);
+        signatureImageRef.current = existingSignature;
       } else {
         setSignatureImage(null);
+        signatureImageRef.current = null;
       }
     }
   }, [visible, existingSignature]);
@@ -82,93 +97,123 @@ export default function SignatureCapture({
   const pointsToPath = useCallback((points: Point[]): string => {
     if (points.length === 0) return '';
     if (points.length === 1) {
-      return `M ${points[0].x} ${points[0].y} L ${points[0].x + 0.1} ${points[0].y + 0.1}`;
+      return `M ${points[0].x} ${points[0].y} L ${points[0].x + 0.5} ${points[0].y + 0.5}`;
     }
     
-    let path = `M ${points[0].x} ${points[0].y}`;
+    let path = `M ${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`;
     for (let i = 1; i < points.length; i++) {
-      path += ` L ${points[i].x} ${points[i].y}`;
+      path += ` L ${points[i].x.toFixed(1)} ${points[i].y.toFixed(1)}`;
     }
     return path;
   }, []);
 
-  // Handle touch start
-  const handleTouchStart = useCallback((event: GestureResponderEvent) => {
-    const { locationX, locationY } = event.nativeEvent;
-    setIsDrawing(true);
-    setCurrentPath([{ x: locationX, y: locationY }]);
-    // Clear any existing saved image since user is drawing new
-    if (signatureImage) {
-      setSignatureImage(null);
-    }
-  }, [signatureImage]);
-
-  // Handle touch move
-  const handleTouchMove = useCallback((event: GestureResponderEvent) => {
-    if (!isDrawing) return;
+  // PanResponder with proper event handling
+  const panResponder = useMemo(() => PanResponder.create({
+    // Always claim the touch
+    onStartShouldSetPanResponder: () => true,
+    onMoveShouldSetPanResponder: () => true,
+    onStartShouldSetPanResponderCapture: () => true,
+    onMoveShouldSetPanResponderCapture: () => true,
     
-    const { locationX, locationY } = event.nativeEvent;
-    // Clamp to canvas bounds
-    const x = Math.max(0, Math.min(locationX, CANVAS_WIDTH));
-    const y = Math.max(0, Math.min(locationY, CANVAS_HEIGHT));
-    
-    setCurrentPath(prev => [...prev, { x, y }]);
-  }, [isDrawing]);
-
-  // Handle touch end
-  const handleTouchEnd = useCallback(() => {
-    if (currentPath.length > 0) {
-      const pathStr = pointsToPath(currentPath);
-      if (pathStr) {
-        setPaths(prev => [...prev, pathStr]);
-        setTotalPoints(prev => prev + currentPath.length);
+    // Touch start
+    onPanResponderGrant: (event: GestureResponderEvent) => {
+      const { locationX, locationY } = event.nativeEvent;
+      console.log('Touch START:', locationX, locationY);
+      
+      isDrawingRef.current = true;
+      const point = { x: locationX, y: locationY };
+      currentPointsRef.current = [point];
+      setCurrentPoints([point]);
+      
+      // Clear existing saved image since user is drawing new
+      if (signatureImageRef.current) {
+        setSignatureImage(null);
+        signatureImageRef.current = null;
       }
-    }
-    setCurrentPath([]);
-    setIsDrawing(false);
-  }, [currentPath, pointsToPath]);
-
-  // PanResponder for native touch handling
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: (event) => {
-        handleTouchStart(event);
-      },
-      onPanResponderMove: (event) => {
-        handleTouchMove(event);
-      },
-      onPanResponderRelease: () => {
-        handleTouchEnd();
-      },
-      onPanResponderTerminate: () => {
-        handleTouchEnd();
-      },
-    })
-  ).current;
+    },
+    
+    // Touch move - this is the critical handler for continuous drawing
+    onPanResponderMove: (event: GestureResponderEvent, gestureState) => {
+      if (!isDrawingRef.current) return;
+      
+      const { locationX, locationY } = event.nativeEvent;
+      
+      // Clamp to canvas bounds
+      const x = Math.max(0, Math.min(locationX, CANVAS_WIDTH));
+      const y = Math.max(0, Math.min(locationY, CANVAS_HEIGHT));
+      
+      const newPoint = { x, y };
+      const newPoints = [...currentPointsRef.current, newPoint];
+      currentPointsRef.current = newPoints;
+      setCurrentPoints(newPoints);
+      
+      // Log every 10th point for debugging
+      if (newPoints.length % 10 === 0) {
+        console.log('Touch MOVE point count:', newPoints.length);
+      }
+    },
+    
+    // Touch end
+    onPanResponderRelease: () => {
+      console.log('Touch END, total points:', currentPointsRef.current.length);
+      
+      if (currentPointsRef.current.length > 0) {
+        const pathStr = pointsToPath(currentPointsRef.current);
+        if (pathStr) {
+          setPaths(prev => [...prev, pathStr]);
+          setTotalPoints(prev => prev + currentPointsRef.current.length);
+        }
+      }
+      
+      currentPointsRef.current = [];
+      setCurrentPoints([]);
+      isDrawingRef.current = false;
+    },
+    
+    // Touch cancelled
+    onPanResponderTerminate: () => {
+      console.log('Touch TERMINATED');
+      
+      if (currentPointsRef.current.length > 0) {
+        const pathStr = pointsToPath(currentPointsRef.current);
+        if (pathStr) {
+          setPaths(prev => [...prev, pathStr]);
+          setTotalPoints(prev => prev + currentPointsRef.current.length);
+        }
+      }
+      
+      currentPointsRef.current = [];
+      setCurrentPoints([]);
+      isDrawingRef.current = false;
+    },
+    
+    // Prevent termination
+    onPanResponderTerminationRequest: () => false,
+  }), [pointsToPath]);
 
   // Clear signature
   const handleClear = useCallback(() => {
     setPaths([]);
-    setCurrentPath([]);
+    setCurrentPoints([]);
     setTotalPoints(0);
     setSignatureImage(null);
-    setIsDrawing(false);
+    signatureImageRef.current = null;
+    isDrawingRef.current = false;
+    currentPointsRef.current = [];
   }, []);
 
   // Check if signature is valid
-  const hasValidSignature = useCallback(() => {
-    return (paths.length >= MIN_PATHS && totalPoints >= MIN_POINTS) || 
-           (signatureImage && signatureImage.length > 500);
-  }, [paths.length, totalPoints, signatureImage]);
+  const hasValidSignature = (paths.length >= MIN_PATHS && totalPoints >= MIN_POINTS) || 
+                            (signatureImage && signatureImage.length > 500);
+
+  const hasDrawnAnything = paths.length > 0 || currentPoints.length > 0;
 
   // Save signature
   const handleSave = useCallback(async () => {
-    if (!hasValidSignature()) {
+    if (!hasValidSignature) {
       Alert.alert(
         'Signature Required',
-        'Please draw your complete handwritten signature. A simple tap or small mark is not sufficient.',
+        'Please draw your complete handwritten signature or upload an image.',
         [{ text: 'OK' }]
       );
       return;
@@ -177,7 +222,7 @@ export default function SignatureCapture({
     setIsSaving(true);
 
     try {
-      // If we already have a saved image (from existing), use it
+      // If we have an uploaded/existing image and no new drawing, use it
       if (signatureImage && paths.length === 0) {
         onSave(signatureImage);
         return;
@@ -201,14 +246,52 @@ export default function SignatureCapture({
     }
   }, [hasValidSignature, signatureImage, paths.length, onSave]);
 
+  // Upload signature image from device
+  const handleUploadImage = useCallback(async () => {
+    try {
+      // Request permission
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(
+          'Permission Required',
+          'Please allow access to your photo library to upload a signature image.',
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+
+      // Pick image
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [2, 1],
+        quality: 0.8,
+        base64: true,
+      });
+
+      if (!result.canceled && result.assets[0].base64) {
+        const dataUri = `data:image/png;base64,${result.assets[0].base64}`;
+        setSignatureImage(dataUri);
+        signatureImageRef.current = dataUri;
+        // Clear any drawn paths since we're using uploaded image
+        setPaths([]);
+        setCurrentPoints([]);
+        setTotalPoints(0);
+      }
+    } catch (error) {
+      console.error('Error picking image:', error);
+      Alert.alert('Error', 'Failed to load image. Please try again.');
+    }
+  }, []);
+
   // Close handler
   const handleClose = useCallback(() => {
     if (paths.length > 0 && !signatureImage) {
       Alert.alert(
         'Discard Signature?',
-        'You have drawn a signature. Discard it?',
+        'Discard your drawn signature?',
         [
-          { text: 'Keep Drawing', style: 'cancel' },
+          { text: 'Keep', style: 'cancel' },
           {
             text: 'Discard',
             style: 'destructive',
@@ -224,10 +307,8 @@ export default function SignatureCapture({
     }
   }, [paths.length, signatureImage, handleClear, onClose]);
 
-  // Get current path as SVG string
-  const currentPathStr = pointsToPath(currentPath);
-  const isValid = hasValidSignature();
-  const hasDrawnAnything = paths.length > 0 || currentPath.length > 0;
+  // Current path SVG string
+  const currentPathStr = pointsToPath(currentPoints);
 
   return (
     <Modal
@@ -253,9 +334,9 @@ export default function SignatureCapture({
 
         {/* Instructions */}
         <View style={styles.instructions}>
-          <Ionicons name="finger-print-outline" size={22} color="#3B82F6" />
+          <Ionicons name="finger-print-outline" size={20} color="#3B82F6" />
           <Text style={styles.instructionsText}>
-            Draw your signature with your finger
+            Draw with your finger or upload image
           </Text>
         </View>
 
@@ -267,7 +348,7 @@ export default function SignatureCapture({
           </View>
         )}
 
-        {/* Canvas Container */}
+        {/* Canvas Container - NO ScrollView parent, pointerEvents box-none */}
         <View style={styles.canvasOuter}>
           <View
             ref={canvasRef}
@@ -278,7 +359,7 @@ export default function SignatureCapture({
             <Svg
               width={CANVAS_WIDTH}
               height={CANVAS_HEIGHT}
-              style={styles.svg}
+              style={StyleSheet.absoluteFill}
             >
               {/* White background */}
               <Rect
@@ -289,11 +370,11 @@ export default function SignatureCapture({
                 fill="#FFFFFF"
               />
               
-              {/* Saved paths */}
-              {paths.map((path, index) => (
+              {/* Completed paths */}
+              {paths.map((pathD, index) => (
                 <Path
                   key={`path-${index}`}
-                  d={path}
+                  d={pathD}
                   stroke="#111111"
                   strokeWidth={3}
                   fill="none"
@@ -315,45 +396,51 @@ export default function SignatureCapture({
               )}
             </Svg>
 
-            {/* Signature line guide */}
+            {/* Signature line */}
             <View style={styles.sigLine} pointerEvents="none">
               <Text style={styles.xMark}>✕</Text>
               <View style={styles.dashed} />
             </View>
 
-            {/* Placeholder when empty */}
+            {/* Placeholder */}
             {!hasDrawnAnything && !signatureImage && (
               <View style={styles.placeholder} pointerEvents="none">
-                <Ionicons name="create-outline" size={40} color="#CBD5E1" />
+                <Ionicons name="create-outline" size={36} color="#CBD5E1" />
                 <Text style={styles.placeholderText}>Draw here</Text>
               </View>
             )}
           </View>
 
-          {/* Status badge */}
+          {/* Status row */}
           <View style={styles.statusRow}>
-            {isDrawing ? (
+            {currentPoints.length > 0 ? (
               <View style={[styles.badge, styles.badgeDrawing]}>
                 <Ionicons name="pencil" size={14} color="#2563EB" />
-                <Text style={[styles.badgeText, styles.badgeTextDrawing]}>Drawing...</Text>
+                <Text style={styles.badgeTextBlue}>Drawing ({currentPoints.length} pts)...</Text>
               </View>
-            ) : isValid ? (
+            ) : hasValidSignature ? (
               <View style={[styles.badge, styles.badgeValid]}>
                 <Ionicons name="checkmark-circle" size={14} color="#16A34A" />
-                <Text style={[styles.badgeText, styles.badgeTextValid]}>Signature ready!</Text>
+                <Text style={styles.badgeTextGreen}>Signature ready!</Text>
               </View>
             ) : hasDrawnAnything ? (
               <View style={[styles.badge, styles.badgePending]}>
                 <Ionicons name="time-outline" size={14} color="#D97706" />
-                <Text style={[styles.badgeText, styles.badgePending]}>Keep drawing...</Text>
+                <Text style={styles.badgeTextOrange}>Keep drawing...</Text>
               </View>
             ) : (
               <View style={[styles.badge, styles.badgeEmpty]}>
                 <Ionicons name="hand-left-outline" size={14} color="#94A3B8" />
-                <Text style={[styles.badgeText, styles.badgeTextEmpty]}>Touch to draw</Text>
+                <Text style={styles.badgeTextGray}>Touch to draw</Text>
               </View>
             )}
           </View>
+
+          {/* Upload button */}
+          <TouchableOpacity style={styles.uploadBtn} onPress={handleUploadImage}>
+            <Ionicons name="image-outline" size={18} color="#3B82F6" />
+            <Text style={styles.uploadText}>Or upload signature image</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Signature Preview */}
@@ -374,17 +461,16 @@ export default function SignatureCapture({
         <View style={styles.legalBox}>
           <Ionicons name="shield-checkmark-outline" size={16} color="#64748B" />
           <Text style={styles.legalText}>
-            By saving, you confirm this is your legal handwritten signature
-            for the Scope of Appointment document.
+            By saving, you confirm this is your legal signature for the Scope of Appointment.
           </Text>
         </View>
 
         {/* Save button */}
         <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
           <TouchableOpacity
-            style={[styles.saveBtn, !isValid && styles.saveBtnDisabled]}
+            style={[styles.saveBtn, !hasValidSignature && styles.saveBtnDisabled]}
             onPress={handleSave}
-            disabled={!isValid || isSaving}
+            disabled={!hasValidSignature || isSaving}
           >
             {isSaving ? (
               <ActivityIndicator color="#FFFFFF" size="small" />
@@ -393,18 +479,18 @@ export default function SignatureCapture({
                 <Ionicons
                   name="checkmark-circle"
                   size={24}
-                  color={isValid ? '#FFFFFF' : '#94A3B8'}
+                  color={hasValidSignature ? '#FFFFFF' : '#94A3B8'}
                 />
-                <Text style={[styles.saveBtnText, !isValid && styles.saveBtnTextDisabled]}>
+                <Text style={[styles.saveBtnText, !hasValidSignature && styles.saveBtnTextDisabled]}>
                   Save Signature
                 </Text>
               </>
             )}
           </TouchableOpacity>
 
-          {!isValid && !signatureImage && (
+          {!hasValidSignature && !signatureImage && (
             <Text style={styles.hint}>
-              Draw your signature above to continue
+              Draw signature or upload image to continue
             </Text>
           )}
         </View>
@@ -455,7 +541,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
+    paddingVertical: 10,
     gap: 8,
   },
   instructionsText: {
@@ -492,9 +578,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     position: 'relative',
   },
-  svg: {
-    backgroundColor: 'transparent',
-  },
   sigLine: {
     position: 'absolute',
     bottom: 30,
@@ -526,7 +609,7 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   statusRow: {
-    height: 34,
+    height: 32,
     marginTop: 10,
     justifyContent: 'center',
     alignItems: 'center',
@@ -551,25 +634,43 @@ const styles = StyleSheet.create({
   badgeEmpty: {
     backgroundColor: '#F1F5F9',
   },
-  badgeText: {
+  badgeTextBlue: {
     fontSize: 12,
     fontWeight: '600',
-  },
-  badgeTextDrawing: {
     color: '#2563EB',
   },
-  badgeTextValid: {
+  badgeTextGreen: {
+    fontSize: 12,
+    fontWeight: '600',
     color: '#16A34A',
   },
-  badgeTextPending: {
+  badgeTextOrange: {
+    fontSize: 12,
+    fontWeight: '600',
     color: '#D97706',
   },
-  badgeTextEmpty: {
+  badgeTextGray: {
+    fontSize: 12,
+    fontWeight: '600',
     color: '#94A3B8',
+  },
+  uploadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    gap: 6,
+  },
+  uploadText: {
+    fontSize: 13,
+    color: '#3B82F6',
+    fontWeight: '500',
   },
   previewSection: {
     paddingHorizontal: 20,
-    paddingTop: 12,
+    paddingTop: 10,
   },
   previewLabel: {
     fontSize: 12,
@@ -593,7 +694,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     paddingHorizontal: 20,
-    paddingVertical: 12,
+    paddingVertical: 10,
     gap: 8,
     marginTop: 'auto',
   },
