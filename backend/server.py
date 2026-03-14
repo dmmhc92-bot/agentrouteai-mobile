@@ -1903,6 +1903,52 @@ async def generate_scope_pdf(scope: dict, lead: dict, agent: dict) -> dict:
     # ========== SECTION 7: SIGNATURES ==========
     y = draw_section_header("SIGNATURES", 7, y)
     
+    # Helper function to process signature image bytes
+    def process_signature_image(signature_data: str) -> BytesIO:
+        """
+        Process signature data (base64 with or without data URI prefix) 
+        and return a BytesIO object ready for ReportLab.
+        Handles PNG transparency issues by converting RGBA to RGB with white background.
+        """
+        from PIL import Image as PILImage
+        
+        # Extract the base64 data
+        if signature_data.startswith("data:"):
+            # Split at the first comma to get the base64 part
+            parts = signature_data.split(",", 1)
+            if len(parts) == 2:
+                encoded = parts[1]
+            else:
+                raise ValueError("Invalid data URI format")
+        else:
+            # Assume raw base64
+            encoded = signature_data
+        
+        # Decode base64
+        sig_bytes = base64.b64decode(encoded)
+        
+        # Load with PIL to handle transparency and format issues
+        pil_img = PILImage.open(BytesIO(sig_bytes))
+        logger.info(f"Loaded signature image: mode={pil_img.mode}, size={pil_img.size}")
+        
+        # If the image has transparency (RGBA), convert to RGB with white background
+        if pil_img.mode in ('RGBA', 'LA', 'PA'):
+            # Create white background
+            background = PILImage.new('RGB', pil_img.size, (255, 255, 255))
+            if pil_img.mode == 'RGBA':
+                background.paste(pil_img, mask=pil_img.split()[3])  # Use alpha channel as mask
+            else:
+                background.paste(pil_img)
+            pil_img = background
+        elif pil_img.mode != 'RGB':
+            pil_img = pil_img.convert('RGB')
+        
+        # Save to BytesIO as PNG (ReportLab works well with PNG)
+        output = BytesIO()
+        pil_img.save(output, format='PNG', optimize=True)
+        output.seek(0)
+        return output
+    
     # Helper function to draw signature with image
     def draw_signature_block(label, signature_data, typed_name, date_str, y_pos):
         """Draw a complete signature block with handwritten signature"""
@@ -1921,34 +1967,18 @@ async def generate_scope_pdf(scope: dict, lead: dict, agent: dict) -> dict:
         p.roundRect(45, y_pos - sig_box_height, sig_box_width, sig_box_height, 3, stroke=1, fill=1)
         
         # Draw the actual handwritten signature image
-        if signature_data:
+        signature_drawn = False
+        if signature_data and len(signature_data) > 100:  # Basic validation
             try:
-                if signature_data.startswith("data:"):
-                    header, encoded = signature_data.split(",", 1)
-                    mime_type = header.split(";")[0].split(":")[1] if ":" in header else ""
-                    sig_bytes = base64.b64decode(encoded)
-                    
-                    if "svg" not in mime_type.lower():
-                        # PNG/JPEG - draw directly
-                        sig_image = ImageReader(BytesIO(sig_bytes))
-                        p.drawImage(
-                            sig_image, 
-                            50, 
-                            y_pos - sig_box_height + 5, 
-                            width=sig_box_width - 10, 
-                            height=sig_box_height - 10, 
-                            preserveAspectRatio=True, 
-                            mask='auto'
-                        )
-                    else:
-                        # SVG fallback - just show typed name
-                        p.setFont("Helvetica-Oblique", 16)
-                        p.setFillColor(dark_gray)
-                        p.drawString(55, y_pos - 30, typed_name or "Signature")
+                # Check for SVG (we can't render SVG directly in ReportLab)
+                if signature_data.startswith("data:") and "svg" in signature_data[:50].lower():
+                    logger.warning("SVG signature detected, falling back to typed name")
                 else:
-                    # Raw base64
-                    sig_bytes = base64.b64decode(signature_data)
-                    sig_image = ImageReader(BytesIO(sig_bytes))
+                    # Process the signature image
+                    sig_buffer = process_signature_image(signature_data)
+                    sig_image = ImageReader(sig_buffer)
+                    
+                    # Draw the image
                     p.drawImage(
                         sig_image, 
                         50, 
@@ -1956,14 +1986,19 @@ async def generate_scope_pdf(scope: dict, lead: dict, agent: dict) -> dict:
                         width=sig_box_width - 10, 
                         height=sig_box_height - 10, 
                         preserveAspectRatio=True, 
-                        mask='auto'
+                        mask=None  # No mask needed since we converted to RGB
                     )
+                    signature_drawn = True
+                    logger.info(f"Successfully drew signature image for {label}")
             except Exception as e:
-                logger.error(f"Error drawing signature: {e}")
-                # Fallback to typed name
-                p.setFont("Helvetica-Oblique", 14)
-                p.setFillColor(dark_gray)
-                p.drawString(55, y_pos - 30, typed_name or "Signature")
+                logger.error(f"Error drawing signature for {label}: {type(e).__name__}: {e}")
+        
+        # Fallback to typed name if signature wasn't drawn
+        if not signature_drawn:
+            p.setFont("Helvetica-Oblique", 14)
+            p.setFillColor(dark_gray)
+            display_name = typed_name or "Signature"
+            p.drawString(55, y_pos - 30, display_name)
         
         # Labels under signature box
         p.setFont("Helvetica", 8)
