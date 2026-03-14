@@ -270,6 +270,29 @@ class ApiService {
     const response = await apiClient.get('/legal/data-disclosure');
     return response.data;
   }
+
+  // Pipeline API
+  async getPipeline(teamView: boolean = false) {
+    const response = await apiClient.get(`/pipeline?team_view=${teamView}`);
+    return response.data;
+  }
+
+  async movePipelineCase(data: {
+    lead_id: string;
+    new_stage: string;
+    notes?: string;
+    premium?: number;
+    commission?: number;
+    policy_type?: string;
+  }) {
+    const response = await apiClient.put('/pipeline/move', data);
+    return response.data;
+  }
+
+  async getPipelineStats(teamView: boolean = false) {
+    const response = await apiClient.get(`/pipeline/stats?team_view=${teamView}`);
+    return response.data;
+  }
 }
 
 export const api = new ApiService();
