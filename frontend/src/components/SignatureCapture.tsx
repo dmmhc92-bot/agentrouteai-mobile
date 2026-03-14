@@ -1,23 +1,16 @@
-import React, { useRef, useState, useCallback } from 'react';
+import React, { useRef, useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  PanResponder,
   Dimensions,
   Modal,
-  Platform,
+  GestureResponderEvent,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import Svg, { Path, G, Text as SvgText } from 'react-native-svg';
-import { captureRef } from 'react-native-view-shot';
-
-interface Point {
-  x: number;
-  y: number;
-}
+import Svg, { Path, Text as SvgText, Rect } from 'react-native-svg';
 
 interface SignatureCaptureProps {
   visible: boolean;
@@ -41,60 +34,85 @@ export default function SignatureCapture({
   signerName,
 }: SignatureCaptureProps) {
   const insets = useSafeAreaInsets();
-  const svgRef = useRef<View>(null);
   const [paths, setPaths] = useState<string[]>([]);
   const [currentPath, setCurrentPath] = useState<string>('');
   const [isSaving, setIsSaving] = useState(false);
+  const isDrawingRef = useRef(false);
+  const canvasRef = useRef<View>(null);
+  const layoutRef = useRef({ x: 0, y: 0, width: CANVAS_WIDTH, height: CANVAS_HEIGHT });
 
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: (evt) => {
-        const { locationX, locationY } = evt.nativeEvent;
-        const x = Math.max(0, Math.min(locationX, CANVAS_WIDTH));
-        const y = Math.max(0, Math.min(locationY, CANVAS_HEIGHT));
-        setCurrentPath(`M ${x} ${y}`);
-      },
-      onPanResponderMove: (evt) => {
-        const { locationX, locationY } = evt.nativeEvent;
-        const x = Math.max(0, Math.min(locationX, CANVAS_WIDTH));
-        const y = Math.max(0, Math.min(locationY, CANVAS_HEIGHT));
-        setCurrentPath((prev) => `${prev} L ${x} ${y}`);
-      },
-      onPanResponderRelease: () => {
-        if (currentPath) {
-          setPaths((prev) => [...prev, currentPath]);
-          setCurrentPath('');
-        }
-      },
-    })
-  ).current;
+  // Reset state when modal opens
+  useEffect(() => {
+    if (visible) {
+      setPaths([]);
+      setCurrentPath('');
+      setIsSaving(false);
+    }
+  }, [visible]);
+
+  const getCoordinates = useCallback((event: GestureResponderEvent) => {
+    const { pageX, pageY } = event.nativeEvent;
+    const { x: layoutX, y: layoutY } = layoutRef.current;
+    
+    let x = pageX - layoutX;
+    let y = pageY - layoutY;
+    
+    // Clamp to canvas bounds
+    x = Math.max(0, Math.min(x, CANVAS_WIDTH));
+    y = Math.max(0, Math.min(y, CANVAS_HEIGHT));
+    
+    return { x, y };
+  }, []);
+
+  const handleTouchStart = useCallback((event: GestureResponderEvent) => {
+    isDrawingRef.current = true;
+    const { x, y } = getCoordinates(event);
+    setCurrentPath(`M ${x.toFixed(1)} ${y.toFixed(1)}`);
+  }, [getCoordinates]);
+
+  const handleTouchMove = useCallback((event: GestureResponderEvent) => {
+    if (!isDrawingRef.current) return;
+    const { x, y } = getCoordinates(event);
+    setCurrentPath(prev => `${prev} L ${x.toFixed(1)} ${y.toFixed(1)}`);
+  }, [getCoordinates]);
+
+  const handleTouchEnd = useCallback(() => {
+    if (isDrawingRef.current && currentPath) {
+      setPaths(prev => [...prev, currentPath]);
+      setCurrentPath('');
+    }
+    isDrawingRef.current = false;
+  }, [currentPath]);
 
   const handleClear = useCallback(() => {
     setPaths([]);
     setCurrentPath('');
   }, []);
 
-  const handleSave = useCallback(async () => {
+  const handleSave = useCallback(() => {
     if (paths.length === 0) {
       return;
     }
 
     setIsSaving(true);
+    
     try {
-      if (svgRef.current) {
-        const uri = await captureRef(svgRef, {
-          format: 'png',
-          quality: 1,
-          result: 'base64',
-        });
-        onSave(`data:image/png;base64,${uri}`);
-      }
+      // Generate clean SVG with white background
+      const allPaths = paths.map(p => 
+        `<path d="${p}" stroke="#000000" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`
+      ).join('');
+      
+      const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" width="${CANVAS_WIDTH}" height="${CANVAS_HEIGHT}" viewBox="0 0 ${CANVAS_WIDTH} ${CANVAS_HEIGHT}"><rect fill="#FFFFFF" width="100%" height="100%"/>${allPaths}</svg>`;
+      
+      // Encode to base64
+      const base64 = btoa(unescape(encodeURIComponent(svgContent)));
+      const dataUri = `data:image/svg+xml;base64,${base64}`;
+      
+      onSave(dataUri);
     } catch (error) {
-      console.error('Error capturing signature:', error);
-      // Fallback: pass the paths as SVG data
-      const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" width="${CANVAS_WIDTH}" height="${CANVAS_HEIGHT}" viewBox="0 0 ${CANVAS_WIDTH} ${CANVAS_HEIGHT}"><rect fill="white" width="100%" height="100%"/>${paths.map(p => `<path d="${p}" stroke="#000" stroke-width="2" fill="none"/>`).join('')}</svg>`;
+      console.error('Error saving signature:', error);
+      // Fallback with simpler encoding
+      const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" width="${CANVAS_WIDTH}" height="${CANVAS_HEIGHT}"><rect fill="white" width="100%" height="100%"/>${paths.map(p => `<path d="${p}" stroke="black" stroke-width="2" fill="none"/>`).join('')}</svg>`;
       const base64 = btoa(svgContent);
       onSave(`data:image/svg+xml;base64,${base64}`);
     } finally {
@@ -107,7 +125,14 @@ export default function SignatureCapture({
     onClose();
   }, [onClose, handleClear]);
 
-  const hasSignature = paths.length > 0;
+  const handleCanvasLayout = useCallback((event: any) => {
+    const layout = event.nativeEvent.layout;
+    canvasRef.current?.measureInWindow((x, y, width, height) => {
+      layoutRef.current = { x, y, width, height };
+    });
+  }, []);
+
+  const hasSignature = paths.length > 0 || currentPath.length > 0;
 
   return (
     <Modal
@@ -150,23 +175,46 @@ export default function SignatureCapture({
         {/* Signature Canvas */}
         <View style={styles.canvasContainer}>
           <View
-            ref={svgRef}
+            ref={canvasRef}
             style={styles.canvas}
-            {...panResponder.panHandlers}
-            collapsable={false}
+            onLayout={handleCanvasLayout}
+            onStartShouldSetResponder={() => true}
+            onMoveShouldSetResponder={() => true}
+            onResponderGrant={handleTouchStart}
+            onResponderMove={handleTouchMove}
+            onResponderRelease={handleTouchEnd}
+            onResponderTerminate={handleTouchEnd}
           >
-            <Svg width={CANVAS_WIDTH} height={CANVAS_HEIGHT}>
-              {/* Grid lines for guidance */}
+            <Svg 
+              width={CANVAS_WIDTH} 
+              height={CANVAS_HEIGHT}
+              style={styles.svg}
+            >
+              {/* White background */}
+              <Rect x="0" y="0" width={CANVAS_WIDTH} height={CANVAS_HEIGHT} fill="#FFFFFF" />
+              
+              {/* Signature line guide */}
               <Path
-                d={`M 0 ${CANVAS_HEIGHT - 40} L ${CANVAS_WIDTH} ${CANVAS_HEIGHT - 40}`}
+                d={`M 20 ${CANVAS_HEIGHT - 40} L ${CANVAS_WIDTH - 20} ${CANVAS_HEIGHT - 40}`}
                 stroke="#E2E8F0"
                 strokeWidth="1"
                 strokeDasharray="5,5"
               />
-              {/* Saved paths */}
+              
+              {/* X marker */}
+              <SvgText
+                x={15}
+                y={CANVAS_HEIGHT - 48}
+                fontSize={18}
+                fill="#94A3B8"
+              >
+                ✕
+              </SvgText>
+              
+              {/* Saved signature paths */}
               {paths.map((path, index) => (
                 <Path
-                  key={index}
+                  key={`path-${index}`}
                   d={path}
                   stroke="#1F2937"
                   strokeWidth={2.5}
@@ -175,6 +223,7 @@ export default function SignatureCapture({
                   strokeLinejoin="round"
                 />
               ))}
+              
               {/* Current path being drawn */}
               {currentPath && (
                 <Path
@@ -186,18 +235,11 @@ export default function SignatureCapture({
                   strokeLinejoin="round"
                 />
               )}
-              {/* X marker for signature line */}
-              <SvgText
-                x={10}
-                y={CANVAS_HEIGHT - 50}
-                fontSize={16}
-                fill="#94A3B8"
-              >
-                ✕
-              </SvgText>
             </Svg>
-            {!hasSignature && !currentPath && (
-              <View style={styles.placeholder}>
+            
+            {/* Placeholder when empty */}
+            {!hasSignature && (
+              <View style={styles.placeholder} pointerEvents="none">
                 <Ionicons name="create-outline" size={40} color="#CBD5E1" />
                 <Text style={styles.placeholderText}>Sign here</Text>
               </View>
@@ -219,20 +261,20 @@ export default function SignatureCapture({
           <TouchableOpacity
             style={[
               styles.saveButton,
-              !hasSignature && styles.saveButtonDisabled,
+              (!hasSignature || paths.length === 0) && styles.saveButtonDisabled,
             ]}
             onPress={handleSave}
-            disabled={!hasSignature || isSaving}
+            disabled={paths.length === 0 || isSaving}
           >
             <Ionicons
               name="checkmark-circle"
               size={24}
-              color={hasSignature ? '#FFFFFF' : '#94A3B8'}
+              color={paths.length > 0 ? '#FFFFFF' : '#94A3B8'}
             />
             <Text
               style={[
                 styles.saveButtonText,
-                !hasSignature && styles.saveButtonTextDisabled,
+                paths.length === 0 && styles.saveButtonTextDisabled,
               ]}
             >
               {isSaving ? 'Saving...' : 'Save Signature'}
@@ -319,15 +361,17 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
     borderWidth: 2,
-    borderColor: '#E2E8F0',
+    borderColor: '#3B82F6',
     overflow: 'hidden',
     position: 'relative',
+  },
+  svg: {
+    backgroundColor: '#FFFFFF',
   },
   placeholder: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',
     alignItems: 'center',
-    pointerEvents: 'none',
   },
   placeholderText: {
     fontSize: 14,
