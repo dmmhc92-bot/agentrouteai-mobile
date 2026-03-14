@@ -1668,7 +1668,7 @@ async def generate_stamped_pdf(scope_id: str, current_user: dict = Depends(get_c
         'checkbox_medicare_advantage': {'x': 53, 'y': 533},     # Part C - Y center 533
         'checkbox_prescription_drug': {'x': 53, 'y': 452},      # Part D - Y center 452
         'checkbox_hospital_indemnity': {'x': 53, 'y': 343},     # Hospital - Y center 343
-        'checkbox_dental_vision': {'x': 53, 'y': 255},          # Dental/Vision - Y center 255
+        'checkbox_dental_vision_hearing': {'x': 53, 'y': 255},  # Dental/Vision/Hearing - Y center 255
         'checkbox_medicare_supplement': {'x': 53, 'y': 210},    # Medigap - Y center 210
     }
     
