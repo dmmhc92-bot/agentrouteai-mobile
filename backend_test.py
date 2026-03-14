@@ -12,7 +12,7 @@ import uuid
 import sys
 
 # Configuration
-BASE_URL = "https://field-sales-crm-4.preview.emergentagent.com/api"
+BASE_URL = "https://agentroute-ai.preview.emergentagent.com/api"
 TEST_USER = {
     "name": "Field Agent",
     "email": "agent@test.com", 
