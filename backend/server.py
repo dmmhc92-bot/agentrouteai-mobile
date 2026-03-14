@@ -857,10 +857,17 @@ async def get_appointment(apt_id: str, current_user: dict = Depends(get_current_
         raise HTTPException(status_code=404, detail="Appointment not found")
     
     return AppointmentResponse(
-        id=apt["id"], lead_id=apt["lead_id"], appointment_date=apt["appointment_date"],
-        appointment_time=apt["appointment_time"], notes=apt.get("notes", ""),
-        status=apt.get("status", "scheduled"), appointment_type=apt.get("appointment_type", "in_person"),
-        created_date=apt.get("created_date")
+        id=apt["id"], 
+        lead_id=apt["lead_id"], 
+        appointment_date=apt["appointment_date"],
+        appointment_time=apt["appointment_time"], 
+        notes=apt.get("notes", ""),
+        status=apt.get("status", "scheduled"), 
+        appointment_type=apt.get("appointment_type", "in_person"),
+        created_by_user=apt["created_by_user"],
+        created_date=apt.get("created_date"),
+        outcome=apt.get("outcome"),
+        follow_up_notes=apt.get("follow_up_notes")
     )
 
 @api_router.put("/appointments/{apt_id}")
