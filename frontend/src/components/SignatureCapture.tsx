@@ -22,10 +22,10 @@ interface SignatureCaptureProps {
   title: string;
   subtitle?: string;
   signerName?: string;
-  existingSignature?: string; // For reloading existing signature
+  existingSignature?: string;
 }
 
-const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
+const { width: screenWidth } = Dimensions.get('window');
 const CANVAS_WIDTH = Math.min(screenWidth - 40, 380);
 const CANVAS_HEIGHT = 200;
 
@@ -41,22 +41,24 @@ export default function SignatureCapture({
   const insets = useSafeAreaInsets();
   const signatureRef = useRef<SignatureViewRef>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [hasSignature, setHasSignature] = useState(false);
-  const [signaturePreview, setSignaturePreview] = useState<string | null>(null);
+  const [hasStrokes, setHasStrokes] = useState(false);
+  const [signatureData, setSignatureData] = useState<string | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
+  const pendingSaveRef = useRef(false);
 
   // Reset state when modal opens
   useEffect(() => {
     if (visible) {
       setIsSaving(false);
-      setHasSignature(false);
-      setSignaturePreview(null);
+      setHasStrokes(false);
+      setSignatureData(null);
       setIsDrawing(false);
+      pendingSaveRef.current = false;
       
-      // If there's an existing signature, show it as preview
+      // Show existing signature if available
       if (existingSignature && existingSignature.startsWith('data:image/')) {
-        setSignaturePreview(existingSignature);
-        setHasSignature(true);
+        setSignatureData(existingSignature);
+        setHasStrokes(true);
       }
     }
   }, [visible, existingSignature]);
@@ -64,40 +66,59 @@ export default function SignatureCapture({
   // Handle when user starts drawing
   const handleBegin = useCallback(() => {
     setIsDrawing(true);
-    setHasSignature(true);
+    setHasStrokes(true);
   }, []);
 
   // Handle when user ends a stroke
   const handleEnd = useCallback(() => {
     setIsDrawing(false);
+    // Automatically read signature after each stroke
+    setTimeout(() => {
+      signatureRef.current?.readSignature();
+    }, 100);
   }, []);
 
-  // Handle successful signature capture
+  // Handle successful signature data from canvas
   const handleOK = useCallback((signature: string) => {
-    if (signature && signature.length > 100) {
-      // Valid signature data
-      setSignaturePreview(signature);
-      setHasSignature(true);
+    console.log('Signature received, length:', signature?.length);
+    if (signature && signature.length > 500) {
+      setSignatureData(signature);
+      setHasStrokes(true);
+      
+      // If we were waiting to save, do it now
+      if (pendingSaveRef.current) {
+        pendingSaveRef.current = false;
+        setIsSaving(false);
+        onSave(signature);
+      }
     }
-  }, []);
+  }, [onSave]);
 
-  // Handle empty signature (shouldn't happen with our flow but safety check)
+  // Handle empty signature
   const handleEmpty = useCallback(() => {
-    setHasSignature(false);
-    setSignaturePreview(null);
+    console.log('Signature is empty');
+    if (pendingSaveRef.current) {
+      pendingSaveRef.current = false;
+      setIsSaving(false);
+      Alert.alert(
+        'Signature Required',
+        'Please draw your complete handwritten signature.',
+        [{ text: 'OK' }]
+      );
+    }
   }, []);
 
   // Clear the signature
   const handleClear = useCallback(() => {
     signatureRef.current?.clearSignature();
-    setHasSignature(false);
-    setSignaturePreview(null);
+    setHasStrokes(false);
+    setSignatureData(null);
     setIsDrawing(false);
   }, []);
 
-  // Read and save the signature
-  const handleSave = useCallback(async () => {
-    if (!hasSignature) {
+  // Save the signature
+  const handleSave = useCallback(() => {
+    if (!hasStrokes) {
       Alert.alert(
         'Signature Required',
         'Please draw your complete handwritten signature before saving.',
@@ -106,46 +127,37 @@ export default function SignatureCapture({
       return;
     }
 
-    setIsSaving(true);
-
-    try {
-      // Read the signature from the canvas
-      signatureRef.current?.readSignature();
-      
-      // Give time for the callback to fire
-      await new Promise(resolve => setTimeout(resolve, 300));
-      
-      if (signaturePreview && signaturePreview.length > 500) {
-        onSave(signaturePreview);
-      } else {
-        // Try to read again
-        signatureRef.current?.readSignature();
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        if (signaturePreview && signaturePreview.length > 500) {
-          onSave(signaturePreview);
-        } else {
-          Alert.alert(
-            'Signature Too Small',
-            'Please draw a more complete signature. The current signature appears to be too small.',
-            [{ text: 'OK' }]
-          );
-        }
-      }
-    } catch (error) {
-      console.error('Error saving signature:', error);
-      Alert.alert('Error', 'Failed to save signature. Please try again.');
-    } finally {
-      setIsSaving(false);
+    // If we already have signature data, save it directly
+    if (signatureData && signatureData.length > 500) {
+      onSave(signatureData);
+      return;
     }
-  }, [hasSignature, signaturePreview, onSave]);
 
-  // Confirm close if signature exists
+    // Otherwise, read the signature and wait for callback
+    setIsSaving(true);
+    pendingSaveRef.current = true;
+    signatureRef.current?.readSignature();
+    
+    // Timeout in case callback doesn't fire
+    setTimeout(() => {
+      if (pendingSaveRef.current) {
+        pendingSaveRef.current = false;
+        setIsSaving(false);
+        Alert.alert(
+          'Error',
+          'Could not capture signature. Please try drawing again.',
+          [{ text: 'OK' }]
+        );
+      }
+    }, 2000);
+  }, [hasStrokes, signatureData, onSave]);
+
+  // Confirm close
   const handleClose = useCallback(() => {
-    if (hasSignature && !signaturePreview) {
+    if (hasStrokes && !signatureData) {
       Alert.alert(
         'Discard Signature?',
-        'You have drawn a signature. Are you sure you want to discard it?',
+        'Are you sure you want to discard your signature?',
         [
           { text: 'Keep Drawing', style: 'cancel' },
           {
@@ -161,28 +173,42 @@ export default function SignatureCapture({
     } else {
       onClose();
     }
-  }, [hasSignature, signaturePreview, handleClear, onClose]);
+  }, [hasStrokes, signatureData, handleClear, onClose]);
 
-  // Signature canvas style - white background, dark pen
-  const canvasStyle = `
+  // Signature canvas style
+  const webStyle = `
     .m-signature-pad {
       box-shadow: none;
       border: none;
       background-color: #FFFFFF;
+      margin: 0;
+      padding: 0;
     }
     .m-signature-pad--body {
       border: none;
       background-color: #FFFFFF;
+      margin: 0;
+      padding: 0;
     }
     .m-signature-pad--footer {
       display: none;
+      margin: 0;
+      padding: 0;
     }
     body, html {
       background-color: #FFFFFF;
       margin: 0;
       padding: 0;
+      width: 100%;
+      height: 100%;
+    }
+    canvas {
+      width: 100% !important;
+      height: 100% !important;
     }
   `;
+
+  const hasValidSignature = signatureData && signatureData.length > 500;
 
   return (
     <Modal
@@ -210,7 +236,7 @@ export default function SignatureCapture({
         <View style={styles.instructions}>
           <Ionicons name="finger-print-outline" size={24} color="#3B82F6" />
           <Text style={styles.instructionsText}>
-            Use your finger to draw your signature below
+            Use your finger to draw your signature
           </Text>
         </View>
 
@@ -222,16 +248,9 @@ export default function SignatureCapture({
           </View>
         )}
 
-        {/* Signature Canvas Container - NOT inside ScrollView */}
+        {/* Signature Canvas - NOT inside ScrollView */}
         <View style={styles.canvasContainer}>
           <View style={styles.canvasWrapper}>
-            {/* Signature line guide */}
-            <View style={styles.signatureLine} pointerEvents="none">
-              <Text style={styles.xMarker}>✕</Text>
-              <View style={styles.dashedLine} />
-            </View>
-            
-            {/* The actual signature canvas */}
             <SignatureScreen
               ref={signatureRef}
               onOK={handleOK}
@@ -242,44 +261,58 @@ export default function SignatureCapture({
               descriptionText=""
               clearText=""
               confirmText=""
-              webStyle={canvasStyle}
+              webStyle={webStyle}
               penColor="#111111"
               backgroundColor="#FFFFFF"
               dotSize={3}
               minWidth={2}
               maxWidth={4}
+              trimWhitespace={true}
+              imageType="image/png"
+              dataURL={existingSignature}
               style={styles.signatureCanvas}
             />
+            
+            {/* Signature line overlay */}
+            <View style={styles.signatureLineOverlay} pointerEvents="none">
+              <Text style={styles.xMarker}>✕</Text>
+              <View style={styles.dashedLine} />
+            </View>
           </View>
 
-          {/* Status indicator */}
-          <View style={styles.signatureStatus}>
+          {/* Status */}
+          <View style={styles.statusContainer}>
             {isDrawing ? (
               <View style={styles.statusBadgeDrawing}>
                 <Ionicons name="pencil" size={14} color="#3B82F6" />
                 <Text style={styles.statusTextDrawing}>Drawing...</Text>
               </View>
-            ) : hasSignature ? (
+            ) : hasValidSignature ? (
               <View style={styles.statusBadgeValid}>
                 <Ionicons name="checkmark-circle" size={14} color="#22C55E" />
-                <Text style={styles.statusTextValid}>Signature captured</Text>
+                <Text style={styles.statusTextValid}>Signature captured!</Text>
+              </View>
+            ) : hasStrokes ? (
+              <View style={styles.statusBadgePending}>
+                <Ionicons name="time-outline" size={14} color="#F59E0B" />
+                <Text style={styles.statusTextPending}>Keep drawing...</Text>
               </View>
             ) : (
               <View style={styles.statusBadgeEmpty}>
                 <Ionicons name="create-outline" size={14} color="#94A3B8" />
-                <Text style={styles.statusTextEmpty}>Draw your signature above</Text>
+                <Text style={styles.statusTextEmpty}>Draw signature above</Text>
               </View>
             )}
           </View>
         </View>
 
         {/* Signature Preview */}
-        {signaturePreview && (
-          <View style={styles.previewContainer}>
-            <Text style={styles.previewLabel}>Signature Preview:</Text>
-            <View style={styles.previewImageContainer}>
+        {hasValidSignature && (
+          <View style={styles.previewSection}>
+            <Text style={styles.previewLabel}>✓ Signature Preview:</Text>
+            <View style={styles.previewBox}>
               <Image
-                source={{ uri: signaturePreview }}
+                source={{ uri: signatureData }}
                 style={styles.previewImage}
                 resizeMode="contain"
               />
@@ -291,35 +324,34 @@ export default function SignatureCapture({
         <View style={styles.legalNotice}>
           <Ionicons name="shield-checkmark-outline" size={18} color="#64748B" />
           <Text style={styles.legalText}>
-            By saving this signature, you acknowledge that this is your legal
-            handwritten signature and agree to be bound by the associated Scope
-            of Appointment document.
+            By saving, you confirm this is your legal handwritten signature for
+            the Scope of Appointment document.
           </Text>
         </View>
 
-        {/* Save Button */}
+        {/* Footer */}
         <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
           <TouchableOpacity
             style={[
               styles.saveButton,
-              !hasSignature && styles.saveButtonDisabled,
+              (!hasStrokes || isSaving) && styles.saveButtonDisabled,
             ]}
             onPress={handleSave}
-            disabled={!hasSignature || isSaving}
+            disabled={!hasStrokes || isSaving}
           >
             {isSaving ? (
-              <ActivityIndicator color="#FFFFFF" />
+              <ActivityIndicator color="#FFFFFF" size="small" />
             ) : (
               <>
                 <Ionicons
                   name="checkmark-circle"
                   size={24}
-                  color={hasSignature ? '#FFFFFF' : '#94A3B8'}
+                  color={hasStrokes ? '#FFFFFF' : '#94A3B8'}
                 />
                 <Text
                   style={[
                     styles.saveButtonText,
-                    !hasSignature && styles.saveButtonTextDisabled,
+                    !hasStrokes && styles.saveButtonTextDisabled,
                   ]}
                 >
                   Save Signature
@@ -328,9 +360,9 @@ export default function SignatureCapture({
             )}
           </TouchableOpacity>
 
-          {!hasSignature && (
+          {!hasStrokes && (
             <Text style={styles.hintText}>
-              Draw your signature above to enable save
+              Draw your signature to enable save
             </Text>
           )}
         </View>
@@ -381,7 +413,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 16,
+    paddingVertical: 14,
     gap: 10,
   },
   instructionsText: {
@@ -392,7 +424,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingBottom: 12,
+    paddingBottom: 10,
     gap: 8,
   },
   signerLabel: {
@@ -413,30 +445,30 @@ const styles = StyleSheet.create({
     height: CANVAS_HEIGHT,
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
-    borderWidth: 2,
+    borderWidth: 3,
     borderColor: '#3B82F6',
     overflow: 'hidden',
     position: 'relative',
   },
   signatureCanvas: {
-    width: CANVAS_WIDTH,
-    height: CANVAS_HEIGHT,
+    flex: 1,
+    width: '100%',
+    height: '100%',
     backgroundColor: '#FFFFFF',
   },
-  signatureLine: {
+  signatureLineOverlay: {
     position: 'absolute',
-    bottom: 40,
-    left: 20,
-    right: 20,
+    bottom: 35,
+    left: 15,
+    right: 15,
     flexDirection: 'row',
     alignItems: 'center',
-    zIndex: 1,
     pointerEvents: 'none',
   },
   xMarker: {
-    fontSize: 16,
+    fontSize: 14,
     color: '#CBD5E1',
-    marginRight: 8,
+    marginRight: 6,
   },
   dashedLine: {
     flex: 1,
@@ -445,9 +477,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E2E8F0',
   },
-  signatureStatus: {
-    height: 32,
-    marginTop: 12,
+  statusContainer: {
+    height: 36,
+    marginTop: 10,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -462,7 +494,7 @@ const styles = StyleSheet.create({
   },
   statusTextDrawing: {
     fontSize: 13,
-    fontWeight: '500',
+    fontWeight: '600',
     color: '#2563EB',
   },
   statusBadgeValid: {
@@ -476,8 +508,22 @@ const styles = StyleSheet.create({
   },
   statusTextValid: {
     fontSize: 13,
-    fontWeight: '500',
+    fontWeight: '600',
     color: '#16A34A',
+  },
+  statusBadgePending: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: '#FEF3C7',
+    gap: 6,
+  },
+  statusTextPending: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#D97706',
   },
   statusBadgeEmpty: {
     flexDirection: 'row',
@@ -493,33 +539,33 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: '#94A3B8',
   },
-  previewContainer: {
+  previewSection: {
     paddingHorizontal: 20,
-    paddingTop: 16,
+    paddingTop: 14,
   },
   previewLabel: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#64748B',
+    color: '#16A34A',
     marginBottom: 8,
   },
-  previewImageContainer: {
+  previewBox: {
     backgroundColor: '#FFFFFF',
     borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderWidth: 2,
+    borderColor: '#22C55E',
     padding: 8,
     alignItems: 'center',
   },
   previewImage: {
-    width: CANVAS_WIDTH - 40,
-    height: 80,
+    width: CANVAS_WIDTH - 60,
+    height: 70,
   },
   legalNotice: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingVertical: 14,
     gap: 10,
     marginTop: 'auto',
   },
@@ -527,11 +573,11 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 12,
     color: '#64748B',
-    lineHeight: 18,
+    lineHeight: 17,
   },
   footer: {
     paddingHorizontal: 16,
-    paddingTop: 12,
+    paddingTop: 10,
     alignItems: 'center',
   },
   saveButton: {
@@ -544,6 +590,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     gap: 10,
     width: '100%',
+    minHeight: 56,
   },
   saveButtonDisabled: {
     backgroundColor: '#E2E8F0',
