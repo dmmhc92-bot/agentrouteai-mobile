@@ -1751,12 +1751,10 @@ async def generate_stamped_pdf(scope_id: str, current_user: dict = Depends(get_c
     
     def stamp_sig_p2(sig_data, field_name):
         """
-        Stamp a signature image onto page 2.
-        Handles: data:image/png;base64,...  |  raw base64 PNG  |  empty/malformed
+        Stamp a signature image onto page 2 with WHITE background to ensure visibility.
         """
-        # Check for empty or malformed input
         if not sig_data or not isinstance(sig_data, str) or len(sig_data.strip()) < 20:
-            logger.info(f"[PDF Gen] PAGE 2: SKIP '{field_name}' - empty or too short (len={len(sig_data) if sig_data else 0})")
+            logger.info(f"[PDF Gen] PAGE 2: SKIP '{field_name}' - empty or too short")
             return
         
         coords = PAGE_2_COORDS.get(field_name)
@@ -1767,72 +1765,53 @@ async def generate_stamped_pdf(scope_id: str, current_user: dict = Depends(get_c
         try:
             sig_data = sig_data.strip()
             
-            # Step 1: Normalize - extract base64 part if data URI
+            # Step 1: Strip data:image/png;base64, prefix if present
             if sig_data.startswith('data:image'):
-                # Split on first comma only
                 parts = sig_data.split(',', 1)
                 if len(parts) == 2:
                     sig_b64 = parts[1]
-                    logger.info(f"[PDF Gen] PAGE 2: SIG '{field_name}' - extracted base64 from data URI")
                 else:
-                    logger.error(f"[PDF Gen] PAGE 2: SIG '{field_name}' FAILED - malformed data URI, first 30 chars: {sig_data[:30]}, len={len(sig_data)}")
+                    logger.error(f"[PDF Gen] PAGE 2: SIG '{field_name}' FAILED - malformed data URI, first 30: {sig_data[:30]}, len={len(sig_data)}")
                     return
             else:
-                # Assume raw base64
                 sig_b64 = sig_data
-                logger.info(f"[PDF Gen] PAGE 2: SIG '{field_name}' - treating as raw base64")
             
             # Step 2: Base64 decode
             try:
                 sig_bytes = base64.b64decode(sig_b64)
-            except Exception as decode_err:
-                logger.error(f"[PDF Gen] PAGE 2: SIG '{field_name}' FAILED - base64 decode error: {decode_err}, first 30 chars: {sig_b64[:30]}, len={len(sig_b64)}")
+            except Exception as e:
+                logger.error(f"[PDF Gen] PAGE 2: SIG '{field_name}' FAILED - base64 decode: {e}, first 30: {sig_b64[:30]}, len={len(sig_b64)}")
                 return
             
-            logger.info(f"[PDF Gen] PAGE 2: SIG '{field_name}' - decoded {len(sig_bytes)} bytes")
-            
-            if len(sig_bytes) < 50:
-                logger.error(f"[PDF Gen] PAGE 2: SIG '{field_name}' FAILED - decoded bytes too small ({len(sig_bytes)})")
-                return
-            
-            # Step 3: Load with Pillow using BytesIO
+            # Step 3: Open with Pillow from BytesIO
             try:
                 img = Image.open(BytesIO(sig_bytes))
-                logger.info(f"[PDF Gen] PAGE 2: SIG '{field_name}' - loaded image: size={img.size}, mode={img.mode}")
-            except Exception as img_err:
-                logger.error(f"[PDF Gen] PAGE 2: SIG '{field_name}' FAILED - Pillow load error: {img_err}, first 30 chars: {sig_b64[:30]}, len={len(sig_b64)}")
+            except Exception as e:
+                logger.error(f"[PDF Gen] PAGE 2: SIG '{field_name}' FAILED - Pillow open: {e}, first 30: {sig_b64[:30]}, len={len(sig_b64)}")
                 return
             
-            # Step 4: Convert to RGBA immediately
+            # Step 4: Convert to RGBA
             img = img.convert('RGBA')
-            logger.info(f"[PDF Gen] PAGE 2: SIG '{field_name}' - converted to RGBA")
             
-            # Step 5: Re-save as clean PNG into new BytesIO buffer
-            clean_png_buf = BytesIO()
-            img.save(clean_png_buf, format='PNG')
-            clean_png_buf.seek(0)
-            logger.info(f"[PDF Gen] PAGE 2: SIG '{field_name}' - re-saved as clean PNG ({clean_png_buf.getbuffer().nbytes} bytes)")
+            # Step 5: Composite onto solid WHITE background so transparency cannot make it invisible
+            bg = Image.new("RGB", img.size, "white")
+            bg.paste(img, mask=img.split()[-1] if img.mode == "RGBA" else None)
             
-            # Step 6: Pass clean PNG buffer to ReportLab ImageReader
-            reader = ImageReader(clean_png_buf)
-            c2.drawImage(
-                reader,
-                coords['x'],
-                coords['y'],
-                width=coords['w'],
-                height=coords['h'],
-                mask='auto',
-                preserveAspectRatio=True,
-                anchor='sw'
-            )
+            logger.info(f"[PDF Gen] PAGE 2: SIG '{field_name}' - flattened onto white bg, size={bg.size}")
+            
+            # Step 6: Save flattened image into NEW BytesIO buffer as PNG
+            buffer = BytesIO()
+            bg.save(buffer, format='PNG')
+            buffer.seek(0)  # VERY IMPORTANT
+            
+            # Step 7: Stamp with ReportLab
+            c2.drawImage(ImageReader(buffer), coords['x'], coords['y'], width=160, height=40, mask='auto')
+            
             stamped_items.append(f"PAGE 2: SIG '{field_name}' @ ({coords['x']}, {coords['y']})")
-            logger.info(f"[PDF Gen] PAGE 2: STAMPED SIG '{field_name}' @ ({coords['x']}, {coords['y']}) size {coords['w']}x{coords['h']}")
+            logger.info(f"[PDF Gen] PAGE 2: STAMPED SIG '{field_name}' @ ({coords['x']}, {coords['y']}) width=160 height=40")
             
         except Exception as e:
-            # Log failure details without crashing PDF generation
-            payload_preview = sig_data[:30] if sig_data else "None"
-            payload_len = len(sig_data) if sig_data else 0
-            logger.error(f"[PDF Gen] PAGE 2: SIG '{field_name}' FAILED - {e}, first 30 chars: {payload_preview}, len={payload_len}")
+            logger.error(f"[PDF Gen] PAGE 2: SIG '{field_name}' FAILED - {e}, first 30: {sig_data[:30] if sig_data else 'None'}, len={len(sig_data) if sig_data else 0}")
     
     # Stamp all text fields on page 2
     stamp_text_p2('beneficiary_name', beneficiary_name)
