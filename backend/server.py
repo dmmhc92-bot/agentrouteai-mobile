@@ -1573,8 +1573,9 @@ async def generate_stamped_pdf(scope_id: str, current_user: dict = Depends(get_c
     """
     SINGLE SOURCE OF TRUTH for SOA PDF generation.
     
-    This draws ALL content directly onto the PDF page - NO form field rendering.
-    Uses fixed coordinates derived from the original form layout.
+    PAGE MAPPING:
+    - Page 1 (index 0): Product checkboxes ONLY
+    - Page 2 (index 1): All text fields, signatures, dates
     
     Returns a visibly filled, flattened PDF for View/Print/Share/Save.
     """
@@ -1606,12 +1607,8 @@ async def generate_stamped_pdf(scope_id: str, current_user: dict = Depends(get_c
                 raise HTTPException(status_code=403, detail="Access denied")
     
     # ==================== EXTRACT ALL FIELD VALUES ====================
-    logger.info(f"[PDF Gen] --- INPUT DATA ---")
-    
-    # Get form_fields if stored
     form_fields = scope.get('form_fields', {})
     
-    # Extract values with fallbacks
     beneficiary_name = scope.get('beneficiary_name') or scope.get('typed_name') or form_fields.get('beneficiary_name') or ''
     beneficiary_phone = scope.get('beneficiary_phone') or form_fields.get('beneficiary_phone') or ''
     beneficiary_address = scope.get('beneficiary_address') or form_fields.get('beneficiary_address') or ''
@@ -1637,216 +1634,194 @@ async def generate_stamped_pdf(scope_id: str, current_user: dict = Depends(get_c
     beneficiary_signature = scope.get('signature', '')
     agent_signature = scope.get('agent_signature', '')
     
-    # Log all values for verification
+    # Log input values
     logger.info(f"[PDF Gen] beneficiary_name = '{beneficiary_name}'")
     logger.info(f"[PDF Gen] beneficiary_phone = '{beneficiary_phone}'")
     logger.info(f"[PDF Gen] beneficiary_address = '{beneficiary_address}'")
     logger.info(f"[PDF Gen] agent_name = '{agent_name}'")
     logger.info(f"[PDF Gen] agent_phone = '{agent_phone}'")
-    logger.info(f"[PDF Gen] appointment_date = '{appointment_date}'")
     logger.info(f"[PDF Gen] signature_date = '{signature_date}'")
     logger.info(f"[PDF Gen] contact_method = '{contact_method}'")
     logger.info(f"[PDF Gen] plans_to_represent = '{plans_to_represent}'")
-    logger.info(f"[PDF Gen] auth_rep_name = '{auth_rep_name}'")
-    logger.info(f"[PDF Gen] auth_rep_relationship = '{auth_rep_relationship}'")
     logger.info(f"[PDF Gen] products = {products}")
-    logger.info(f"[PDF Gen] beneficiary_signature = {'YES (' + str(len(beneficiary_signature)) + ' chars)' if beneficiary_signature else 'NONE'}")
-    logger.info(f"[PDF Gen] agent_signature = {'YES (' + str(len(agent_signature)) + ' chars)' if agent_signature else 'NONE'}")
+    logger.info(f"[PDF Gen] beneficiary_sig = {'YES' if beneficiary_signature else 'NO'}")
+    logger.info(f"[PDF Gen] agent_sig = {'YES' if agent_signature else 'NO'}")
     
     # ==================== LOAD ORIGINAL PDF ====================
     original_pdf_path = '/app/backend/original_soa_form.pdf'
     
     if not os.path.exists(original_pdf_path):
-        logger.error("[PDF Gen] Original PDF form not found!")
         raise HTTPException(status_code=500, detail="Original PDF form not found")
     
-    logger.info(f"[PDF Gen] Loading: {original_pdf_path}")
-    
-    # Read original PDF dimensions
     with open(original_pdf_path, 'rb') as f:
         original_reader = PdfReader(f)
-        page = original_reader.pages[0]
-        page_width = float(page.mediabox.width)
-        page_height = float(page.mediabox.height)
+        page_width = float(original_reader.pages[0].mediabox.width)
+        page_height = float(original_reader.pages[0].mediabox.height)
     
-    logger.info(f"[PDF Gen] Page: {page_width} x {page_height} pts")
+    logger.info(f"[PDF Gen] PDF: {page_width}x{page_height}, {len(original_reader.pages)} pages")
     
-    # ==================== CREATE OVERLAY - DRAW ALL CONTENT DIRECTLY ====================
-    overlay_buffer = BytesIO()
-    c = rl_canvas.Canvas(overlay_buffer, pagesize=(page_width, page_height))
+    # ==================== PAGE 1 COORDINATES (Product Checkboxes ONLY) ====================
+    # Page 1 contains only the product selection checkboxes
+    # Y coordinates from form analysis (PDF origin is bottom-left)
+    PAGE_1_COORDS = {
+        # Checkboxes - X is around 53 (center of checkbox area 46-71)
+        'checkbox_medicare_advantage': {'x': 53, 'y': 533},     # Part C - Y center 533
+        'checkbox_prescription_drug': {'x': 53, 'y': 452},      # Part D - Y center 452
+        'checkbox_hospital_indemnity': {'x': 53, 'y': 343},     # Hospital - Y center 343
+        'checkbox_dental_vision': {'x': 53, 'y': 255},          # Dental/Vision - Y center 255
+        'checkbox_medicare_supplement': {'x': 53, 'y': 210},    # Medigap - Y center 210
+    }
     
-    # ==================== FIXED COORDINATES (from form field analysis) ====================
-    # Page is 612 x 792 pts. Y=0 is BOTTOM, Y=792 is TOP.
-    # Form field positions extracted from PDF:
-    #   Name field: y=683-709 (center ~696)
-    #   Phone field: y=683-709 (center ~696)
-    #   Address field: y=655-681 (center ~668)
-    #   Auth Rep Name: y=569-595 (center ~582)
-    #   Auth Rep Relationship: y=539-568 (center ~554)
-    #   Agent Name: y=461-489 (center ~475)
-    #   Agent Phone: y=461-489 (center ~475)
-    #   Contact Method: y=432-460 (center ~446)
-    #   Plans: y=372-401 (center ~387)
-    #   Checkboxes: y ranges from 196 to 545
+    # ==================== PAGE 2 COORDINATES (All Text Fields & Signatures) ====================
+    # Page 2 contains beneficiary info, agent info, signatures
+    PAGE_2_COORDS = {
+        # Beneficiary section (top of page 2)
+        'beneficiary_name': {'x': 75, 'y': 696, 'size': 10, 'max': 30},      # Name field Y 683-709
+        'beneficiary_phone': {'x': 347, 'y': 696, 'size': 10, 'max': 20},    # Phone field Y 683-709
+        'beneficiary_address': {'x': 86, 'y': 669, 'size': 9, 'max': 60},    # Address Y 656-682
+        
+        # Signature area - signature goes above the line, date to the right
+        'beneficiary_signature': {'x': 80, 'y': 620, 'w': 200, 'h': 45},     # Above signature line
+        'signature_date': {'x': 450, 'y': 630, 'size': 10},                   # Right side of signature area
+        
+        # Auth rep section (below signature)
+        'auth_rep_name': {'x': 168, 'y': 582, 'size': 9, 'max': 35},         # Y 570-595
+        'auth_rep_relationship': {'x': 220, 'y': 554, 'size': 9, 'max': 30}, # Y 540-568
+        
+        # Agent section
+        'agent_name': {'x': 108, 'y': 476, 'size': 10, 'max': 25},           # Y 462-489
+        'agent_phone': {'x': 379, 'y': 476, 'size': 10, 'max': 15},          # Y 462-489
+        'contact_method': {'x': 381, 'y': 446, 'size': 9, 'max': 20},        # Y 432-461
+        'plans_to_represent': {'x': 282, 'y': 387, 'size': 9, 'max': 35},    # Y 373-402
+        'appointment_date': {'x': 480, 'y': 387, 'size': 9},                  # Near plans field
+        
+        # Agent signature (bottom of form area)
+        'agent_signature': {'x': 80, 'y': 340, 'w': 200, 'h': 40},           # Agent signature area
+    }
     
-    # Track what we stamp
     stamped_items = []
     
-    def stamp_text(label, value, x, y, size=10, max_chars=None):
-        """Stamp text directly on page and log it"""
+    # ==================== CREATE PAGE 1 OVERLAY (Checkboxes Only) ====================
+    logger.info("[PDF Gen] Creating PAGE 1 overlay (checkboxes)...")
+    page1_overlay = BytesIO()
+    c1 = rl_canvas.Canvas(page1_overlay, pagesize=(page_width, page_height))
+    
+    def stamp_check_p1(product_key, label):
+        if product_key in products:
+            coords = PAGE_1_COORDS.get(f'checkbox_{product_key}')
+            if coords:
+                c1.setFont("ZapfDingbats", 14)
+                c1.setFillColorRGB(0, 0, 0)
+                c1.drawString(coords['x'], coords['y'], "4")  # Checkmark
+                stamped_items.append(f"PAGE 1: CHECK '{label}' @ ({coords['x']}, {coords['y']})")
+                logger.info(f"[PDF Gen] PAGE 1: STAMPED CHECK '{label}' @ ({coords['x']}, {coords['y']})")
+    
+    stamp_check_p1('medicare_advantage', 'Medicare Advantage')
+    stamp_check_p1('prescription_drug', 'Prescription Drug')
+    stamp_check_p1('hospital_indemnity', 'Hospital Indemnity')
+    stamp_check_p1('dental_vision_hearing', 'Dental/Vision')
+    stamp_check_p1('medicare_supplement', 'Medicare Supplement')
+    
+    c1.save()
+    page1_overlay.seek(0)
+    
+    # ==================== CREATE PAGE 2 OVERLAY (All Text Fields & Signatures) ====================
+    logger.info("[PDF Gen] Creating PAGE 2 overlay (text fields & signatures)...")
+    page2_overlay = BytesIO()
+    c2 = rl_canvas.Canvas(page2_overlay, pagesize=(page_width, page_height))
+    
+    def stamp_text_p2(field_name, value):
         if not value:
-            logger.info(f"[PDF Gen] SKIP '{label}' - empty value")
+            logger.info(f"[PDF Gen] PAGE 2: SKIP '{field_name}' - empty")
+            return
+        coords = PAGE_2_COORDS.get(field_name)
+        if not coords:
+            logger.warning(f"[PDF Gen] PAGE 2: No coords for '{field_name}'")
             return
         text = str(value)
-        if max_chars and len(text) > max_chars:
-            text = text[:max_chars]
-        c.setFont("Helvetica", size)
-        c.setFillColorRGB(0, 0, 0)
-        c.drawString(x, y, text)
-        stamped_items.append(f"{label}: '{text}' @ ({x}, {y})")
-        logger.info(f"[PDF Gen] STAMPED '{label}' = '{text}' at ({x}, {y})")
+        max_len = coords.get('max')
+        if max_len and len(text) > max_len:
+            text = text[:max_len]
+        size = coords.get('size', 10)
+        c2.setFont("Helvetica", size)
+        c2.setFillColorRGB(0, 0, 0)
+        c2.drawString(coords['x'], coords['y'], text)
+        stamped_items.append(f"PAGE 2: '{field_name}' = '{text}' @ ({coords['x']}, {coords['y']})")
+        logger.info(f"[PDF Gen] PAGE 2: STAMPED '{field_name}' = '{text}' @ ({coords['x']}, {coords['y']})")
     
-    def stamp_check(label, x, y):
-        """Stamp a checkmark"""
-        c.setFont("ZapfDingbats", 12)
-        c.setFillColorRGB(0, 0, 0)
-        c.drawString(x, y, "4")  # Zapf Dingbats checkmark
-        stamped_items.append(f"CHECK: {label} @ ({x}, {y})")
-        logger.info(f"[PDF Gen] STAMPED CHECK '{label}' at ({x}, {y})")
-    
-    # ==================== STAMP BENEFICIARY INFO ====================
-    # Based on form: Name field at x=72, y=683
-    stamp_text("Beneficiary Name", beneficiary_name, 75, 690, 10, 35)
-    # Phone field at x=343, y=683
-    stamp_text("Beneficiary Phone", beneficiary_phone, 346, 690, 10, 20)
-    # Address field at x=83, y=655
-    stamp_text("Beneficiary Address", beneficiary_address, 86, 662, 9, 70)
-    
-    # ==================== STAMP AUTH REP INFO ====================
-    # Auth rep name at x=164, y=569
-    stamp_text("Auth Rep Name", auth_rep_name, 167, 576, 9, 40)
-    # Auth rep relationship at x=217, y=539
-    stamp_text("Auth Rep Relationship", auth_rep_relationship, 220, 548, 9, 30)
-    
-    # ==================== STAMP AGENT INFO ====================
-    # Agent name at x=104, y=461
-    stamp_text("Agent Name", agent_name, 107, 470, 10, 25)
-    # Agent phone at x=376, y=461
-    stamp_text("Agent Phone", agent_phone, 379, 470, 10, 15)
-    
-    # ==================== STAMP APPOINTMENT INFO ====================
-    # Contact method at x=378, y=432
-    stamp_text("Contact Method", contact_method, 381, 442, 9, 20)
-    # Plans at x=279, y=372
-    stamp_text("Plans", plans_to_represent, 282, 382, 9, 40)
-    
-    # ==================== STAMP CHECKBOXES ====================
-    # Checkbox positions (X is ~53 based on field x=45-70, center ~57)
-    # Part C (Medicare Advantage): y=520 -> center ~532
-    if 'medicare_advantage' in products:
-        stamp_check("Medicare Advantage", 53, 528)
-    # Part D (Prescription Drug): y=439 -> center ~452  
-    if 'prescription_drug' in products:
-        stamp_check("Prescription Drug", 53, 448)
-    # Hospital Indemnity: y=330 -> center ~343
-    if 'hospital_indemnity' in products:
-        stamp_check("Hospital Indemnity", 53, 339)
-    # Dental/Vision: y=242 -> center ~255
-    if 'dental_vision_hearing' in products:
-        stamp_check("Dental Vision", 53, 251)
-    # Medicare Supplement: y=196 -> center ~209
-    if 'medicare_supplement' in products:
-        stamp_check("Medicare Supplement", 53, 205)
-    
-    # ==================== STAMP SIGNATURES ====================
-    # Beneficiary signature - position above auth rep name line
-    # Typical signature line is around y=600-640
-    ben_sig_x = 100
-    ben_sig_y = 610
-    ben_sig_w = 200
-    ben_sig_h = 50
-    
-    # Agent signature - position at bottom of form (around y=100-150)
-    agent_sig_x = 100
-    agent_sig_y = 100
-    agent_sig_w = 200
-    agent_sig_h = 45
-    
-    def stamp_signature(sig_data, x, y, w, h, label):
-        """Embed signature image directly on page"""
+    def stamp_sig_p2(sig_data, field_name):
         if not sig_data or len(sig_data) < 100:
-            logger.info(f"[PDF Gen] SKIP {label} signature - no data")
-            return False
-        
+            logger.info(f"[PDF Gen] PAGE 2: SKIP '{field_name}' signature - no data")
+            return
+        coords = PAGE_2_COORDS.get(field_name)
+        if not coords:
+            return
         try:
-            logger.info(f"[PDF Gen] Processing {label} signature ({len(sig_data)} chars)...")
-            
-            # Handle SVG
-            if sig_data.strip().startswith('<svg') or sig_data.strip().startswith('<?xml'):
-                logger.info(f"[PDF Gen] {label} is SVG format")
-                try:
-                    import cairosvg
-                    png_bytes = cairosvg.svg2png(bytestring=sig_data.encode(), output_width=int(w*3), output_height=int(h*3))
-                    img = Image.open(BytesIO(png_bytes))
-                except ImportError:
-                    logger.warning("[PDF Gen] cairosvg not available")
-                    return False
+            # Handle data URI
+            if ',' in sig_data:
+                sig_b64 = sig_data.split(',')[1]
             else:
-                # Handle base64 PNG/JPEG
-                if ',' in sig_data:
-                    sig_b64 = sig_data.split(',')[1]
-                else:
-                    sig_b64 = sig_data
-                sig_bytes = base64.b64decode(sig_b64)
-                img = Image.open(BytesIO(sig_bytes))
-            
-            # Convert to RGBA
+                sig_b64 = sig_data
+            sig_bytes = base64.b64decode(sig_b64)
+            img = Image.open(BytesIO(sig_bytes))
             if img.mode != 'RGBA':
                 img = img.convert('RGBA')
-            
-            # Save to buffer
             buf = BytesIO()
             img.save(buf, format='PNG')
             buf.seek(0)
-            
-            # Draw on canvas
             reader = ImageReader(buf)
-            c.drawImage(reader, x, y, width=w, height=h, mask='auto', preserveAspectRatio=True, anchor='sw')
-            
-            stamped_items.append(f"SIGNATURE: {label} @ ({x}, {y}) size {w}x{h}")
-            logger.info(f"[PDF Gen] STAMPED {label} signature at ({x}, {y}) size {w}x{h}")
-            return True
-            
+            c2.drawImage(reader, coords['x'], coords['y'], width=coords['w'], height=coords['h'], 
+                        mask='auto', preserveAspectRatio=True, anchor='sw')
+            stamped_items.append(f"PAGE 2: SIG '{field_name}' @ ({coords['x']}, {coords['y']})")
+            logger.info(f"[PDF Gen] PAGE 2: STAMPED SIG '{field_name}' @ ({coords['x']}, {coords['y']}) size {coords['w']}x{coords['h']}")
         except Exception as e:
-            logger.error(f"[PDF Gen] {label} signature FAILED: {e}")
-            return False
+            logger.error(f"[PDF Gen] PAGE 2: SIG '{field_name}' FAILED: {e}")
     
-    stamp_signature(beneficiary_signature, ben_sig_x, ben_sig_y, ben_sig_w, ben_sig_h, "Beneficiary")
-    stamp_signature(agent_signature, agent_sig_x, agent_sig_y, agent_sig_w, agent_sig_h, "Agent")
+    # Stamp all text fields on page 2
+    stamp_text_p2('beneficiary_name', beneficiary_name)
+    stamp_text_p2('beneficiary_phone', beneficiary_phone)
+    stamp_text_p2('beneficiary_address', beneficiary_address)
+    stamp_text_p2('signature_date', signature_date)
+    stamp_text_p2('auth_rep_name', auth_rep_name)
+    stamp_text_p2('auth_rep_relationship', auth_rep_relationship)
+    stamp_text_p2('agent_name', agent_name)
+    stamp_text_p2('agent_phone', agent_phone)
+    stamp_text_p2('contact_method', contact_method)
+    stamp_text_p2('plans_to_represent', plans_to_represent)
+    stamp_text_p2('appointment_date', appointment_date)
     
-    # ==================== SAVE OVERLAY ====================
-    c.save()
-    overlay_buffer.seek(0)
+    # Stamp signatures on page 2
+    stamp_sig_p2(beneficiary_signature, 'beneficiary_signature')
+    stamp_sig_p2(agent_signature, 'agent_signature')
     
-    # ==================== MERGE WITH ORIGINAL PDF ====================
-    logger.info("[PDF Gen] Merging overlay with original PDF...")
+    c2.save()
+    page2_overlay.seek(0)
+    
+    # ==================== MERGE OVERLAYS WITH ORIGINAL PDF ====================
+    logger.info("[PDF Gen] Merging overlays with original PDF...")
     
     with open(original_pdf_path, 'rb') as f:
         orig_reader = PdfReader(f)
-        overlay_reader = PdfReader(overlay_buffer)
+        overlay1_reader = PdfReader(page1_overlay)
+        overlay2_reader = PdfReader(page2_overlay)
         writer = PdfWriter()
         
-        # Merge first page (form + overlay)
+        # Page 1: Original + checkboxes overlay
         page1 = orig_reader.pages[0]
-        if overlay_reader.pages:
-            page1.merge_page(overlay_reader.pages[0])
+        if overlay1_reader.pages:
+            page1.merge_page(overlay1_reader.pages[0])
+            logger.info("[PDF Gen] Merged PAGE 1 overlay (checkboxes)")
         writer.add_page(page1)
         
-        # Add page 2 unchanged
+        # Page 2: Original + text/signatures overlay
         if len(orig_reader.pages) > 1:
-            writer.add_page(orig_reader.pages[1])
+            page2 = orig_reader.pages[1]
+            if overlay2_reader.pages:
+                page2.merge_page(overlay2_reader.pages[0])
+                logger.info("[PDF Gen] Merged PAGE 2 overlay (text fields & signatures)")
+            writer.add_page(page2)
         
-        # Write to buffer
+        # Write final PDF
         output = BytesIO()
         writer.write(output)
         output.seek(0)
