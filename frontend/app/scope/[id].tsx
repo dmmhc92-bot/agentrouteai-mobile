@@ -572,6 +572,43 @@ export default function ScopeDetailScreen() {
           )}
         </View>
 
+        {/* Delivery History */}
+        {scope.delivery_history && scope.delivery_history.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Ionicons name="paper-plane" size={20} color="#8B5CF6" />
+              <Text style={styles.sectionTitle}>Delivery History</Text>
+            </View>
+            {scope.delivery_history.map((entry, index) => (
+              <View key={entry.id || index} style={styles.deliveryItem}>
+                <View style={styles.deliveryIconContainer}>
+                  <Ionicons 
+                    name={entry.delivery_method === 'email' ? 'mail' : 
+                          entry.delivery_method === 'sms' ? 'chatbubble' : 'share-social'} 
+                    size={18} 
+                    color="#3B82F6" 
+                  />
+                </View>
+                <View style={styles.deliveryInfo}>
+                  <Text style={styles.deliveryMethod}>
+                    {entry.delivery_method === 'email' ? 'Sent via Email' :
+                     entry.delivery_method === 'sms' ? 'Sent via SMS' :
+                     entry.delivery_method === 'share' ? 'Shared' : 
+                     `Sent via ${entry.delivery_method}`}
+                  </Text>
+                  <Text style={styles.deliveryDate}>
+                    {formatDate(entry.delivered_at)}
+                  </Text>
+                  {entry.recipient_contact && (
+                    <Text style={styles.deliveryRecipient}>To: {entry.recipient_contact}</Text>
+                  )}
+                </View>
+                <Ionicons name="checkmark-circle" size={18} color="#22C55E" />
+              </View>
+            ))}
+          </View>
+        )}
+
         {/* Link to Lead */}
         {lead && (
           <TouchableOpacity 
