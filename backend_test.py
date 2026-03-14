@@ -624,9 +624,12 @@ class APITester:
         }
         
         response = self.make_request("POST", f"/scope/{invalid_scope_id}/log-delivery", invalid_delivery)
-        invalid_scope_test_passed = response and response.status_code == 404
-        self.log_result("SOA Invalid Scope ID Test", invalid_scope_test_passed, 
-                       f"Status: {response.status_code if response else 'No response'} (expected 404)")
+        if response:
+            invalid_scope_test_passed = response.status_code == 404
+            self.log_result("SOA Invalid Scope ID Test", invalid_scope_test_passed, 
+                           f"Status: {response.status_code} (expected 404)")
+        else:
+            self.log_result("SOA Invalid Scope ID Test", False, "No response received")
         
         return True
     
