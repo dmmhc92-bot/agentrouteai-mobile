@@ -168,6 +168,13 @@ export default function ScopeDetailScreen() {
   const handlePreview = async () => {
     setActionLoading('preview');
     try {
+      // On web, open in browser
+      if (isWeb) {
+        await openPdfInBrowser();
+        setActionLoading(null);
+        return;
+      }
+      
       const fileUri = await savePdfToTempFile();
       if (!fileUri) {
         Alert.alert('Error', 'Could not load PDF document');
