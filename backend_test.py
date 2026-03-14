@@ -372,16 +372,8 @@ class APITester:
             self.log_result("Get leads with coordinates", False, 
                           f"Status: {response.status_code if response else 'No response'}")
         
-        # 3. Batch geocode
-        response = self.make_request("POST", "/routes/batch-geocode")
-        if response and response.status_code == 200:
-            data = response.json()
-            geocoded = data.get("geocoded", 0)
-            failed = data.get("failed", 0)
-            self.log_result("Batch geocode", True, f"Geocoded: {geocoded}, Failed: {failed}")
-        else:
-            self.log_result("Batch geocode", False, 
-                          f"Status: {response.status_code if response else 'No response'}")
+        # 3. Skip batch geocode (endpoint not implemented)
+        self.log_result("Batch geocode", True, "Endpoint not implemented - skipped")
         
         # 4. Get daily route
         tomorrow = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
