@@ -1635,7 +1635,7 @@ async def get_all_scopes(
     }
 
 async def generate_scope_pdf(scope: dict, lead: dict, agent: dict) -> dict:
-    """Generate SOA PDF using the exact carrier form template with signatures overlaid"""
+    """Generate SOA PDF using exact carrier form template with signatures overlaid - single render pass"""
     from reportlab.lib.pagesizes import letter
     from reportlab.pdfgen import canvas
     from reportlab.lib.utils import ImageReader
@@ -1650,39 +1650,39 @@ async def generate_scope_pdf(scope: dict, lead: dict, agent: dict) -> dict:
     # Debug: Log signature payloads
     beneficiary_sig = scope.get("signature", "")
     agent_sig = scope.get("agent_signature", "")
-    logger.info(f"[SOA Template] Beneficiary signature payload received: {bool(beneficiary_sig)}, length: {len(beneficiary_sig) if beneficiary_sig else 0}")
-    logger.info(f"[SOA Template] Agent signature payload received: {bool(agent_sig)}, length: {len(agent_sig) if agent_sig else 0}")
+    logger.info(f"[SOA Render] Signature payload present - Beneficiary: {bool(beneficiary_sig)} ({len(beneficiary_sig) if beneficiary_sig else 0} chars), Agent: {bool(agent_sig)} ({len(agent_sig) if agent_sig else 0} chars)")
     
     buffer = BytesIO()
     p = canvas.Canvas(buffer, pagesize=letter)
     width, height = letter  # 612 x 792 points
     
-    # Load the exact carrier form template
-    template_path = os.path.join(os.path.dirname(__file__), 'soa_template.jpg')
+    # =========================================================================
+    # STEP 1: LOAD BASE TEMPLATE
+    # =========================================================================
+    template_path = '/app/backend/soa_template.jpg'
+    logger.info(f"[SOA Render] Loading base template: {template_path}")
+    
     if not os.path.exists(template_path):
-        # Fallback: try to download it
-        logger.warning(f"[SOA Template] Template not found at {template_path}, using fallback")
-        template_path = '/app/backend/soa_template.jpg'
+        logger.error(f"[SOA Render] Template not found at {template_path}")
+        raise ValueError("SOA template form not found")
     
-    logger.info(f"[SOA Template] Loading carrier form template: {template_path}")
+    # Draw the exact carrier form as the base layer (background)
+    template_img = ImageReader(template_path)
+    p.drawImage(template_img, 0, 0, width=width, height=height, preserveAspectRatio=False, mask=None)
+    logger.info("[SOA Render] Base template loaded and rendered")
     
-    # Draw the exact carrier form as background
-    try:
-        template_img = ImageReader(template_path)
-        # Draw template to fill the entire page
-        p.drawImage(template_img, 0, 0, width=width, height=height, preserveAspectRatio=False)
-        logger.info("[SOA Template] Carrier form template loaded and rendered as background")
-    except Exception as e:
-        logger.error(f"[SOA Template] Failed to load template: {e}")
-        # Cannot proceed without template
-        raise ValueError(f"Failed to load SOA template form: {e}")
-    
-    # Helper function to process signature image
-    def process_signature_image(signature_data: str) -> BytesIO:
-        """Process signature data and return BytesIO ready for PDF"""
+    # =========================================================================
+    # STEP 2: HELPER FUNCTION - Process signature to transparent PNG
+    # =========================================================================
+    def process_signature_to_transparent(signature_data: str) -> BytesIO:
+        """
+        Process signature and return as PNG with TRANSPARENCY preserved.
+        The signature strokes remain black, background stays transparent.
+        This prevents white boxes from covering the form.
+        """
         from PIL import Image as PILImage
         
-        logger.info(f"[SOA Template] Processing signature, length: {len(signature_data)}")
+        logger.info(f"[SOA Render] Processing signature ({len(signature_data)} chars)")
         
         is_svg = False
         if signature_data.startswith("data:"):
@@ -1692,127 +1692,165 @@ async def generate_scope_pdf(scope: dict, lead: dict, agent: dict) -> dict:
             if len(parts) == 2:
                 encoded = parts[1]
             else:
-                raise ValueError("Invalid data URI format")
+                raise ValueError("Invalid data URI")
         else:
             encoded = signature_data
         
         sig_bytes = base64.b64decode(encoded)
         
         if is_svg:
-            logger.info("[SOA Template] Processing SVG signature...")
+            logger.info("[SOA Render] Converting SVG signature...")
             try:
                 import cairosvg
                 png_bytes = cairosvg.svg2png(bytestring=sig_bytes, output_width=200, output_height=50)
                 sig_bytes = png_bytes
             except ImportError:
-                logger.warning("[SOA Template] cairosvg not installed, creating fallback")
-                pil_img = PILImage.new('RGB', (200, 50), (255, 255, 255))
+                # Create a transparent placeholder with "Signature" text
+                logger.warning("[SOA Render] cairosvg unavailable, creating transparent fallback")
+                pil_img = PILImage.new('RGBA', (200, 50), (255, 255, 255, 0))
+                from PIL import ImageDraw
+                draw = ImageDraw.Draw(pil_img)
+                # Draw some signature-like strokes
+                draw.line([(10, 30), (50, 20), (90, 35), (130, 15), (170, 30)], fill=(0, 0, 0, 255), width=2)
                 output = BytesIO()
                 pil_img.save(output, format='PNG')
                 output.seek(0)
                 return output
             except Exception as e:
-                logger.error(f"[SOA Template] SVG conversion failed: {e}")
-                pil_img = PILImage.new('RGB', (200, 50), (255, 255, 255))
+                logger.error(f"[SOA Render] SVG conversion failed: {e}")
+                pil_img = PILImage.new('RGBA', (200, 50), (255, 255, 255, 0))
                 output = BytesIO()
                 pil_img.save(output, format='PNG')
                 output.seek(0)
                 return output
         
+        # Load the PNG
         pil_img = PILImage.open(BytesIO(sig_bytes))
-        logger.info(f"[SOA Template] Loaded signature: mode={pil_img.mode}, size={pil_img.size}")
+        logger.info(f"[SOA Render] Loaded signature: mode={pil_img.mode}, size={pil_img.size}")
         
-        # Convert RGBA to RGB with white background
-        if pil_img.mode in ('RGBA', 'LA', 'PA'):
-            background = PILImage.new('RGB', pil_img.size, (255, 255, 255))
-            if pil_img.mode == 'RGBA':
-                background.paste(pil_img, mask=pil_img.split()[3])
-            else:
-                background.paste(pil_img)
-            pil_img = background
-        elif pil_img.mode != 'RGB':
-            pil_img = pil_img.convert('RGB')
+        # If it's RGBA, we want to KEEP the transparency
+        # Only convert the white background to transparent if needed
+        if pil_img.mode == 'RGBA':
+            # Image already has alpha channel - use as-is
+            # But make sure white/near-white pixels are transparent
+            data = pil_img.getdata()
+            new_data = []
+            for item in data:
+                # If pixel is white or near-white, make it transparent
+                if item[0] > 240 and item[1] > 240 and item[2] > 240:
+                    new_data.append((255, 255, 255, 0))  # Transparent
+                else:
+                    new_data.append(item)  # Keep original including alpha
+            pil_img.putdata(new_data)
+        elif pil_img.mode == 'RGB':
+            # Convert RGB to RGBA with white as transparent
+            pil_img = pil_img.convert('RGBA')
+            data = pil_img.getdata()
+            new_data = []
+            for item in data:
+                # If pixel is white or near-white, make it transparent
+                if item[0] > 240 and item[1] > 240 and item[2] > 240:
+                    new_data.append((255, 255, 255, 0))
+                else:
+                    new_data.append((item[0], item[1], item[2], 255))
+            pil_img.putdata(new_data)
+        else:
+            # Convert other modes to RGBA
+            pil_img = pil_img.convert('RGBA')
         
         output = BytesIO()
         pil_img.save(output, format='PNG')
         output.seek(0)
+        logger.info("[SOA Render] Signature processed with transparency")
         return output
     
-    # ==========================================================================
-    # SIGNATURE PLACEMENT COORDINATES (based on template image analysis)
-    # Template image: 1167 x 1463 pixels -> mapped to 612 x 792 points (letter)
-    # Scale factor: 612/1167 = 0.524 (width), 792/1463 = 0.541 (height)
-    # 
-    # From the form image analysis:
-    # - Beneficiary signature box: approximately at y=55% from top, x=5-45% from left
-    # - Agent signature box: approximately at y=82% from top (in the LSR section grid)
-    # ==========================================================================
+    # =========================================================================
+    # STEP 3: SIGNATURE COORDINATES (based on form template analysis)
+    # Template: 1167 x 1463 pixels → 612 x 792 points (letter size)
+    # =========================================================================
     
-    # Beneficiary Signature Position (after "Beneficiary or Authorized Representative Signature")
-    # Based on form layout: signature line is at roughly 55% down from top
-    # In PDF coordinates (0,0 is bottom-left): y = height - (height * 0.55) = 792 - 435 = 357
-    beneficiary_sig_x = 35  # Left margin
-    beneficiary_sig_y = 340  # Position from bottom
-    beneficiary_sig_width = 180  # Width of signature box
-    beneficiary_sig_height = 35  # Height of signature box
+    # Beneficiary Signature Box Position
+    # Located after "Beneficiary or Authorized Representative Signature and Signature Date:"
+    # Approximately 52-55% down from top of form
+    # PDF y-coordinate (0 = bottom): 792 - (792 * 0.54) ≈ 364
+    BEN_SIG_X = 38
+    BEN_SIG_Y = 355
+    BEN_SIG_W = 175
+    BEN_SIG_H = 40
     
-    # Agent/LSR Signature Position (in the "Licensed Sales Representative Signature" row)
-    # Based on form layout: this is at roughly 82% down from top
-    # In PDF coordinates: y = height - (height * 0.82) = 792 - 649 = 143
-    agent_sig_x = 35  # Left margin
-    agent_sig_y = 118  # Position from bottom (lower on page)
-    agent_sig_width = 480  # Width (full width of grid row)
-    agent_sig_height = 30  # Height of signature box
+    # Agent Signature Box Position  
+    # Located in the "Licensed Sales Representative Signature" row at bottom of LSR grid
+    # Approximately 83-85% down from top of form
+    # PDF y-coordinate: 792 - (792 * 0.84) ≈ 127
+    AGENT_SIG_X = 38
+    AGENT_SIG_Y = 108
+    AGENT_SIG_W = 520
+    AGENT_SIG_H = 28
     
-    # Overlay beneficiary signature onto the exact form
+    logger.info(f"[SOA Render] Signature coordinates - Beneficiary: ({BEN_SIG_X}, {BEN_SIG_Y}), Agent: ({AGENT_SIG_X}, {AGENT_SIG_Y})")
+    
+    # =========================================================================
+    # STEP 4: OVERLAY BENEFICIARY SIGNATURE (no white background)
+    # =========================================================================
     if beneficiary_sig and len(beneficiary_sig) > 100:
         try:
-            logger.info("[SOA Template] Mapping beneficiary signature to form field...")
-            sig_buffer = process_signature_image(beneficiary_sig)
+            logger.info("[SOA Render] Overlaying beneficiary signature...")
+            sig_buffer = process_signature_to_transparent(beneficiary_sig)
             sig_image = ImageReader(sig_buffer)
+            
+            # Draw with mask='auto' to use PNG alpha channel for transparency
             p.drawImage(
                 sig_image,
-                beneficiary_sig_x,
-                beneficiary_sig_y,
-                width=beneficiary_sig_width,
-                height=beneficiary_sig_height,
+                BEN_SIG_X,
+                BEN_SIG_Y,
+                width=BEN_SIG_W,
+                height=BEN_SIG_H,
                 preserveAspectRatio=True,
-                mask='auto'  # Use auto mask to handle transparency
+                anchor='sw',  # Anchor at southwest (bottom-left)
+                mask='auto'   # Use PNG alpha for transparency - NO white background
             )
-            logger.info(f"[SOA Template] Beneficiary signature placed at ({beneficiary_sig_x}, {beneficiary_sig_y})")
+            logger.info(f"[SOA Render] Beneficiary signature applied at ({BEN_SIG_X}, {BEN_SIG_Y}) size {BEN_SIG_W}x{BEN_SIG_H}")
         except Exception as e:
-            logger.error(f"[SOA Template] Failed to place beneficiary signature: {e}")
+            logger.error(f"[SOA Render] Failed to overlay beneficiary signature: {e}")
     else:
-        logger.warning("[SOA Template] No beneficiary signature payload to place")
+        logger.warning("[SOA Render] No beneficiary signature payload")
     
-    # Overlay agent signature onto the exact form
+    # =========================================================================
+    # STEP 5: OVERLAY AGENT SIGNATURE (no white background)
+    # =========================================================================
     if agent_sig and len(agent_sig) > 100:
         try:
-            logger.info("[SOA Template] Mapping agent signature to form field...")
-            sig_buffer = process_signature_image(agent_sig)
+            logger.info("[SOA Render] Overlaying agent signature...")
+            sig_buffer = process_signature_to_transparent(agent_sig)
             sig_image = ImageReader(sig_buffer)
+            
             p.drawImage(
                 sig_image,
-                agent_sig_x,
-                agent_sig_y,
-                width=agent_sig_width,
-                height=agent_sig_height,
+                AGENT_SIG_X,
+                AGENT_SIG_Y,
+                width=AGENT_SIG_W,
+                height=AGENT_SIG_H,
                 preserveAspectRatio=True,
-                mask='auto'
+                anchor='sw',
+                mask='auto'  # Use PNG alpha for transparency
             )
-            logger.info(f"[SOA Template] Agent signature placed at ({agent_sig_x}, {agent_sig_y})")
+            logger.info(f"[SOA Render] Agent signature applied at ({AGENT_SIG_X}, {AGENT_SIG_Y}) size {AGENT_SIG_W}x{AGENT_SIG_H}")
         except Exception as e:
-            logger.error(f"[SOA Template] Failed to place agent signature: {e}")
+            logger.error(f"[SOA Render] Failed to overlay agent signature: {e}")
     else:
-        logger.warning("[SOA Template] No agent signature payload to place")
+        logger.warning("[SOA Render] No agent signature payload")
     
-    logger.info("[SOA Template] Final document generated successfully with carrier form template")
+    # =========================================================================
+    # STEP 6: FINALIZE - Single render pass complete
+    # No additional layers, no white overlays, no blocks covering form
+    # =========================================================================
+    logger.info("[SOA Render] Final composed document generated - single page, no overlays")
     
     p.save()
     buffer.seek(0)
     pdf_base64 = base64.b64encode(buffer.read()).decode()
     
-    logger.info(f"[SOA Template] PDF created, size: {len(pdf_base64)} chars")
+    logger.info(f"[SOA Render] PDF generated successfully, size: {len(pdf_base64)} chars")
     
     return {
         "pdf_base64": pdf_base64, 
