@@ -221,8 +221,10 @@ class ProductionResponse(BaseModel):
 class ScopeCreate(BaseModel):
     lead_id: str
     form_fields: Dict[str, Any]
-    typed_name: str
-    signature: Optional[str] = ""
+    typed_name: str  # Beneficiary typed name
+    signature: Optional[str] = ""  # Beneficiary signature
+    agent_typed_name: Optional[str] = ""  # Agent typed name
+    agent_signature: Optional[str] = ""  # Agent signature
 
 class ScopeResponse(BaseModel):
     id: str
@@ -230,6 +232,9 @@ class ScopeResponse(BaseModel):
     form_fields: Dict[str, Any]
     typed_name: str
     signature: str
+    agent_typed_name: str
+    agent_signature: str
+    pdf_base64: Optional[str] = None  # Stored PDF
     created_date: datetime
     created_by_user: str
 
