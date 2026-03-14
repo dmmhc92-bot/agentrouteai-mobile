@@ -403,23 +403,23 @@ class APITester:
         # 1. Send chat message
         chat_data = {
             "message": "What are some good opening lines for a Medicare sales call?",
-            "lead_context": f"Lead: {TEST_LEAD['name']}, Phone: {TEST_LEAD['phone']}"
+            "lead_id": self.lead_id
         }
         
-        response = self.make_request("POST", "/ai-coach/chat", chat_data)
+        response = self.make_request("POST", "/ai/chat", chat_data)
         if response and response.status_code == 200:
             data = response.json()
             ai_response = data.get("response", "")
             if ai_response:
-                self.log_result("AI Coach chat", True, f"Response length: {len(ai_response)} chars")
+                self.log_result("AI Chat", True, f"Response length: {len(ai_response)} chars")
             else:
-                self.log_result("AI Coach chat", False, "Empty AI response")
+                self.log_result("AI Chat", False, "Empty AI response")
         else:
-            self.log_result("AI Coach chat", False, 
+            self.log_result("AI Chat", False, 
                           f"Status: {response.status_code if response else 'No response'}")
         
         # 2. Get chat history
-        response = self.make_request("GET", "/ai-coach/history")
+        response = self.make_request("GET", "/ai/chat-history")
         if response and response.status_code == 200:
             data = response.json()
             self.log_result("Get chat history", True, f"Found {len(data)} messages")
