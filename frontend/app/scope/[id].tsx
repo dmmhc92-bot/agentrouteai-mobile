@@ -152,28 +152,6 @@ export default function ScopeDetailScreen() {
     return `SOA_${leadName}_${date}.pdf`;
   };
 
-  // Save PDF to temp file and return the file path (iOS/Android only)
-  const savePdfToTempFile = async (): Promise<string | null> => {
-    const pdfBase64 = await getPdfData();
-    if (!pdfBase64) {
-      return null;
-    }
-    
-    // On web, we can't use FileSystem the same way
-    if (isWeb) {
-      return null;
-    }
-    
-    const filename = getFilename();
-    const fileUri = `${FileSystem.cacheDirectory}${filename}`;
-    
-    await FileSystem.writeAsStringAsync(fileUri, pdfBase64, {
-      encoding: FileSystem.EncodingType.Base64,
-    });
-    
-    return fileUri;
-  };
-
   /**
    * DIRECT VIEW PDF - Single function for both web and mobile
    * Fetches PDF from backend and opens/downloads it directly
