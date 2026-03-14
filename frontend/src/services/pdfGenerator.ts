@@ -1,11 +1,11 @@
 /**
  * SOA PDF Generator Service
  * 
- * Uses pdf-lib to generate the final Scope of Appointment PDF with all
- * typed fields and signatures permanently embedded into the document.
- * 
- * The PDF itself becomes the source of truth - not a preview or overlay.
- * Uses the exact user-uploaded form as the template.
+ * CRITICAL: This service uses the EXACT uploaded form image as the base.
+ * - NO conversion, NO recreation, NO template substitution
+ * - The original uploaded JPEG is embedded directly as the PDF background
+ * - Text and signatures are overlaid at precise coordinates
+ * - The final PDF is the permanent, flattened source of truth
  */
 
 import * as FileSystem from 'expo-file-system';
@@ -23,8 +23,8 @@ async function getPdfLib() {
   return PDFLib;
 }
 
-// SOA Template PDF as base64 (cached for offline use)
-let SOA_TEMPLATE_BASE64: string | null = null;
+// Cached original form data
+let ORIGINAL_FORM_CACHE = null;
 
 // Get the backend URL
 const getBackendUrl = () => {
@@ -35,220 +35,152 @@ const getBackendUrl = () => {
 };
 
 interface SOAFormData {
-  // Beneficiary Info
   beneficiary_name: string;
   beneficiary_phone: string;
   beneficiary_address: string;
-  
-  // Agent Info
   agent_name: string;
   agent_phone: string;
   agent_id_number: string;
   agent_license: string;
-  
-  // Appointment Info
   appointment_date: string;
   signature_date: string;
   initial_contact_method: string;
   plans_to_represent: string;
-  
-  // Products to discuss (checkboxes)
   medicare_advantage: boolean;
   medicare_supplement: boolean;
   prescription_drug: boolean;
   dental_vision_hearing: boolean;
   hospital_indemnity: boolean;
   other_products: string;
-  
-  // Authorized Representative (optional)
   auth_rep_name?: string;
   auth_rep_relationship?: string;
 }
 
 interface SignatureData {
-  beneficiarySignature: string | null;  // base64 PNG
-  agentSignature: string | null;         // base64 PNG
+  beneficiarySignature: string | null;
+  agentSignature: string | null;
   beneficiaryTypedName: string;
   agentTypedName: string;
 }
 
 /**
- * PDF Coordinate System:
- * - PDF is 612 x 792 points (Letter size)
- * - Origin (0,0) is at BOTTOM-LEFT
- * - Y increases upward
- * 
- * Form analysis coordinates were percentages from TOP-LEFT.
- * Conversion: pdf_y = 792 - (percentage * 792)
- * 
- * Field positions are calibrated to the user's exact uploaded form (IMG_3751.jpeg)
+ * ORIGINAL FORM DIMENSIONS
+ * These are the exact dimensions of the uploaded form (IMG_3751.jpeg)
+ * DO NOT CHANGE THESE - they define the coordinate system
  */
+const ORIGINAL_WIDTH = 1167;  // pixels
+const ORIGINAL_HEIGHT = 1463; // pixels
 
-// PDF dimensions (Letter size)
-const PDF_WIDTH = 612;
-const PDF_HEIGHT = 792;
+/**
+ * PDF DIMENSIONS
+ * We create a PDF that matches the form's aspect ratio exactly
+ * Using 72 DPI standard, scaled to fit reasonable print size
+ */
+const PDF_WIDTH = 612;  // Standard Letter width in points (8.5 inches)
+const PDF_HEIGHT = Math.round(PDF_WIDTH * (ORIGINAL_HEIGHT / ORIGINAL_WIDTH)); // ~767 points
 
-// Convert percentage from top to PDF Y coordinate (from bottom)
-const percentToY = (topPercent: number) => PDF_HEIGHT - (topPercent / 100 * PDF_HEIGHT);
-const percentToX = (leftPercent: number) => leftPercent / 100 * PDF_WIDTH;
+// Scale factor from original image coordinates to PDF points
+const SCALE_X = PDF_WIDTH / ORIGINAL_WIDTH;
+const SCALE_Y = PDF_HEIGHT / ORIGINAL_HEIGHT;
 
-// Field coordinates calibrated to the exact form layout
-// Based on analysis of IMG_3751.jpeg - "Scope of Sales Appointment Confirmation Form"
-const FIELD_COORDINATES = {
-  // === PRODUCT CHECKBOXES (checkmark positions) ===
-  // Left column checkboxes
-  checkbox_prescription_drug: { x: percentToX(19.5), y: percentToY(23.5) },      // Part D
-  checkbox_medicare_advantage: { x: percentToX(19.5), y: percentToY(26.0) },     // Part C
-  checkbox_dental_vision: { x: percentToX(19.5), y: percentToY(28.5) },          // Dental/Vision/Hearing
+/**
+ * Convert pixel coordinates from the original image to PDF points
+ * Y is inverted because PDF origin is bottom-left, image origin is top-left
+ */
+const toX = (pixelX) => pixelX * SCALE_X;
+const toY = (pixelY) => PDF_HEIGHT - (pixelY * SCALE_Y);
+
+/**
+ * FIELD COORDINATES
+ * All coordinates are in ORIGINAL IMAGE PIXELS (1167 x 1463)
+ * Based on exact analysis of IMG_3751.jpeg
+ */
+const FIELDS = {
+  // Product checkboxes (pixel positions of checkbox centers)
+  checkbox_prescription_drug: { x: 228, y: 334 },      // "Stand-alone Medicare Prescription Drug Plans (Part D)"
+  checkbox_medicare_advantage: { x: 228, y: 370 },     // "Medicare Advantage Plans (Part C) and Cost Plans"  
+  checkbox_dental_vision: { x: 228, y: 406 },          // "Dental/Vision/Hearing Products"
+  checkbox_hospital_indemnity: { x: 724, y: 334 },     // "Hospital Indemnity Products"
+  checkbox_medicare_supplement: { x: 724, y: 370 },    // "Medicare Supplement (Medigap) Products"
+
+  // Beneficiary signature line (position and size)
+  beneficiary_signature: { x: 140, y: 570, width: 350, height: 60 },
   
-  // Right column checkboxes
-  checkbox_hospital_indemnity: { x: percentToX(62.0), y: percentToY(23.5) },     // Hospital Indemnity
-  checkbox_medicare_supplement: { x: percentToX(62.0), y: percentToY(26.0) },    // Medigap
-  
-  // === BENEFICIARY SIGNATURE SECTION ===
-  // Beneficiary/Authorized Rep Signature box (main signature line)
-  beneficiary_signature: { 
-    x: percentToX(12), 
-    y: percentToY(44),  // Positioned on signature line
-    width: 200, 
-    height: 35 
-  },
-  
-  // Signature Date (next to beneficiary signature)
-  signature_date: { 
-    x: percentToX(70), 
-    y: percentToY(43), 
-    fontSize: 11 
-  },
-  
-  // === AUTHORIZED REP NAME FIELDS (below signature) ===
-  // Name (First_Last) - left side
-  auth_rep_name: { 
-    x: percentToX(12), 
-    y: percentToY(49), 
-    fontSize: 10 
-  },
-  
-  // Relationship to Beneficiary - right side
-  auth_rep_relationship: { 
-    x: percentToX(57), 
-    y: percentToY(49), 
-    fontSize: 10 
-  },
-  
-  // === LICENSED SALES REPRESENTATIVE SECTION ===
-  // Row 1: Agent Name, Phone, ID
-  agent_name: { 
-    x: percentToX(8), 
-    y: percentToY(57), 
-    fontSize: 10 
-  },
-  agent_phone: { 
-    x: percentToX(37), 
-    y: percentToY(57), 
-    fontSize: 10 
-  },
-  agent_id: { 
-    x: percentToX(64), 
-    y: percentToY(57), 
-    fontSize: 10 
-  },
-  
-  // Row 2: Beneficiary Name, Phone, Appointment Date
-  beneficiary_name: { 
-    x: percentToX(8), 
-    y: percentToY(63), 
-    fontSize: 10 
-  },
-  beneficiary_phone: { 
-    x: percentToX(37), 
-    y: percentToY(63), 
-    fontSize: 10 
-  },
-  appointment_date: { 
-    x: percentToX(64), 
-    y: percentToY(63), 
-    fontSize: 10 
-  },
-  
-  // Row 3: Beneficiary Address (full width)
-  beneficiary_address: { 
-    x: percentToX(8), 
-    y: percentToY(68), 
-    fontSize: 9 
-  },
-  
-  // Row 4: Initial Contact Method and Plans
-  contact_method: { 
-    x: percentToX(8), 
-    y: percentToY(73), 
-    fontSize: 10 
-  },
-  plans_to_represent: { 
-    x: percentToX(48), 
-    y: percentToY(73), 
-    fontSize: 9 
-  },
-  
-  // === AGENT SIGNATURE (below contact method row) ===
-  agent_signature: { 
-    x: percentToX(12), 
-    y: percentToY(78), 
-    width: 220, 
-    height: 30 
-  },
-  
-  // === BOTTOM CHECKBOXES (reasons SOA not obtained prior) ===
-  checkbox_unplanned_attendee: { x: percentToX(9), y: percentToY(87) },
-  checkbox_new_soa_required: { x: percentToX(28), y: percentToY(87) },
-  checkbox_walkin: { x: percentToX(9), y: percentToY(89.5) },
-  checkbox_other: { x: percentToX(28), y: percentToY(89.5) },
+  // Signature date (next to beneficiary signature)
+  signature_date: { x: 800, y: 590 },
+
+  // Authorized rep section (below signature)
+  auth_rep_name: { x: 140, y: 660 },
+  auth_rep_relationship: { x: 665, y: 660 },
+
+  // LSR Section - Row 1
+  agent_name: { x: 95, y: 790 },
+  agent_phone: { x: 430, y: 790 },
+  agent_id: { x: 745, y: 790 },
+
+  // LSR Section - Row 2  
+  beneficiary_name: { x: 95, y: 870 },
+  beneficiary_phone: { x: 430, y: 870 },
+  appointment_date: { x: 745, y: 870 },
+
+  // LSR Section - Row 3
+  beneficiary_address: { x: 95, y: 950 },
+
+  // LSR Section - Row 4
+  contact_method: { x: 95, y: 1025 },
+  plans_to_represent: { x: 555, y: 1025 },
+
+  // Agent signature line
+  agent_signature: { x: 140, y: 1070, width: 400, height: 50 },
 };
 
 /**
- * Load the SOA template PDF from the backend
+ * Load the ORIGINAL uploaded form image from the backend
+ * This returns the EXACT file that was uploaded - no conversion
  */
-async function loadTemplate(): Promise<Uint8Array> {
-  console.log('[PDFGenerator] Loading SOA template...');
+async function loadOriginalForm() {
+  console.log('[PDFGenerator] Loading ORIGINAL uploaded form...');
   
-  // Try to load from cache first
-  if (SOA_TEMPLATE_BASE64) {
-    console.log('[PDFGenerator] Using cached template');
-    return base64ToUint8Array(SOA_TEMPLATE_BASE64);
+  if (ORIGINAL_FORM_CACHE) {
+    console.log('[PDFGenerator] Using cached original form');
+    return ORIGINAL_FORM_CACHE;
   }
   
-  // Load from backend
   try {
     const backendUrl = getBackendUrl();
-    // Use relative URL on web, full URL on native
     const url = backendUrl ? `${backendUrl}/api/soa-template` : '/api/soa-template';
-    console.log('[PDFGenerator] Fetching template from:', url);
+    console.log('[PDFGenerator] Fetching from:', url);
     
     const response = await fetch(url);
-    if (response.ok) {
-      const data = await response.json();
-      SOA_TEMPLATE_BASE64 = data.template_base64;
-      console.log('[PDFGenerator] Template loaded from backend, length:', SOA_TEMPLATE_BASE64?.length);
-      return base64ToUint8Array(SOA_TEMPLATE_BASE64!);
-    } else {
-      console.error('[PDFGenerator] Backend returned:', response.status);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch form: ${response.status}`);
     }
-  } catch (e: any) {
-    console.error('[PDFGenerator] Failed to load from backend:', e.message);
+    
+    const data = await response.json();
+    
+    if (!data.form_base64) {
+      throw new Error('No form data received from server');
+    }
+    
+    console.log('[PDFGenerator] Original form loaded:');
+    console.log('  - Format:', data.format);
+    console.log('  - Dimensions:', data.width, 'x', data.height);
+    console.log('  - Size:', data.form_base64.length, 'chars');
+    console.log('  - Note:', data.note);
+    
+    ORIGINAL_FORM_CACHE = data;
+    return data;
+    
+  } catch (error) {
+    console.error('[PDFGenerator] Failed to load original form:', error);
+    throw error;
   }
-  
-  // Fallback: Create a blank letter-size PDF
-  console.log('[PDFGenerator] Creating blank template fallback');
-  const pdfDoc = await PDFDocument.create();
-  pdfDoc.addPage([PDF_WIDTH, PDF_HEIGHT]);
-  const pdfBytes = await pdfDoc.save();
-  return pdfBytes;
 }
 
 /**
  * Convert base64 string to Uint8Array
  */
-function base64ToUint8Array(base64: string): Uint8Array {
+function base64ToBytes(base64) {
   const binaryString = atob(base64);
   const bytes = new Uint8Array(binaryString.length);
   for (let i = 0; i < binaryString.length; i++) {
@@ -260,7 +192,7 @@ function base64ToUint8Array(base64: string): Uint8Array {
 /**
  * Convert Uint8Array to base64 string
  */
-function uint8ArrayToBase64(bytes: Uint8Array): string {
+function bytesToBase64(bytes) {
   let binaryString = '';
   for (let i = 0; i < bytes.length; i++) {
     binaryString += String.fromCharCode(bytes[i]);
@@ -271,7 +203,8 @@ function uint8ArrayToBase64(bytes: Uint8Array): string {
 /**
  * Extract base64 data from a data URI
  */
-function extractBase64(dataUri: string): string {
+function extractBase64(dataUri) {
+  if (!dataUri) return null;
   if (dataUri.includes(',')) {
     return dataUri.split(',')[1];
   }
@@ -279,9 +212,9 @@ function extractBase64(dataUri: string): string {
 }
 
 /**
- * Format a date string for display on the form
+ * Format a date string for display
  */
-function formatDateForForm(dateStr: string): string {
+function formatDate(dateStr) {
   if (!dateStr) return '';
   try {
     const d = new Date(dateStr);
@@ -293,10 +226,10 @@ function formatDateForForm(dateStr: string): string {
 }
 
 /**
- * Get human-readable label for contact method
+ * Get contact method label
  */
-function getContactMethodLabel(method: string): string {
-  const labels: Record<string, string> = {
+function getContactLabel(method) {
+  const labels = {
     'phone': 'Phone',
     'in_person': 'In Person',
     'email': 'Email',
@@ -308,401 +241,365 @@ function getContactMethodLabel(method: string): string {
 }
 
 /**
- * Generate the final SOA PDF with all data and signatures embedded
+ * MAIN FUNCTION: Generate SOA PDF using the EXACT original form
+ * 
+ * Process:
+ * 1. Load the ORIGINAL uploaded JPEG (no conversion)
+ * 2. Create a new PDF with exact aspect ratio matching the form
+ * 3. Embed the original JPEG as the full-page background
+ * 4. Overlay text fields at precise coordinates
+ * 5. Embed signature images at signature lines
+ * 6. Save and return the final PDF
  */
-export async function generateSOAPdf(
-  formData: SOAFormData,
-  signatures: SignatureData
-): Promise<string> {
-  console.log('[PDFGenerator] ========== STARTING PDF GENERATION ==========');
-  console.log('[PDFGenerator] Form data:', JSON.stringify(formData, null, 2));
-  console.log('[PDFGenerator] Beneficiary signature present:', !!signatures.beneficiarySignature);
-  console.log('[PDFGenerator] Agent signature present:', !!signatures.agentSignature);
+export async function generateSOAPdf(formData, signatures) {
+  console.log('[PDFGenerator] ========================================');
+  console.log('[PDFGenerator] GENERATING PDF FROM ORIGINAL FORM');
+  console.log('[PDFGenerator] ========================================');
   
   try {
-    // Load pdf-lib dynamically
+    // Step 1: Load pdf-lib
     const { PDFDocument, rgb, StandardFonts } = await getPdfLib();
+    console.log('[PDFGenerator] pdf-lib loaded');
     
-    // Step 1: Load the template
-    const templateBytes = await loadTemplate();
-    console.log('[PDFGenerator] Template loaded, size:', templateBytes.length, 'bytes');
+    // Step 2: Load the ORIGINAL uploaded form
+    const originalForm = await loadOriginalForm();
+    const formImageBytes = base64ToBytes(originalForm.form_base64);
+    console.log('[PDFGenerator] Original form image loaded:', formImageBytes.length, 'bytes');
     
-    // Step 2: Load the PDF document
-    const pdfDoc = await PDFDocument.load(templateBytes);
-    console.log('[PDFGenerator] PDF document loaded');
+    // Step 3: Create a new PDF document
+    const pdfDoc = await PDFDocument.create();
+    console.log('[PDFGenerator] Created new PDF document');
     
-    // Step 3: Get the first page
-    const pages = pdfDoc.getPages();
-    const page = pages[0];
-    const { width, height } = page.getSize();
-    console.log('[PDFGenerator] Page size:', width, 'x', height);
+    // Step 4: Add a page with EXACT dimensions matching the form's aspect ratio
+    const page = pdfDoc.addPage([PDF_WIDTH, PDF_HEIGHT]);
+    console.log('[PDFGenerator] Added page:', PDF_WIDTH, 'x', PDF_HEIGHT, 'points');
     
-    // Step 4: Embed fonts
+    // Step 5: Embed the ORIGINAL form image as JPEG
+    const formImage = await pdfDoc.embedJpg(formImageBytes);
+    console.log('[PDFGenerator] Embedded original JPEG:', formImage.width, 'x', formImage.height);
+    
+    // Step 6: Draw the original form as the FULL PAGE background
+    // This ensures the form layout is EXACTLY preserved
+    page.drawImage(formImage, {
+      x: 0,
+      y: 0,
+      width: PDF_WIDTH,
+      height: PDF_HEIGHT,
+    });
+    console.log('[PDFGenerator] Drew original form as full-page background');
+    
+    // Step 7: Embed fonts for text overlay
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
     const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-    console.log('[PDFGenerator] Fonts embedded');
     
-    // Text color (dark blue/black for professional look)
-    const textColor = rgb(0.1, 0.1, 0.2);
-    const checkColor = rgb(0, 0, 0);
+    // Text styling
+    const textColor = rgb(0, 0, 0);
+    const fontSize = 9;
+    const checkSize = 12;
     
-    // Step 5: Draw checkmarks for selected products
+    // Step 8: Draw checkmarks for selected products
     console.log('[PDFGenerator] Drawing product checkmarks...');
     const checkmark = '✓';
-    const checkSize = 14;
     
     if (formData.prescription_drug) {
       page.drawText(checkmark, {
-        x: FIELD_COORDINATES.checkbox_prescription_drug.x,
-        y: FIELD_COORDINATES.checkbox_prescription_drug.y,
+        x: toX(FIELDS.checkbox_prescription_drug.x),
+        y: toY(FIELDS.checkbox_prescription_drug.y),
         size: checkSize,
         font: boldFont,
-        color: checkColor,
+        color: textColor,
       });
-      console.log('[PDFGenerator] ✓ Prescription Drug (Part D)');
+      console.log('[PDFGenerator] ✓ Prescription Drug');
     }
     
     if (formData.medicare_advantage) {
       page.drawText(checkmark, {
-        x: FIELD_COORDINATES.checkbox_medicare_advantage.x,
-        y: FIELD_COORDINATES.checkbox_medicare_advantage.y,
+        x: toX(FIELDS.checkbox_medicare_advantage.x),
+        y: toY(FIELDS.checkbox_medicare_advantage.y),
         size: checkSize,
         font: boldFont,
-        color: checkColor,
+        color: textColor,
       });
-      console.log('[PDFGenerator] ✓ Medicare Advantage (Part C)');
+      console.log('[PDFGenerator] ✓ Medicare Advantage');
     }
     
     if (formData.dental_vision_hearing) {
       page.drawText(checkmark, {
-        x: FIELD_COORDINATES.checkbox_dental_vision.x,
-        y: FIELD_COORDINATES.checkbox_dental_vision.y,
+        x: toX(FIELDS.checkbox_dental_vision.x),
+        y: toY(FIELDS.checkbox_dental_vision.y),
         size: checkSize,
         font: boldFont,
-        color: checkColor,
+        color: textColor,
       });
       console.log('[PDFGenerator] ✓ Dental/Vision/Hearing');
     }
     
     if (formData.hospital_indemnity) {
       page.drawText(checkmark, {
-        x: FIELD_COORDINATES.checkbox_hospital_indemnity.x,
-        y: FIELD_COORDINATES.checkbox_hospital_indemnity.y,
+        x: toX(FIELDS.checkbox_hospital_indemnity.x),
+        y: toY(FIELDS.checkbox_hospital_indemnity.y),
         size: checkSize,
         font: boldFont,
-        color: checkColor,
+        color: textColor,
       });
       console.log('[PDFGenerator] ✓ Hospital Indemnity');
     }
     
     if (formData.medicare_supplement) {
       page.drawText(checkmark, {
-        x: FIELD_COORDINATES.checkbox_medicare_supplement.x,
-        y: FIELD_COORDINATES.checkbox_medicare_supplement.y,
+        x: toX(FIELDS.checkbox_medicare_supplement.x),
+        y: toY(FIELDS.checkbox_medicare_supplement.y),
         size: checkSize,
         font: boldFont,
-        color: checkColor,
+        color: textColor,
       });
-      console.log('[PDFGenerator] ✓ Medicare Supplement (Medigap)');
+      console.log('[PDFGenerator] ✓ Medicare Supplement');
     }
     
-    // Step 6: Draw signature date
-    console.log('[PDFGenerator] Drawing text fields...');
-    
+    // Step 9: Draw signature date
     if (formData.signature_date) {
-      const dateStr = formatDateForForm(formData.signature_date);
-      page.drawText(dateStr, {
-        x: FIELD_COORDINATES.signature_date.x,
-        y: FIELD_COORDINATES.signature_date.y,
-        size: FIELD_COORDINATES.signature_date.fontSize,
+      page.drawText(formatDate(formData.signature_date), {
+        x: toX(FIELDS.signature_date.x),
+        y: toY(FIELDS.signature_date.y),
+        size: fontSize,
         font: font,
         color: textColor,
       });
-      console.log('[PDFGenerator] Drew signature date:', dateStr);
     }
     
-    // Step 7: Draw Authorized Rep fields (if applicable)
+    // Step 10: Draw authorized rep fields (if applicable)
     if (formData.auth_rep_name) {
       page.drawText(formData.auth_rep_name, {
-        x: FIELD_COORDINATES.auth_rep_name.x,
-        y: FIELD_COORDINATES.auth_rep_name.y,
-        size: FIELD_COORDINATES.auth_rep_name.fontSize,
+        x: toX(FIELDS.auth_rep_name.x),
+        y: toY(FIELDS.auth_rep_name.y),
+        size: fontSize,
         font: font,
         color: textColor,
       });
-      console.log('[PDFGenerator] Drew auth rep name');
     }
     
     if (formData.auth_rep_relationship) {
       page.drawText(formData.auth_rep_relationship, {
-        x: FIELD_COORDINATES.auth_rep_relationship.x,
-        y: FIELD_COORDINATES.auth_rep_relationship.y,
-        size: FIELD_COORDINATES.auth_rep_relationship.fontSize,
+        x: toX(FIELDS.auth_rep_relationship.x),
+        y: toY(FIELDS.auth_rep_relationship.y),
+        size: fontSize,
         font: font,
         color: textColor,
       });
-      console.log('[PDFGenerator] Drew auth rep relationship');
     }
     
-    // Step 8: Draw LSR Section fields
+    // Step 11: Draw LSR section fields
+    console.log('[PDFGenerator] Drawing LSR section fields...');
     
-    // Agent Name
     if (formData.agent_name) {
       page.drawText(formData.agent_name, {
-        x: FIELD_COORDINATES.agent_name.x,
-        y: FIELD_COORDINATES.agent_name.y,
-        size: FIELD_COORDINATES.agent_name.fontSize,
+        x: toX(FIELDS.agent_name.x),
+        y: toY(FIELDS.agent_name.y),
+        size: fontSize,
         font: font,
         color: textColor,
       });
-      console.log('[PDFGenerator] Drew agent name');
     }
     
-    // Agent Phone
     if (formData.agent_phone) {
       page.drawText(formData.agent_phone, {
-        x: FIELD_COORDINATES.agent_phone.x,
-        y: FIELD_COORDINATES.agent_phone.y,
-        size: FIELD_COORDINATES.agent_phone.fontSize,
+        x: toX(FIELDS.agent_phone.x),
+        y: toY(FIELDS.agent_phone.y),
+        size: fontSize,
         font: font,
         color: textColor,
       });
     }
     
-    // Agent ID
     if (formData.agent_id_number) {
       page.drawText(formData.agent_id_number, {
-        x: FIELD_COORDINATES.agent_id.x,
-        y: FIELD_COORDINATES.agent_id.y,
-        size: FIELD_COORDINATES.agent_id.fontSize,
+        x: toX(FIELDS.agent_id.x),
+        y: toY(FIELDS.agent_id.y),
+        size: fontSize,
         font: font,
         color: textColor,
       });
     }
     
-    // Beneficiary Name (in LSR section)
     if (formData.beneficiary_name) {
       page.drawText(formData.beneficiary_name, {
-        x: FIELD_COORDINATES.beneficiary_name.x,
-        y: FIELD_COORDINATES.beneficiary_name.y,
-        size: FIELD_COORDINATES.beneficiary_name.fontSize,
+        x: toX(FIELDS.beneficiary_name.x),
+        y: toY(FIELDS.beneficiary_name.y),
+        size: fontSize,
         font: font,
         color: textColor,
       });
-      console.log('[PDFGenerator] Drew beneficiary name');
     }
     
-    // Beneficiary Phone
     if (formData.beneficiary_phone) {
       page.drawText(formData.beneficiary_phone, {
-        x: FIELD_COORDINATES.beneficiary_phone.x,
-        y: FIELD_COORDINATES.beneficiary_phone.y,
-        size: FIELD_COORDINATES.beneficiary_phone.fontSize,
+        x: toX(FIELDS.beneficiary_phone.x),
+        y: toY(FIELDS.beneficiary_phone.y),
+        size: fontSize,
         font: font,
         color: textColor,
       });
     }
     
-    // Appointment Date
     if (formData.appointment_date) {
-      const dateStr = formatDateForForm(formData.appointment_date);
-      page.drawText(dateStr, {
-        x: FIELD_COORDINATES.appointment_date.x,
-        y: FIELD_COORDINATES.appointment_date.y,
-        size: FIELD_COORDINATES.appointment_date.fontSize,
+      page.drawText(formatDate(formData.appointment_date), {
+        x: toX(FIELDS.appointment_date.x),
+        y: toY(FIELDS.appointment_date.y),
+        size: fontSize,
         font: font,
         color: textColor,
       });
     }
     
-    // Beneficiary Address
     if (formData.beneficiary_address) {
-      // Truncate if too long
-      const maxLen = 65;
-      const addr = formData.beneficiary_address.length > maxLen 
-        ? formData.beneficiary_address.substring(0, maxLen) + '...'
-        : formData.beneficiary_address;
+      const addr = formData.beneficiary_address.substring(0, 70);
       page.drawText(addr, {
-        x: FIELD_COORDINATES.beneficiary_address.x,
-        y: FIELD_COORDINATES.beneficiary_address.y,
-        size: FIELD_COORDINATES.beneficiary_address.fontSize,
+        x: toX(FIELDS.beneficiary_address.x),
+        y: toY(FIELDS.beneficiary_address.y),
+        size: fontSize - 1,
         font: font,
         color: textColor,
       });
     }
     
-    // Initial Contact Method
     if (formData.initial_contact_method) {
-      const label = getContactMethodLabel(formData.initial_contact_method);
-      page.drawText(label, {
-        x: FIELD_COORDINATES.contact_method.x,
-        y: FIELD_COORDINATES.contact_method.y,
-        size: FIELD_COORDINATES.contact_method.fontSize,
+      page.drawText(getContactLabel(formData.initial_contact_method), {
+        x: toX(FIELDS.contact_method.x),
+        y: toY(FIELDS.contact_method.y),
+        size: fontSize,
         font: font,
         color: textColor,
       });
     }
     
-    // Plans to Represent
     if (formData.plans_to_represent) {
-      const maxLen = 45;
-      const plans = formData.plans_to_represent.length > maxLen
-        ? formData.plans_to_represent.substring(0, maxLen) + '...'
-        : formData.plans_to_represent;
+      const plans = formData.plans_to_represent.substring(0, 50);
       page.drawText(plans, {
-        x: FIELD_COORDINATES.plans_to_represent.x,
-        y: FIELD_COORDINATES.plans_to_represent.y,
-        size: FIELD_COORDINATES.plans_to_represent.fontSize,
+        x: toX(FIELDS.plans_to_represent.x),
+        y: toY(FIELDS.plans_to_represent.y),
+        size: fontSize - 1,
         font: font,
         color: textColor,
       });
     }
     
-    // Step 9: Embed and draw signatures
+    // Step 12: EMBED SIGNATURES AS IMAGES
     console.log('[PDFGenerator] Embedding signatures...');
     
-    // Beneficiary Signature
-    if (signatures.beneficiarySignature && signatures.beneficiarySignature.length > 100) {
+    // Beneficiary signature
+    if (signatures.beneficiarySignature && signatures.beneficiarySignature.length > 500) {
+      console.log('[PDFGenerator] Processing beneficiary signature...');
       try {
-        console.log('[PDFGenerator] Processing beneficiary signature...');
         const sigBase64 = extractBase64(signatures.beneficiarySignature);
-        const sigBytes = base64ToUint8Array(sigBase64);
+        const sigBytes = base64ToBytes(sigBase64);
         
-        // Embed the PNG image
+        // Embed as PNG (signatures are captured as PNG)
         const sigImage = await pdfDoc.embedPng(sigBytes);
-        console.log('[PDFGenerator] Beneficiary signature embedded, dimensions:', sigImage.width, 'x', sigImage.height);
+        console.log('[PDFGenerator] Beneficiary signature embedded:', sigImage.width, 'x', sigImage.height);
         
-        // Draw onto the page at the signature coordinates
-        const coords = FIELD_COORDINATES.beneficiary_signature;
-        const scaledDims = sigImage.scaleToFit(coords.width, coords.height);
+        // Calculate position and scale
+        const field = FIELDS.beneficiary_signature;
+        const pdfX = toX(field.x);
+        const pdfY = toY(field.y + field.height); // Adjust for bottom-left origin
+        const pdfWidth = field.width * SCALE_X;
+        const pdfHeight = field.height * SCALE_Y;
+        
+        // Scale signature to fit the field while maintaining aspect ratio
+        const scaled = sigImage.scaleToFit(pdfWidth, pdfHeight);
         
         page.drawImage(sigImage, {
-          x: coords.x,
-          y: coords.y,
-          width: scaledDims.width,
-          height: scaledDims.height,
+          x: pdfX,
+          y: pdfY,
+          width: scaled.width,
+          height: scaled.height,
         });
-        console.log('[PDFGenerator] Beneficiary signature drawn at', coords.x, coords.y);
-      } catch (e: any) {
-        console.error('[PDFGenerator] Error embedding beneficiary signature:', e.message);
-        // Try as JPEG if PNG fails
-        try {
-          const sigBase64 = extractBase64(signatures.beneficiarySignature);
-          const sigBytes = base64ToUint8Array(sigBase64);
-          const sigImage = await pdfDoc.embedJpg(sigBytes);
-          const coords = FIELD_COORDINATES.beneficiary_signature;
-          const scaledDims = sigImage.scaleToFit(coords.width, coords.height);
-          page.drawImage(sigImage, {
-            x: coords.x,
-            y: coords.y,
-            width: scaledDims.width,
-            height: scaledDims.height,
-          });
-          console.log('[PDFGenerator] Beneficiary signature drawn as JPEG fallback');
-        } catch (e2: any) {
-          console.error('[PDFGenerator] JPEG fallback also failed:', e2.message);
-        }
+        console.log('[PDFGenerator] ✓ Beneficiary signature drawn at', pdfX, pdfY);
+      } catch (error) {
+        console.error('[PDFGenerator] Failed to embed beneficiary signature:', error);
       }
     } else {
       console.log('[PDFGenerator] No beneficiary signature to embed');
     }
     
-    // Agent Signature
-    if (signatures.agentSignature && signatures.agentSignature.length > 100) {
+    // Agent signature
+    if (signatures.agentSignature && signatures.agentSignature.length > 500) {
+      console.log('[PDFGenerator] Processing agent signature...');
       try {
-        console.log('[PDFGenerator] Processing agent signature...');
         const sigBase64 = extractBase64(signatures.agentSignature);
-        const sigBytes = base64ToUint8Array(sigBase64);
+        const sigBytes = base64ToBytes(sigBase64);
         
         const sigImage = await pdfDoc.embedPng(sigBytes);
-        console.log('[PDFGenerator] Agent signature embedded, dimensions:', sigImage.width, 'x', sigImage.height);
+        console.log('[PDFGenerator] Agent signature embedded:', sigImage.width, 'x', sigImage.height);
         
-        const coords = FIELD_COORDINATES.agent_signature;
-        const scaledDims = sigImage.scaleToFit(coords.width, coords.height);
+        const field = FIELDS.agent_signature;
+        const pdfX = toX(field.x);
+        const pdfY = toY(field.y + field.height);
+        const pdfWidth = field.width * SCALE_X;
+        const pdfHeight = field.height * SCALE_Y;
+        
+        const scaled = sigImage.scaleToFit(pdfWidth, pdfHeight);
         
         page.drawImage(sigImage, {
-          x: coords.x,
-          y: coords.y,
-          width: scaledDims.width,
-          height: scaledDims.height,
+          x: pdfX,
+          y: pdfY,
+          width: scaled.width,
+          height: scaled.height,
         });
-        console.log('[PDFGenerator] Agent signature drawn at', coords.x, coords.y);
-      } catch (e: any) {
-        console.error('[PDFGenerator] Error embedding agent signature:', e.message);
-        // Try as JPEG if PNG fails
-        try {
-          const sigBase64 = extractBase64(signatures.agentSignature);
-          const sigBytes = base64ToUint8Array(sigBase64);
-          const sigImage = await pdfDoc.embedJpg(sigBytes);
-          const coords = FIELD_COORDINATES.agent_signature;
-          const scaledDims = sigImage.scaleToFit(coords.width, coords.height);
-          page.drawImage(sigImage, {
-            x: coords.x,
-            y: coords.y,
-            width: scaledDims.width,
-            height: scaledDims.height,
-          });
-          console.log('[PDFGenerator] Agent signature drawn as JPEG fallback');
-        } catch (e2: any) {
-          console.error('[PDFGenerator] JPEG fallback also failed:', e2.message);
-        }
+        console.log('[PDFGenerator] ✓ Agent signature drawn at', pdfX, pdfY);
+      } catch (error) {
+        console.error('[PDFGenerator] Failed to embed agent signature:', error);
       }
     } else {
       console.log('[PDFGenerator] No agent signature to embed');
     }
     
-    // Step 10: Save the completed PDF
+    // Step 13: Save the final PDF
     console.log('[PDFGenerator] Saving final PDF...');
     const pdfBytes = await pdfDoc.save();
-    console.log('[PDFGenerator] PDF generated, size:', pdfBytes.length, 'bytes');
+    const pdfBase64 = bytesToBase64(new Uint8Array(pdfBytes));
     
-    // Convert to base64
-    const pdfBase64 = uint8ArrayToBase64(new Uint8Array(pdfBytes));
-    
-    console.log('[PDFGenerator] ========== PDF GENERATION COMPLETE ==========');
-    console.log('[PDFGenerator] Final PDF base64 length:', pdfBase64.length);
+    console.log('[PDFGenerator] ========================================');
+    console.log('[PDFGenerator] PDF GENERATION COMPLETE');
+    console.log('[PDFGenerator] Final size:', pdfBytes.length, 'bytes');
+    console.log('[PDFGenerator] Base64 length:', pdfBase64.length);
+    console.log('[PDFGenerator] ========================================');
     
     return pdfBase64;
     
-  } catch (error: any) {
-    console.error('[PDFGenerator] ========== PDF GENERATION FAILED ==========');
-    console.error('[PDFGenerator] Error:', error.message);
+  } catch (error) {
+    console.error('[PDFGenerator] ========================================');
+    console.error('[PDFGenerator] PDF GENERATION FAILED');
+    console.error('[PDFGenerator] Error:', error.message || error);
+    console.error('[PDFGenerator] ========================================');
     throw error;
   }
 }
 
 /**
- * Save the PDF to the device's file system
+ * Save PDF to device file system
  */
-export async function savePdfToDevice(pdfBase64: string, filename: string): Promise<string> {
-  console.log('[PDFGenerator] Saving PDF to device...');
-  
+export async function savePdfToDevice(pdfBase64, filename) {
+  console.log('[PDFGenerator] Saving PDF to device:', filename);
   const fileUri = `${FileSystem.documentDirectory}${filename}`;
-  
   await FileSystem.writeAsStringAsync(fileUri, pdfBase64, {
     encoding: FileSystem.EncodingType.Base64,
   });
-  
-  console.log('[PDFGenerator] PDF saved to:', fileUri);
+  console.log('[PDFGenerator] Saved to:', fileUri);
   return fileUri;
 }
 
 /**
- * Share the PDF using the native share dialog
+ * Share PDF using native share dialog
  */
-export async function sharePdf(pdfBase64: string, filename: string): Promise<void> {
+export async function sharePdf(pdfBase64, filename) {
   console.log('[PDFGenerator] Sharing PDF...');
-  
-  // First save to a temp file
   const fileUri = await savePdfToDevice(pdfBase64, filename);
   
-  // Check if sharing is available
   const isAvailable = await Sharing.isAvailableAsync();
   if (!isAvailable) {
     throw new Error('Sharing is not available on this device');
   }
   
-  // Share the file
   await Sharing.shareAsync(fileUri, {
     mimeType: 'application/pdf',
     dialogTitle: 'Share Scope of Appointment',
@@ -713,12 +610,11 @@ export async function sharePdf(pdfBase64: string, filename: string): Promise<voi
 }
 
 /**
- * Print the PDF
+ * Print PDF
  */
-export async function printPdf(pdfBase64: string): Promise<void> {
+export async function printPdf(pdfBase64) {
   console.log('[PDFGenerator] Printing PDF...');
   
-  // Save to a temp file first
   const filename = `SOA_Print_${Date.now()}.pdf`;
   const fileUri = `${FileSystem.cacheDirectory}${filename}`;
   
@@ -726,15 +622,13 @@ export async function printPdf(pdfBase64: string): Promise<void> {
     encoding: FileSystem.EncodingType.Base64,
   });
   
-  // Use the file URI for printing
   await Print.printAsync({ uri: fileUri });
-  
   console.log('[PDFGenerator] Print dialog opened');
 }
 
 /**
- * Get a data URI for the PDF (for preview)
+ * Get PDF as data URI for preview
  */
-export function getPdfDataUri(pdfBase64: string): string {
+export function getPdfDataUri(pdfBase64) {
   return `data:application/pdf;base64,${pdfBase64}`;
 }
