@@ -1256,8 +1256,9 @@ async def get_scope(scope_id: str, current_user: dict = Depends(get_current_user
 @api_router.get("/scope/lead/{lead_id}")
 async def get_lead_scopes(lead_id: str, current_user: dict = Depends(get_current_user)):
     scopes = await db.scope_forms.find({"lead_id": lead_id}).to_list(100)
-    # Ensure all fields exist
+    # Ensure all fields exist and remove MongoDB ObjectId
     for s in scopes:
+        s.pop("_id", None)  # Remove MongoDB ObjectId to prevent serialization issues
         s.setdefault("agent_typed_name", "")
         s.setdefault("agent_signature", "")
         s.setdefault("pdf_base64", None)
