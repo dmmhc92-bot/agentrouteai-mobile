@@ -1130,6 +1130,10 @@ Return JSON: {{"talking_points": [...], "documents_needed": [...], "focus_areas"
 @api_router.get("/ai/chat-history")
 async def get_chat_history(current_user: dict = Depends(get_current_user)):
     messages = await db.chat_history.find({"user_id": current_user["id"]}).sort("timestamp", -1).limit(50).to_list(50)
+    # Convert ObjectId to string for JSON serialization
+    for msg in messages:
+        if "_id" in msg:
+            msg["_id"] = str(msg["_id"])
     return list(reversed(messages))
 
 # ==================== OCR/SCANNER ROUTES ====================
