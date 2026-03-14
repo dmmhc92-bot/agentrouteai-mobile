@@ -2193,61 +2193,7 @@ async def get_all_scopes(
 # ==================== SOA DELIVERY LOGGING ====================
 
 @api_router.post("/scope/{scope_id}/log-delivery")
-        
-        if is_svg:
-            logger.info("[SOA Render] Converting SVG signature...")
-            try:
-                import cairosvg
-                png_bytes = cairosvg.svg2png(bytestring=sig_bytes, output_width=200, output_height=50)
-                sig_bytes = png_bytes
-            except ImportError:
-                # Create a transparent placeholder with "Signature" text
-                logger.warning("[SOA Render] cairosvg unavailable, creating transparent fallback")
-                pil_img = PILImage.new('RGBA', (200, 50), (255, 255, 255, 0))
-                from PIL import ImageDraw
-                draw = ImageDraw.Draw(pil_img)
-                # Draw some signature-like strokes
-                draw.line([(10, 30), (50, 20), (90, 35), (130, 15), (170, 30)], fill=(0, 0, 0, 255), width=2)
-                output = BytesIO()
-                pil_img.save(output, format='PNG')
-                output.seek(0)
-                return output
-            except Exception as e:
-                logger.error(f"[SOA Render] SVG conversion failed: {e}")
-                pil_img = PILImage.new('RGBA', (200, 50), (255, 255, 255, 0))
-                output = BytesIO()
-                pil_img.save(output, format='PNG')
-                output.seek(0)
-                return output
-        
-        # Load the PNG
-        pil_img = PILImage.open(BytesIO(sig_bytes))
-        logger.info(f"[SOA Render] Loaded signature: mode={pil_img.mode}, size={pil_img.size}")
-        
-        # If it's RGBA, we want to KEEP the transparency
-        # Only convert the white background to transparent if needed
-        if pil_img.mode == 'RGBA':
-            # Image already has alpha channel - use as-is
-            # But make sure white/near-white pixels are transparent
-            data = pil_img.getdata()
-            new_data = []
-            for item in data:
-                # If pixel is white or near-white, make it transparent
-                if item[0] > 240 and item[1] > 240 and item[2] > 240:
-                    new_data.append((255, 255, 255, 0))  # Transparent
-                else:
-                    new_data.append(item)  # Keep original including alpha
-            pil_img.putdata(new_data)
-        elif pil_img.mode == 'RGB':
-            # Convert RGB to RGBA with white as transparent
-            pil_img = pil_img.convert('RGBA')
-            data = pil_img.getdata()
-            new_data = []
-            for item in data:
-                # If pixel is white or near-white, make it transparent
-                if item[0] > 240 and item[1] > 240 and item[2] > 240:
-                    new_data.append((255, 255, 255, 0))
-                else:
+async def log_scope_delivery(scope_id: str, delivery_data: ScopeDeliveryLog, current_user: dict = Depends(get_current_user)):
                     new_data.append((item[0], item[1], item[2], 255))
             pil_img.putdata(new_data)
         else:
