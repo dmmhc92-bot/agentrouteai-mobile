@@ -244,6 +244,33 @@ export default function ScopeDetailScreen() {
         return;
       }
 
+      // On web, trigger a download
+      if (isWeb) {
+        const filename = getFilename();
+        try {
+          const byteCharacters = atob(pdfBase64);
+          const byteNumbers = new Array(byteCharacters.length);
+          for (let i = 0; i < byteCharacters.length; i++) {
+            byteNumbers[i] = byteCharacters.charCodeAt(i);
+          }
+          const byteArray = new Uint8Array(byteNumbers);
+          const blob = new Blob([byteArray], { type: 'application/pdf' });
+          const blobUrl = URL.createObjectURL(blob);
+          
+          const link = document.createElement('a');
+          link.href = blobUrl;
+          link.download = filename;
+          link.click();
+          
+          Alert.alert('Downloaded', `${filename} has been saved to your Downloads folder.`);
+        } catch (error) {
+          console.error('Download error:', error);
+          Alert.alert('Error', 'Failed to download file');
+        }
+        setActionLoading(null);
+        return;
+      }
+
       const filename = getFilename();
       // Save to document directory for persistence
       const fileUri = `${FileSystem.documentDirectory}${filename}`;
