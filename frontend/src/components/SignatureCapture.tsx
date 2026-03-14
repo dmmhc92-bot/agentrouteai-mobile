@@ -6,14 +6,14 @@ import {
   TouchableOpacity,
   Dimensions,
   Modal,
-  GestureResponderEvent,
   Platform,
   Alert,
+  Image,
+  ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import Svg, { Path, Rect, G } from 'react-native-svg';
-import ViewShot, { captureRef } from 'react-native-view-shot';
+import SignatureScreen, { SignatureViewRef } from 'react-native-signature-canvas';
 
 interface SignatureCaptureProps {
   visible: boolean;
@@ -22,15 +22,12 @@ interface SignatureCaptureProps {
   title: string;
   subtitle?: string;
   signerName?: string;
+  existingSignature?: string; // For reloading existing signature
 }
 
-const { width: screenWidth } = Dimensions.get('window');
-const CANVAS_WIDTH = Math.min(screenWidth - 32, 400);
+const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
+const CANVAS_WIDTH = Math.min(screenWidth - 40, 380);
 const CANVAS_HEIGHT = 200;
-
-// Minimum stroke data required for a valid signature
-const MIN_STROKE_POINTS = 20;
-const MIN_PATH_COUNT = 1;
 
 export default function SignatureCapture({
   visible,
@@ -39,161 +36,153 @@ export default function SignatureCapture({
   title,
   subtitle,
   signerName,
+  existingSignature,
 }: SignatureCaptureProps) {
   const insets = useSafeAreaInsets();
-  const [paths, setPaths] = useState<string[]>([]);
-  const [currentPath, setCurrentPath] = useState<string>('');
+  const signatureRef = useRef<SignatureViewRef>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [totalPoints, setTotalPoints] = useState(0);
-  const isDrawingRef = useRef(false);
-  const canvasRef = useRef<View>(null);
-  const viewShotRef = useRef<ViewShot>(null);
-  const layoutRef = useRef({ x: 0, y: 0, width: CANVAS_WIDTH, height: CANVAS_HEIGHT });
-  const pointCountRef = useRef(0);
+  const [hasSignature, setHasSignature] = useState(false);
+  const [signaturePreview, setSignaturePreview] = useState<string | null>(null);
+  const [isDrawing, setIsDrawing] = useState(false);
 
   // Reset state when modal opens
   useEffect(() => {
     if (visible) {
-      setPaths([]);
-      setCurrentPath('');
       setIsSaving(false);
-      setTotalPoints(0);
-      pointCountRef.current = 0;
+      setHasSignature(false);
+      setSignaturePreview(null);
+      setIsDrawing(false);
+      
+      // If there's an existing signature, show it as preview
+      if (existingSignature && existingSignature.startsWith('data:image/')) {
+        setSignaturePreview(existingSignature);
+        setHasSignature(true);
+      }
     }
-  }, [visible]);
+  }, [visible, existingSignature]);
 
-  const getCoordinates = useCallback((event: GestureResponderEvent) => {
-    const { pageX, pageY } = event.nativeEvent;
-    const { x: layoutX, y: layoutY } = layoutRef.current;
-    
-    let x = pageX - layoutX;
-    let y = pageY - layoutY;
-    
-    // Clamp to canvas bounds
-    x = Math.max(0, Math.min(x, CANVAS_WIDTH));
-    y = Math.max(0, Math.min(y, CANVAS_HEIGHT));
-    
-    return { x, y };
+  // Handle when user starts drawing
+  const handleBegin = useCallback(() => {
+    setIsDrawing(true);
+    setHasSignature(true);
   }, []);
 
-  const handleTouchStart = useCallback((event: GestureResponderEvent) => {
-    isDrawingRef.current = true;
-    pointCountRef.current = 1;
-    const { x, y } = getCoordinates(event);
-    setCurrentPath(`M ${x.toFixed(1)} ${y.toFixed(1)}`);
-  }, [getCoordinates]);
+  // Handle when user ends a stroke
+  const handleEnd = useCallback(() => {
+    setIsDrawing(false);
+  }, []);
 
-  const handleTouchMove = useCallback((event: GestureResponderEvent) => {
-    if (!isDrawingRef.current) return;
-    pointCountRef.current += 1;
-    const { x, y } = getCoordinates(event);
-    setCurrentPath(prev => `${prev} L ${x.toFixed(1)} ${y.toFixed(1)}`);
-  }, [getCoordinates]);
-
-  const handleTouchEnd = useCallback(() => {
-    if (isDrawingRef.current && currentPath) {
-      setPaths(prev => [...prev, currentPath]);
-      setTotalPoints(prev => prev + pointCountRef.current);
-      setCurrentPath('');
+  // Handle successful signature capture
+  const handleOK = useCallback((signature: string) => {
+    if (signature && signature.length > 100) {
+      // Valid signature data
+      setSignaturePreview(signature);
+      setHasSignature(true);
     }
-    isDrawingRef.current = false;
-    pointCountRef.current = 0;
-  }, [currentPath]);
+  }, []);
 
+  // Handle empty signature (shouldn't happen with our flow but safety check)
+  const handleEmpty = useCallback(() => {
+    setHasSignature(false);
+    setSignaturePreview(null);
+  }, []);
+
+  // Clear the signature
   const handleClear = useCallback(() => {
-    setPaths([]);
-    setCurrentPath('');
-    setTotalPoints(0);
-    pointCountRef.current = 0;
+    signatureRef.current?.clearSignature();
+    setHasSignature(false);
+    setSignaturePreview(null);
+    setIsDrawing(false);
   }, []);
 
-  // Validate that a real signature exists (not just a tap or small scribble)
-  const isValidSignature = useCallback(() => {
-    return paths.length >= MIN_PATH_COUNT && totalPoints >= MIN_STROKE_POINTS;
-  }, [paths.length, totalPoints]);
-
+  // Read and save the signature
   const handleSave = useCallback(async () => {
-    // Validate signature has enough stroke data
-    if (!isValidSignature()) {
+    if (!hasSignature) {
       Alert.alert(
         'Signature Required',
-        'Please draw your complete handwritten signature. A simple tap or small mark is not sufficient for legal documents.',
+        'Please draw your complete handwritten signature before saving.',
         [{ text: 'OK' }]
       );
       return;
     }
 
     setIsSaving(true);
-    
+
     try {
-      // Capture the signature canvas as a PNG image using view-shot
-      // This creates a proper raster image that ReportLab can handle
-      const uri = await captureRef(viewShotRef, {
-        format: 'png',
-        quality: 1,
-        result: 'base64',
-      });
+      // Read the signature from the canvas
+      signatureRef.current?.readSignature();
       
-      // Return as proper PNG data URI that backend can decode
-      const dataUri = `data:image/png;base64,${uri}`;
-      onSave(dataUri);
-    } catch (error) {
-      console.error('Error capturing signature:', error);
+      // Give time for the callback to fire
+      await new Promise(resolve => setTimeout(resolve, 300));
       
-      // Fallback: Generate a simple PNG-compatible SVG
-      try {
-        const pathsStr = paths.map(p => 
-          `<path d="${p}" stroke="#000000" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`
-        ).join('');
+      if (signaturePreview && signaturePreview.length > 500) {
+        onSave(signaturePreview);
+      } else {
+        // Try to read again
+        signatureRef.current?.readSignature();
+        await new Promise(resolve => setTimeout(resolve, 500));
         
-        // Create SVG with white background
-        const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" width="${CANVAS_WIDTH}" height="${CANVAS_HEIGHT}" viewBox="0 0 ${CANVAS_WIDTH} ${CANVAS_HEIGHT}"><rect fill="#FFFFFF" width="100%" height="100%"/>${pathsStr}</svg>`;
-        
-        // Use TextEncoder for proper encoding
-        const base64 = btoa(unescape(encodeURIComponent(svgContent)));
-        const dataUri = `data:image/svg+xml;base64,${base64}`;
-        
-        onSave(dataUri);
-      } catch (fallbackError) {
-        console.error('Fallback signature save failed:', fallbackError);
-        Alert.alert('Error', 'Failed to save signature. Please try again.');
+        if (signaturePreview && signaturePreview.length > 500) {
+          onSave(signaturePreview);
+        } else {
+          Alert.alert(
+            'Signature Too Small',
+            'Please draw a more complete signature. The current signature appears to be too small.',
+            [{ text: 'OK' }]
+          );
+        }
       }
+    } catch (error) {
+      console.error('Error saving signature:', error);
+      Alert.alert('Error', 'Failed to save signature. Please try again.');
     } finally {
       setIsSaving(false);
     }
-  }, [paths, onSave, isValidSignature]);
+  }, [hasSignature, signaturePreview, onSave]);
 
+  // Confirm close if signature exists
   const handleClose = useCallback(() => {
-    // Warn if user has started drawing
-    if (paths.length > 0) {
+    if (hasSignature && !signaturePreview) {
       Alert.alert(
         'Discard Signature?',
         'You have drawn a signature. Are you sure you want to discard it?',
         [
           { text: 'Keep Drawing', style: 'cancel' },
-          { 
-            text: 'Discard', 
+          {
+            text: 'Discard',
             style: 'destructive',
             onPress: () => {
               handleClear();
               onClose();
-            }
-          }
+            },
+          },
         ]
       );
     } else {
       onClose();
     }
-  }, [onClose, handleClear, paths.length]);
+  }, [hasSignature, signaturePreview, handleClear, onClose]);
 
-  const handleCanvasLayout = useCallback((event: any) => {
-    canvasRef.current?.measureInWindow((x, y, width, height) => {
-      layoutRef.current = { x, y, width, height };
-    });
-  }, []);
-
-  const hasSignature = paths.length > 0 || currentPath.length > 0;
-  const validSignature = isValidSignature();
+  // Signature canvas style - white background, dark pen
+  const canvasStyle = `
+    .m-signature-pad {
+      box-shadow: none;
+      border: none;
+      background-color: #FFFFFF;
+    }
+    .m-signature-pad--body {
+      border: none;
+      background-color: #FFFFFF;
+    }
+    .m-signature-pad--footer {
+      display: none;
+    }
+    body, html {
+      background-color: #FFFFFF;
+      margin: 0;
+      padding: 0;
+    }
+  `;
 
   return (
     <Modal
@@ -233,108 +222,78 @@ export default function SignatureCapture({
           </View>
         )}
 
-        {/* Signature Canvas */}
+        {/* Signature Canvas Container - NOT inside ScrollView */}
         <View style={styles.canvasContainer}>
-          <View
-            ref={canvasRef}
-            style={styles.canvas}
-            onLayout={handleCanvasLayout}
-            onStartShouldSetResponder={() => true}
-            onMoveShouldSetResponder={() => true}
-            onResponderGrant={handleTouchStart}
-            onResponderMove={handleTouchMove}
-            onResponderRelease={handleTouchEnd}
-            onResponderTerminate={handleTouchEnd}
-          >
-            {/* ViewShot wrapper to capture the signature as PNG */}
-            <ViewShot 
-              ref={viewShotRef} 
-              options={{ format: 'png', quality: 1 }}
-              style={styles.viewShot}
-            >
-              <Svg 
-                width={CANVAS_WIDTH} 
-                height={CANVAS_HEIGHT}
-                style={styles.svg}
-              >
-                {/* White background - important for PDF */}
-                <Rect x="0" y="0" width={CANVAS_WIDTH} height={CANVAS_HEIGHT} fill="#FFFFFF" />
-                
-                {/* Signature paths group */}
-                <G>
-                  {/* Saved signature paths */}
-                  {paths.map((path, index) => (
-                    <Path
-                      key={`path-${index}`}
-                      d={path}
-                      stroke="#1F2937"
-                      strokeWidth={3}
-                      fill="none"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  ))}
-                  
-                  {/* Current path being drawn */}
-                  {currentPath && (
-                    <Path
-                      d={currentPath}
-                      stroke="#1F2937"
-                      strokeWidth={3}
-                      fill="none"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  )}
-                </G>
-              </Svg>
-            </ViewShot>
-            
-            {/* Signature line guide - outside viewshot so it's not captured */}
+          <View style={styles.canvasWrapper}>
+            {/* Signature line guide */}
             <View style={styles.signatureLine} pointerEvents="none">
               <Text style={styles.xMarker}>✕</Text>
               <View style={styles.dashedLine} />
             </View>
             
-            {/* Placeholder when empty */}
-            {!hasSignature && (
-              <View style={styles.placeholder} pointerEvents="none">
-                <Ionicons name="create-outline" size={40} color="#CBD5E1" />
-                <Text style={styles.placeholderText}>Draw your signature here</Text>
-              </View>
-            )}
+            {/* The actual signature canvas */}
+            <SignatureScreen
+              ref={signatureRef}
+              onOK={handleOK}
+              onEmpty={handleEmpty}
+              onBegin={handleBegin}
+              onEnd={handleEnd}
+              autoClear={false}
+              descriptionText=""
+              clearText=""
+              confirmText=""
+              webStyle={canvasStyle}
+              penColor="#111111"
+              backgroundColor="#FFFFFF"
+              dotSize={3}
+              minWidth={2}
+              maxWidth={4}
+              style={styles.signatureCanvas}
+            />
           </View>
-          
-          {/* Signature status indicator */}
+
+          {/* Status indicator */}
           <View style={styles.signatureStatus}>
-            {hasSignature && (
-              <View style={[
-                styles.statusBadge,
-                validSignature ? styles.statusValid : styles.statusIncomplete
-              ]}>
-                <Ionicons 
-                  name={validSignature ? "checkmark-circle" : "alert-circle"} 
-                  size={14} 
-                  color={validSignature ? "#22C55E" : "#F59E0B"} 
-                />
-                <Text style={[
-                  styles.statusText,
-                  validSignature ? styles.statusTextValid : styles.statusTextIncomplete
-                ]}>
-                  {validSignature ? "Signature captured" : "Keep drawing..."}
-                </Text>
+            {isDrawing ? (
+              <View style={styles.statusBadgeDrawing}>
+                <Ionicons name="pencil" size={14} color="#3B82F6" />
+                <Text style={styles.statusTextDrawing}>Drawing...</Text>
+              </View>
+            ) : hasSignature ? (
+              <View style={styles.statusBadgeValid}>
+                <Ionicons name="checkmark-circle" size={14} color="#22C55E" />
+                <Text style={styles.statusTextValid}>Signature captured</Text>
+              </View>
+            ) : (
+              <View style={styles.statusBadgeEmpty}>
+                <Ionicons name="create-outline" size={14} color="#94A3B8" />
+                <Text style={styles.statusTextEmpty}>Draw your signature above</Text>
               </View>
             )}
           </View>
         </View>
 
+        {/* Signature Preview */}
+        {signaturePreview && (
+          <View style={styles.previewContainer}>
+            <Text style={styles.previewLabel}>Signature Preview:</Text>
+            <View style={styles.previewImageContainer}>
+              <Image
+                source={{ uri: signaturePreview }}
+                style={styles.previewImage}
+                resizeMode="contain"
+              />
+            </View>
+          </View>
+        )}
+
         {/* Legal Notice */}
         <View style={styles.legalNotice}>
           <Ionicons name="shield-checkmark-outline" size={18} color="#64748B" />
           <Text style={styles.legalText}>
-            By saving this signature, you acknowledge that this is your legal handwritten signature 
-            and agree to be bound by the associated Scope of Appointment document. This signature 
-            will be embedded into the final PDF document.
+            By saving this signature, you acknowledge that this is your legal
+            handwritten signature and agree to be bound by the associated Scope
+            of Appointment document.
           </Text>
         </View>
 
@@ -343,29 +302,35 @@ export default function SignatureCapture({
           <TouchableOpacity
             style={[
               styles.saveButton,
-              !validSignature && styles.saveButtonDisabled,
+              !hasSignature && styles.saveButtonDisabled,
             ]}
             onPress={handleSave}
-            disabled={!validSignature || isSaving}
+            disabled={!hasSignature || isSaving}
           >
-            <Ionicons
-              name="checkmark-circle"
-              size={24}
-              color={validSignature ? '#FFFFFF' : '#94A3B8'}
-            />
-            <Text
-              style={[
-                styles.saveButtonText,
-                !validSignature && styles.saveButtonTextDisabled,
-              ]}
-            >
-              {isSaving ? 'Saving...' : 'Save Signature'}
-            </Text>
+            {isSaving ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <>
+                <Ionicons
+                  name="checkmark-circle"
+                  size={24}
+                  color={hasSignature ? '#FFFFFF' : '#94A3B8'}
+                />
+                <Text
+                  style={[
+                    styles.saveButtonText,
+                    !hasSignature && styles.saveButtonTextDisabled,
+                  ]}
+                >
+                  Save Signature
+                </Text>
+              </>
+            )}
           </TouchableOpacity>
-          
-          {!validSignature && hasSignature && (
+
+          {!hasSignature && (
             <Text style={styles.hintText}>
-              Please draw a complete signature to continue
+              Draw your signature above to enable save
             </Text>
           )}
         </View>
@@ -440,11 +405,10 @@ const styles = StyleSheet.create({
     color: '#1F2937',
   },
   canvasContainer: {
-    paddingHorizontal: 16,
-    marginTop: 8,
+    paddingHorizontal: 20,
     alignItems: 'center',
   },
-  canvas: {
+  canvasWrapper: {
     width: CANVAS_WIDTH,
     height: CANVAS_HEIGHT,
     backgroundColor: '#FFFFFF',
@@ -454,12 +418,9 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     position: 'relative',
   },
-  viewShot: {
+  signatureCanvas: {
     width: CANVAS_WIDTH,
     height: CANVAS_HEIGHT,
-    backgroundColor: '#FFFFFF',
-  },
-  svg: {
     backgroundColor: '#FFFFFF',
   },
   signatureLine: {
@@ -469,10 +430,12 @@ const styles = StyleSheet.create({
     right: 20,
     flexDirection: 'row',
     alignItems: 'center',
+    zIndex: 1,
+    pointerEvents: 'none',
   },
   xMarker: {
     fontSize: 16,
-    color: '#94A3B8',
+    color: '#CBD5E1',
     marginRight: 8,
   },
   dashedLine: {
@@ -482,52 +445,83 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E2E8F0',
   },
-  placeholder: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  placeholderText: {
-    fontSize: 14,
-    color: '#CBD5E1',
-    marginTop: 8,
-  },
   signatureStatus: {
-    height: 28,
-    marginTop: 8,
+    height: 32,
+    marginTop: 12,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  statusBadge: {
+  statusBadgeDrawing: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: '#DBEAFE',
     gap: 6,
   },
-  statusValid: {
-    backgroundColor: '#DCFCE7',
-  },
-  statusIncomplete: {
-    backgroundColor: '#FEF3C7',
-  },
-  statusText: {
+  statusTextDrawing: {
     fontSize: 13,
     fontWeight: '500',
+    color: '#2563EB',
+  },
+  statusBadgeValid: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: '#DCFCE7',
+    gap: 6,
   },
   statusTextValid: {
+    fontSize: 13,
+    fontWeight: '500',
     color: '#16A34A',
   },
-  statusTextIncomplete: {
-    color: '#D97706',
+  statusBadgeEmpty: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: '#F1F5F9',
+    gap: 6,
+  },
+  statusTextEmpty: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#94A3B8',
+  },
+  previewContainer: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+  },
+  previewLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#64748B',
+    marginBottom: 8,
+  },
+  previewImageContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: 8,
+    alignItems: 'center',
+  },
+  previewImage: {
+    width: CANVAS_WIDTH - 40,
+    height: 80,
   },
   legalNotice: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     paddingHorizontal: 20,
-    paddingVertical: 20,
+    paddingVertical: 16,
     gap: 10,
+    marginTop: 'auto',
   },
   legalText: {
     flex: 1,
@@ -536,9 +530,8 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   footer: {
-    marginTop: 'auto',
     paddingHorizontal: 16,
-    paddingTop: 16,
+    paddingTop: 12,
     alignItems: 'center',
   },
   saveButton: {
