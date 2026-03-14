@@ -616,7 +616,7 @@ export default function ScopeDetailScreen() {
           </View>
           <TouchableOpacity 
             style={styles.viewPdfButton}
-            onPress={handlePreview}
+            onPress={handleViewPdfDirect}
             disabled={actionLoading === 'preview'}
           >
             {actionLoading === 'preview' || pdfLoading ? (
