@@ -244,7 +244,7 @@ export default function ScannerScreen() {
 
           <View style={styles.form}>
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Name *</Text>
+              <Text style={styles.label}>Full Name *</Text>
               <View style={styles.inputContainer}>
                 <Ionicons name="person-outline" size={20} color="#64748B" />
                 <TextInput
@@ -259,7 +259,37 @@ export default function ScannerScreen() {
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Phone</Text>
+              <Text style={styles.label}>Company</Text>
+              <View style={styles.inputContainer}>
+                <Ionicons name="business-outline" size={20} color="#64748B" />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Company name"
+                  placeholderTextColor="#64748B"
+                  value={company}
+                  onChangeText={setCompany}
+                  autoCapitalize="words"
+                />
+              </View>
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Job Title</Text>
+              <View style={styles.inputContainer}>
+                <Ionicons name="briefcase-outline" size={20} color="#64748B" />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Job title"
+                  placeholderTextColor="#64748B"
+                  value={jobTitle}
+                  onChangeText={setJobTitle}
+                  autoCapitalize="words"
+                />
+              </View>
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Phone Number</Text>
               <View style={styles.inputContainer}>
                 <Ionicons name="call-outline" size={20} color="#64748B" />
                 <TextInput
@@ -274,7 +304,7 @@ export default function ScannerScreen() {
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Email</Text>
+              <Text style={styles.label}>Email Address</Text>
               <View style={styles.inputContainer}>
                 <Ionicons name="mail-outline" size={20} color="#64748B" />
                 <TextInput
@@ -290,15 +320,17 @@ export default function ScannerScreen() {
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Address</Text>
-              <View style={styles.inputContainer}>
-                <Ionicons name="location-outline" size={20} color="#64748B" />
+              <Text style={styles.label}>Business Address</Text>
+              <View style={[styles.inputContainer, styles.addressInputContainer]}>
+                <Ionicons name="location-outline" size={20} color="#64748B" style={styles.addressIcon} />
                 <TextInput
-                  style={styles.input}
-                  placeholder="Business address"
+                  style={[styles.input, styles.addressInput]}
+                  placeholder="Street, City, State, ZIP"
                   placeholderTextColor="#64748B"
                   value={address}
                   onChangeText={setAddress}
+                  multiline
+                  numberOfLines={2}
                 />
               </View>
             </View>
