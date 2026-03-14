@@ -10,6 +10,7 @@ import {
   Share,
   Platform,
   Image,
+  Linking,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -18,6 +19,9 @@ import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import * as Print from 'expo-print';
 import { api } from '../../src/services/api';
+
+// Check if we're running on web
+const isWeb = Platform.OS === 'web';
 
 interface DeliveryLogEntry {
   id: string;
