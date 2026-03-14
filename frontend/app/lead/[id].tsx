@@ -405,6 +405,73 @@ export default function LeadDetailScreen() {
           )}
         </View>
 
+        {/* Medicare Compliance Indicator */}
+        {compliance && (
+          <View style={[
+            styles.complianceCard,
+            { borderLeftColor: compliance.compliance_status === 'compliant' ? '#22C55E' :
+              compliance.compliance_status === 'signed' ? '#3B82F6' :
+              compliance.compliance_status === 'pending_signature' ? '#F59E0B' : '#EF4444'
+            }
+          ]}>
+            <View style={styles.complianceHeader}>
+              <View style={styles.complianceIconWrap}>
+                <Ionicons
+                  name={
+                    compliance.compliance_status === 'compliant' ? 'shield-checkmark' :
+                    compliance.compliance_status === 'signed' ? 'checkmark-circle' :
+                    compliance.compliance_status === 'pending_signature' ? 'time' : 'alert-circle'
+                  }
+                  size={24}
+                  color={
+                    compliance.compliance_status === 'compliant' ? '#22C55E' :
+                    compliance.compliance_status === 'signed' ? '#3B82F6' :
+                    compliance.compliance_status === 'pending_signature' ? '#F59E0B' : '#EF4444'
+                  }
+                />
+              </View>
+              <View style={styles.complianceInfo}>
+                <Text style={styles.complianceTitle}>Medicare Compliance</Text>
+                <Text style={[
+                  styles.complianceStatus,
+                  { color: compliance.compliance_status === 'compliant' ? '#22C55E' :
+                    compliance.compliance_status === 'signed' ? '#3B82F6' :
+                    compliance.compliance_status === 'pending_signature' ? '#F59E0B' : '#EF4444'
+                  }
+                ]}>
+                  {compliance.compliance_message}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.complianceFlags}>
+              <View style={[styles.complianceFlag, { backgroundColor: compliance.has_appointment ? '#22C55E20' : '#64748B20' }]}>
+                <Ionicons name="calendar" size={12} color={compliance.has_appointment ? '#22C55E' : '#64748B'} />
+                <Text style={[styles.complianceFlagText, { color: compliance.has_appointment ? '#22C55E' : '#64748B' }]}>
+                  Appointment
+                </Text>
+              </View>
+              <View style={[styles.complianceFlag, { backgroundColor: compliance.has_soa ? '#22C55E20' : '#64748B20' }]}>
+                <Ionicons name="document-text" size={12} color={compliance.has_soa ? '#22C55E' : '#64748B'} />
+                <Text style={[styles.complianceFlagText, { color: compliance.has_soa ? '#22C55E' : '#64748B' }]}>
+                  SOA
+                </Text>
+              </View>
+              <View style={[styles.complianceFlag, { backgroundColor: compliance.has_signed_soa ? '#22C55E20' : '#64748B20' }]}>
+                <Ionicons name="create" size={12} color={compliance.has_signed_soa ? '#22C55E' : '#64748B'} />
+                <Text style={[styles.complianceFlagText, { color: compliance.has_signed_soa ? '#22C55E' : '#64748B' }]}>
+                  Signed
+                </Text>
+              </View>
+              <View style={[styles.complianceFlag, { backgroundColor: compliance.has_pdf ? '#22C55E20' : '#64748B20' }]}>
+                <Ionicons name="document" size={12} color={compliance.has_pdf ? '#22C55E' : '#64748B'} />
+                <Text style={[styles.complianceFlagText, { color: compliance.has_pdf ? '#22C55E' : '#64748B' }]}>
+                  PDF
+                </Text>
+              </View>
+            </View>
+          </View>
+        )}
+
         {/* Scope Documents */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
@@ -424,7 +491,14 @@ export default function LeadDetailScreen() {
                 style={styles.scopeCard}
                 onPress={() => router.push(`/scope/${scope.id}`)}
               >
-                <Ionicons name="document-text" size={24} color="#8B5CF6" />
+                <View style={styles.scopeIconWrap}>
+                  <Ionicons name="document-text" size={24} color="#8B5CF6" />
+                  {scope.signature && (
+                    <View style={styles.signedBadge}>
+                      <Ionicons name="checkmark" size={10} color="#FFFFFF" />
+                    </View>
+                  )}
+                </View>
                 <View style={styles.scopeInfo}>
                   <Text style={styles.scopeName}>Signed by: {scope.typed_name}</Text>
                   <Text style={styles.scopeDate}>
@@ -434,6 +508,7 @@ export default function LeadDetailScreen() {
                 <Ionicons name="chevron-forward" size={20} color="#64748B" />
               </TouchableOpacity>
             ))
+          )}
           )}
         </View>
       </ScrollView>
