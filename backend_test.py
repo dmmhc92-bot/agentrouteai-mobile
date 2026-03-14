@@ -541,7 +541,7 @@ class APITester:
             self.test_appointments_crud()
             self.test_scope_operations()
             self.test_route_planning()
-            self.test_ai_coach()
+            self.test_ai_functionality()
             self.test_subscription()
             self.test_unauthorized_access()
             self.cleanup_test_data()
