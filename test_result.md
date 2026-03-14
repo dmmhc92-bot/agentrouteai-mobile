@@ -233,15 +233,18 @@ backend:
 
   - task: "Commission Tracking API"
     implemented: true
-    working: "NA"
+    working: true
     file: "backend/server.py"
     stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
         - working: "NA"
           agent: "main"
           comment: "Implemented comprehensive Commission Tracking system with: 1) POST /api/commissions - Create commission records with automatic split calculation (agent_rate, manager_override, agency_share), 2) GET /api/commissions - List commissions with role-based access (agents see own, managers see downline, admins see all), 3) GET /api/commissions/{id} - Get single commission, 4) PUT /api/commissions/{id} - Update commission status (estimated/pending/approved/paid), paid amount, payment date, 5) GET /api/commissions/summary/totals - Summary with totals by status, carrier, policy type, 6) GET /api/commissions/agent/{agent_id} - Get agent-specific commissions with summary. Manual curl tests show all endpoints working with correct split calculations (60% agent, 20% manager, 20% agency). Status updates working including paid amount and payment date tracking."
+        - working: true
+          agent: "testing"
+          comment: "Commission Tracking API fully tested and working correctly. All 11 commission-specific tests passed (100% success rate). ✅ POST /api/commissions (200) - Creates commission records with correct 60/20/20% split calculations (Agent: $360/$240/$150, Manager: $120/$80/$50, Agency: $120/$80/$50). ✅ GET /api/commissions (200) - Lists all commissions with proper role-based access control. ✅ GET /api/commissions?status={status} (200) - Status filtering working for estimated/pending/approved/paid statuses. ✅ GET /api/commissions/{id} (200) - Single commission retrieval with all required fields. ✅ PUT /api/commissions/{id} (200) - Status updates working (approved→paid with paid_amount and payment_date). ✅ GET /api/commissions/summary/totals (200) - Summary endpoint returns proper totals by status/carrier/policy_type. ✅ GET /api/commissions/agent/{agent_id} (200) - Agent-specific view returns summary data with commissions array. ✅ Team view parameter (?team_view=true) working correctly. Commission calculations verified: Medicare Advantage ($600→$360/$120/$120), Medicare Supplement ($400→$240/$80/$80), Prescription Drug Plan ($250→$150/$50/$50). All CRUD operations, status transitions, filtering, and role-based access working as specified."
 
 frontend:
   # No frontend testing performed as per instructions
