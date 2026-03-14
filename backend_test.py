@@ -392,12 +392,12 @@ class APITester:
             self.log_result("Get daily route", False, 
                           f"Status: {response.status_code if response else 'No response'}")
     
-    def test_ai_coach(self):
-        """Test AI coach functionality"""
-        print("=== AI COACH TESTS ===")
+    def test_ai_functionality(self):
+        """Test AI functionality"""
+        print("=== AI FUNCTIONALITY TESTS ===")
         
         if not self.auth_token:
-            self.log_result("AI Coach", False, "No auth token available")
+            self.log_result("AI functionality", False, "No auth token available")
             return
         
         # 1. Send chat message
@@ -426,6 +426,18 @@ class APITester:
         else:
             self.log_result("Get chat history", False, 
                           f"Status: {response.status_code if response else 'No response'}")
+        
+        # 3. Test appointment prep (if we have a lead)
+        if self.lead_id:
+            response = self.make_request("POST", f"/ai/appointment-prep/{self.lead_id}")
+            if response and response.status_code == 200:
+                data = response.json()
+                lead_name = data.get("lead_name", "")
+                talking_points = data.get("talking_points", [])
+                self.log_result("AI Appointment Prep", True, f"Lead: {lead_name}, Points: {len(talking_points)}")
+            else:
+                self.log_result("AI Appointment Prep", False, 
+                              f"Status: {response.status_code if response else 'No response'}")
     
     def test_subscription(self):
         """Test subscription functionality"""
