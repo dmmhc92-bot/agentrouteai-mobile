@@ -237,6 +237,24 @@ class ScopeResponse(BaseModel):
     pdf_base64: Optional[str] = None  # Stored PDF
     created_date: datetime
     created_by_user: str
+    delivery_history: Optional[List[Dict[str, Any]]] = []  # Track sends/shares
+
+# SOA Delivery Models
+class ScopeDeliveryLog(BaseModel):
+    scope_id: str
+    delivery_method: str  # "email", "sms", "share", "airdrop", "other"
+    recipient_contact: Optional[str] = None  # email or phone if available
+    notes: Optional[str] = None
+
+class ScopeDeliveryResponse(BaseModel):
+    id: str
+    scope_id: str
+    lead_id: str
+    delivery_method: str
+    recipient_contact: Optional[str]
+    notes: Optional[str]
+    delivered_at: datetime
+    delivered_by_user: str
 
 # Activity/Timeline Models
 class ActivityLog(BaseModel):
