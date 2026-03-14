@@ -218,15 +218,18 @@ backend:
 
   - task: "SOA Delivery Logging"
     implemented: true
-    working: "NA"
+    working: true
     file: "backend/server.py"
     stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
         - working: "NA"
           agent: "main"
           comment: "Implemented SOA delivery logging feature with POST /api/scope/{scope_id}/log-delivery endpoint for logging when SOA documents are shared/sent to clients, and GET /api/scope/{scope_id}/delivery-history endpoint for retrieving delivery history. Delivery logs include: delivery method (email, sms, share), recipient contact, notes, timestamp, and user who delivered. Logs are stored in the scope document's delivery_history array. Initial manual curl testing shows both endpoints working correctly."
+        - working: true
+          agent: "testing"
+          comment: "SOA Delivery Logging feature tested successfully. All core functionality working correctly: ✅ POST /api/scope/{scope_id}/log-delivery (200) - Successfully logs email, share, and SMS deliveries with proper data structure. ✅ GET /api/scope/{scope_id}/delivery-history (200) - Retrieves complete delivery history with all 3 test entries. ✅ GET /api/scope/{scope_id} (200) - SOA document properly includes delivery_history field with all logged entries. ✅ Invalid scope ID handling (404) - Correctly returns 404 for non-existent scope IDs. All delivery methods (email, share, sms) tested and working. Delivery logs properly store: delivery_method, recipient_contact, notes, delivered_at timestamp, and delivered_by_user. Data persistence verified across all endpoints. 6/7 SOA delivery tests passed (85.7% success rate). Minor: One test had intermittent connection timeout but backend logs confirm 404 response was correctly returned."
 
 frontend:
   # No frontend testing performed as per instructions
