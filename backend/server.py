@@ -847,6 +847,22 @@ async def create_appointment(apt_data: AppointmentCreate, current_user: dict = D
     await log_activity(current_user["id"], "appointment_created", "Scheduled appointment", apt_data.lead_id)
     return AppointmentResponse(**apt_doc)
 
+@api_router.get("/appointments/{apt_id}")
+async def get_appointment(apt_id: str, current_user: dict = Depends(get_current_user)):
+    """Get a single appointment by ID"""
+    user_ids = await get_user_accessible_ids(current_user["id"], current_user.get("role", "agent"))
+    
+    apt = await db.appointments.find_one({"id": apt_id, "created_by_user": {"$in": user_ids}})
+    if not apt:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+    
+    return AppointmentResponse(
+        id=apt["id"], lead_id=apt["lead_id"], appointment_date=apt["appointment_date"],
+        appointment_time=apt["appointment_time"], notes=apt.get("notes", ""),
+        status=apt.get("status", "scheduled"), appointment_type=apt.get("appointment_type", "in_person"),
+        created_date=apt.get("created_date")
+    )
+
 @api_router.put("/appointments/{apt_id}")
 async def update_appointment(apt_id: str, apt_data: dict, current_user: dict = Depends(get_current_user)):
     update_data = {k: v for k, v in apt_data.items() if v is not None}
