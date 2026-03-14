@@ -1751,7 +1751,7 @@ async def generate_stamped_pdf(scope_id: str, current_user: dict = Depends(get_c
     
     def stamp_sig_p2(sig_data, field_name):
         """
-        Stamp signature with transparency preserved (no white background).
+        Stamp signature cropped to actual ink bounds, with transparency preserved.
         """
         import cairosvg
         from datetime import datetime
@@ -1771,7 +1771,6 @@ async def generate_stamped_pdf(scope_id: str, current_user: dict = Depends(get_c
             
             # ==================== 1. SIGNATURE DECODING ====================
             if sig_data.startswith('data:image/svg+xml;base64,'):
-                # SVG FORMAT - convert to PNG
                 sig_b64 = sig_data.split(',', 1)[1]
                 sig_bytes = base64.b64decode(sig_b64)
                 sig_bytes = cairosvg.svg2png(bytestring=sig_bytes, output_width=300, output_height=80)
@@ -1779,7 +1778,6 @@ async def generate_stamped_pdf(scope_id: str, current_user: dict = Depends(get_c
                 logger.info(f"[PDF Gen] PAGE 2: SIG '{field_name}' - SVG converted to PNG")
                 
             elif sig_data.startswith('data:image/png;base64,'):
-                # PNG FORMAT
                 sig_b64 = sig_data.split(',', 1)[1]
                 sig_bytes = base64.b64decode(sig_b64)
                 img = Image.open(BytesIO(sig_bytes))
@@ -1801,29 +1799,48 @@ async def generate_stamped_pdf(scope_id: str, current_user: dict = Depends(get_c
                 sig_bytes = base64.b64decode(sig_data)
                 img = Image.open(BytesIO(sig_bytes))
             
-            # ==================== 2. PRESERVE TRANSPARENCY ====================
-            # Convert to RGBA to preserve transparency
+            # ==================== 2. CONVERT TO RGBA ====================
             img = img.convert('RGBA')
+            logger.info(f"[PDF Gen] PAGE 2: SIG '{field_name}' - original size: {img.size}")
             
-            # Save transparent PNG to BytesIO buffer
+            # ==================== 3. CROP TO ACTUAL INK BOUNDS ====================
+            # Use alpha channel to find bounding box of non-transparent pixels
+            alpha = img.split()[-1]  # Get alpha channel
+            bbox = alpha.getbbox()   # Get bounding box of non-zero alpha
+            
+            if bbox:
+                img = img.crop(bbox)
+                logger.info(f"[PDF Gen] PAGE 2: SIG '{field_name}' - cropped to ink bounds: {img.size}")
+            else:
+                logger.warning(f"[PDF Gen] PAGE 2: SIG '{field_name}' - no ink found, using original")
+            
+            # ==================== 4. SAVE CROPPED TRANSPARENT PNG ====================
             buffer = BytesIO()
             img.save(buffer, format='PNG')
             buffer.seek(0)
             
-            logger.info(f"[PDF Gen] PAGE 2: SIG '{field_name}' - transparent PNG: size={img.size}")
-            
-            # ==================== 3. STAMP SIGNATURE ====================
+            # ==================== 5. STAMP SIGNATURE ====================
             sig_x = coords['x']
             sig_y = coords['y']
             
-            c2.drawImage(ImageReader(buffer), sig_x, sig_y, width=160, height=40, mask='auto')
+            c2.drawImage(
+                ImageReader(buffer), 
+                sig_x, 
+                sig_y, 
+                width=160, 
+                height=40, 
+                mask='auto',
+                preserveAspectRatio=True,
+                anchor='sw'
+            )
             
-            # Add e-signature confirmation below
+            # ==================== 6. TIMESTAMP TEXT BELOW SIGNATURE ====================
             server_timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
             confirmation_text = f"Signed electronically on {server_timestamp} via mobile application"
-            c2.setFont("Helvetica", 6)
-            c2.setFillColorRGB(0.4, 0.4, 0.4)
-            c2.drawString(sig_x, sig_y - 8, confirmation_text)
+            c2.setFont("Helvetica", 5)
+            c2.setFillColorRGB(0.5, 0.5, 0.5)
+            # Place text BELOW the signature (sig_y - 12 to clear the signature area)
+            c2.drawString(sig_x, sig_y - 12, confirmation_text)
             
             stamped_items.append(f"PAGE 2: SIG '{field_name}' @ ({sig_x}, {sig_y})")
             logger.info(f"[PDF Gen] PAGE 2: STAMPED SIG '{field_name}' @ ({sig_x}, {sig_y})")
