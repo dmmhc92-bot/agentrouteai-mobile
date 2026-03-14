@@ -9,6 +9,7 @@ import {
   Alert,
   Share,
   Platform,
+  Modal,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -16,6 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import * as Print from 'expo-print';
+import { WebView } from 'react-native-webview';
 import { api } from '../../src/services/api';
 
 interface ScopeData {
@@ -40,7 +42,9 @@ export default function ScopeDetailScreen() {
   const [scope, setScope] = useState<ScopeData | null>(null);
   const [lead, setLead] = useState<any>(null);
   const [pdfLoading, setPdfLoading] = useState(false);
-  const [actionLoading, setActionLoading] = useState<'print' | 'save' | 'share' | null>(null);
+  const [actionLoading, setActionLoading] = useState<'print' | 'save' | 'share' | 'preview' | null>(null);
+  const [showPdfPreview, setShowPdfPreview] = useState(false);
+  const [pdfDataUri, setPdfDataUri] = useState<string | null>(null);
 
   useEffect(() => {
     loadScope();
@@ -87,6 +91,32 @@ export default function ScopeDetailScreen() {
     return null;
   };
 
+  const getFilename = () => {
+    const leadName = lead?.name?.replace(/\s+/g, '_') || 'Document';
+    const date = scope?.created_date 
+      ? new Date(scope.created_date).toISOString().split('T')[0]
+      : new Date().toISOString().split('T')[0];
+    return `SOA_${leadName}_${date}.pdf`;
+  };
+
+  const handlePreview = async () => {
+    setActionLoading('preview');
+    try {
+      const pdfBase64 = await getPdfData();
+      if (!pdfBase64) {
+        Alert.alert('Error', 'Could not load PDF document');
+        return;
+      }
+      setPdfDataUri(`data:application/pdf;base64,${pdfBase64}`);
+      setShowPdfPreview(true);
+    } catch (error: any) {
+      console.error('Preview error:', error);
+      Alert.alert('Preview Error', 'Unable to preview document. Please try again.');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   const handlePrint = async () => {
     setActionLoading('print');
     try {
@@ -96,21 +126,31 @@ export default function ScopeDetailScreen() {
         return;
       }
 
-      // Convert base64 to data URI
-      const pdfUri = `data:application/pdf;base64,${pdfBase64}`;
-      
-      await Print.printAsync({
-        uri: pdfUri,
-      });
+      // For iOS, use the print API directly with base64 data
+      if (Platform.OS === 'ios') {
+        await Print.printAsync({
+          uri: `data:application/pdf;base64,${pdfBase64}`,
+        });
+      } else {
+        // For Android, save to temp file first then print
+        const filename = getFilename();
+        const fileUri = `${FileSystem.cacheDirectory}${filename}`;
+        await FileSystem.writeAsStringAsync(fileUri, pdfBase64, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        await Print.printAsync({ uri: fileUri });
+      }
     } catch (error: any) {
       console.error('Print error:', error);
-      Alert.alert('Print Error', 'Unable to print. Please try again.');
+      if (!error.message?.includes('canceled') && !error.message?.includes('cancelled')) {
+        Alert.alert('Print Error', 'Unable to print. Please try again.');
+      }
     } finally {
       setActionLoading(null);
     }
   };
 
-  const handleSave = async () => {
+  const handleSaveToFiles = async () => {
     setActionLoading('save');
     try {
       const pdfBase64 = await getPdfData();
@@ -119,26 +159,33 @@ export default function ScopeDetailScreen() {
         return;
       }
 
-      const filename = `SOA_${lead?.name?.replace(/\s+/g, '_') || 'Document'}_${new Date().toISOString().split('T')[0]}.pdf`;
+      const filename = getFilename();
       const fileUri = `${FileSystem.documentDirectory}${filename}`;
       
+      // Write the file first
       await FileSystem.writeAsStringAsync(fileUri, pdfBase64, {
         encoding: FileSystem.EncodingType.Base64,
       });
       
-      // Check if we can share (which allows saving to Files)
+      // On iOS, sharing allows saving to Files app
       const canShare = await Sharing.isAvailableAsync();
       if (canShare) {
         await Sharing.shareAsync(fileUri, {
           mimeType: 'application/pdf',
           dialogTitle: 'Save Scope of Appointment',
+          UTI: 'com.adobe.pdf', // iOS-specific UTI for PDF
         });
       } else {
-        Alert.alert('Success', `Document saved to app storage:\n${filename}`);
+        Alert.alert(
+          'Saved', 
+          `Document saved to app storage:\n${filename}\n\nTo access this file, connect your device to a computer or use a file manager app.`
+        );
       }
     } catch (error: any) {
       console.error('Save error:', error);
-      Alert.alert('Save Error', 'Unable to save document. Please try again.');
+      if (!error.message?.includes('canceled') && !error.message?.includes('cancelled')) {
+        Alert.alert('Save Error', 'Unable to save document. Please try again.');
+      }
     } finally {
       setActionLoading(null);
     }
@@ -153,9 +200,10 @@ export default function ScopeDetailScreen() {
         return;
       }
 
-      const filename = `SOA_${lead?.name?.replace(/\s+/g, '_') || 'Document'}_${new Date().toISOString().split('T')[0]}.pdf`;
+      const filename = getFilename();
       const fileUri = `${FileSystem.cacheDirectory}${filename}`;
       
+      // Write to cache directory for sharing
       await FileSystem.writeAsStringAsync(fileUri, pdfBase64, {
         encoding: FileSystem.EncodingType.Base64,
       });
@@ -165,17 +213,20 @@ export default function ScopeDetailScreen() {
         await Sharing.shareAsync(fileUri, {
           mimeType: 'application/pdf',
           dialogTitle: 'Share Scope of Appointment',
+          UTI: 'com.adobe.pdf',
         });
       } else {
-        // Fallback to basic share
+        // Fallback to basic share with message
+        const shareMessage = `Scope of Appointment Document\n\nBeneficiary: ${scope?.typed_name || 'N/A'}\nDocument ID: ${scope?.id?.slice(0, 8).toUpperCase()}\nCreated: ${formatDate(scope?.created_date || '')}`;
+        
         await Share.share({
-          message: `Scope of Appointment for ${lead?.name || 'Client'} - Document ID: ${scope?.id.slice(0, 8).toUpperCase()}`,
+          message: shareMessage,
           title: 'Scope of Appointment',
         });
       }
     } catch (error: any) {
       console.error('Share error:', error);
-      if (!error.message?.includes('canceled')) {
+      if (!error.message?.includes('canceled') && !error.message?.includes('cancelled')) {
         Alert.alert('Share Error', 'Unable to share document. Please try again.');
       }
     } finally {
@@ -183,7 +234,30 @@ export default function ScopeDetailScreen() {
     }
   };
 
+  const handleEmailDocument = async () => {
+    const pdfBase64 = await getPdfData();
+    if (!pdfBase64) {
+      Alert.alert('Error', 'Could not generate PDF');
+      return;
+    }
+
+    const filename = getFilename();
+    const fileUri = `${FileSystem.cacheDirectory}${filename}`;
+    
+    await FileSystem.writeAsStringAsync(fileUri, pdfBase64, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+
+    // Use share to open email with attachment
+    await Sharing.shareAsync(fileUri, {
+      mimeType: 'application/pdf',
+      dialogTitle: 'Send via Email',
+      UTI: 'com.adobe.pdf',
+    });
+  };
+
   const formatDate = (dateString: string) => {
+    if (!dateString) return 'N/A';
     const date = new Date(dateString);
     return date.toLocaleDateString('en-US', {
       year: 'numeric',
@@ -193,6 +267,49 @@ export default function ScopeDetailScreen() {
       minute: '2-digit',
     });
   };
+
+  // PDF Preview Modal
+  const renderPdfPreview = () => (
+    <Modal
+      visible={showPdfPreview}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={() => setShowPdfPreview(false)}
+    >
+      <View style={[styles.previewContainer, { paddingTop: insets.top }]}>
+        <View style={styles.previewHeader}>
+          <TouchableOpacity onPress={() => setShowPdfPreview(false)}>
+            <Text style={styles.previewCloseText}>Close</Text>
+          </TouchableOpacity>
+          <Text style={styles.previewTitle}>PDF Preview</Text>
+          <TouchableOpacity onPress={handlePrint}>
+            <Ionicons name="print" size={24} color="#3B82F6" />
+          </TouchableOpacity>
+        </View>
+        
+        {pdfDataUri && (
+          <WebView
+            source={{ uri: pdfDataUri }}
+            style={styles.webview}
+            originWhitelist={['*']}
+            javaScriptEnabled={true}
+            scalesPageToFit={true}
+          />
+        )}
+        
+        <View style={styles.previewActions}>
+          <TouchableOpacity style={styles.previewActionBtn} onPress={handleSaveToFiles}>
+            <Ionicons name="download" size={22} color="#FFFFFF" />
+            <Text style={styles.previewActionText}>Save to Files</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.previewActionBtn} onPress={handleShare}>
+            <Ionicons name="share-social" size={22} color="#FFFFFF" />
+            <Text style={styles.previewActionText}>Share</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
 
   if (loading) {
     return (
@@ -223,9 +340,12 @@ export default function ScopeDetailScreen() {
     { key: 'dental_vision', label: 'Dental, Vision, and Hearing Products' },
   ];
   const selectedProducts = products.filter(p => formFields[p.key]);
+  const hasPdf = !!scope.pdf_base64;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
+      {renderPdfPreview()}
+      
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
@@ -250,10 +370,43 @@ export default function ScopeDetailScreen() {
           </View>
         </View>
 
-        {/* Quick Actions */}
+        {/* PDF Status */}
+        <View style={styles.pdfStatusCard}>
+          <View style={styles.pdfStatusLeft}>
+            <Ionicons 
+              name={hasPdf ? "document-attach" : "cloud-download"} 
+              size={24} 
+              color={hasPdf ? "#22C55E" : "#F59E0B"} 
+            />
+            <View style={styles.pdfStatusText}>
+              <Text style={styles.pdfStatusTitle}>
+                {hasPdf ? 'PDF Ready' : 'PDF Available'}
+              </Text>
+              <Text style={styles.pdfStatusSubtitle}>
+                {hasPdf ? 'Stored in lead record' : 'Tap to generate'}
+              </Text>
+            </View>
+          </View>
+          <TouchableOpacity 
+            style={styles.viewPdfButton}
+            onPress={handlePreview}
+            disabled={actionLoading === 'preview'}
+          >
+            {actionLoading === 'preview' || pdfLoading ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <>
+                <Ionicons name="eye" size={18} color="#FFFFFF" />
+                <Text style={styles.viewPdfText}>View PDF</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
+
+        {/* Document Actions */}
         <View style={styles.actionsContainer}>
           <Text style={styles.actionsTitle}>Document Actions</Text>
-          <View style={styles.actionsRow}>
+          <View style={styles.actionsGrid}>
             <TouchableOpacity 
               style={styles.actionButton} 
               onPress={handlePrint}
@@ -269,15 +422,15 @@ export default function ScopeDetailScreen() {
             
             <TouchableOpacity 
               style={styles.actionButton} 
-              onPress={handleSave}
+              onPress={handleSaveToFiles}
               disabled={actionLoading !== null}
             >
               {actionLoading === 'save' ? (
                 <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
-                <Ionicons name="download" size={24} color="#FFFFFF" />
+                <Ionicons name="folder-open" size={24} color="#FFFFFF" />
               )}
-              <Text style={styles.actionText}>Save</Text>
+              <Text style={styles.actionText}>Save to Files</Text>
             </TouchableOpacity>
             
             <TouchableOpacity 
@@ -293,6 +446,15 @@ export default function ScopeDetailScreen() {
               <Text style={styles.actionText}>Share</Text>
             </TouchableOpacity>
           </View>
+          
+          {/* Quick email action */}
+          <TouchableOpacity 
+            style={styles.emailButton}
+            onPress={handleEmailDocument}
+          >
+            <Ionicons name="mail" size={20} color="#3B82F6" />
+            <Text style={styles.emailButtonText}>Send via Email</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Beneficiary Info */}
@@ -321,7 +483,7 @@ export default function ScopeDetailScreen() {
           </View>
           <View style={styles.signatureIndicator}>
             <Ionicons name="create" size={16} color="#22C55E" />
-            <Text style={styles.signedIndicatorText}>Signature on file</Text>
+            <Text style={styles.signedIndicatorText}>Digital signature on file</Text>
           </View>
         </View>
 
@@ -348,7 +510,7 @@ export default function ScopeDetailScreen() {
           {scope.agent_signature && (
             <View style={styles.signatureIndicator}>
               <Ionicons name="create" size={16} color="#22C55E" />
-              <Text style={styles.signedIndicatorText}>Signature on file</Text>
+              <Text style={styles.signedIndicatorText}>Digital signature on file</Text>
             </View>
           )}
         </View>
@@ -388,7 +550,7 @@ export default function ScopeDetailScreen() {
                 <Text style={styles.leadInitial}>{lead.name?.charAt(0) || '?'}</Text>
               </View>
               <View>
-                <Text style={styles.leadLinkLabel}>Associated Lead</Text>
+                <Text style={styles.leadLinkLabel}>Stored in Lead Record</Text>
                 <Text style={styles.leadLinkName}>{lead.name}</Text>
               </View>
             </View>
@@ -398,10 +560,10 @@ export default function ScopeDetailScreen() {
 
         {/* Footer Compliance Note */}
         <View style={styles.complianceNote}>
-          <Ionicons name="information-circle" size={18} color="#64748B" />
+          <Ionicons name="shield-checkmark" size={18} color="#22C55E" />
           <Text style={styles.complianceText}>
             This document complies with CMS requirements for Medicare sales appointments. 
-            Retain for a minimum of 10 years.
+            Document ID: {scope.id.slice(0, 8).toUpperCase()}. Retain for a minimum of 10 years.
           </Text>
         </View>
       </ScrollView>
@@ -474,7 +636,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#1E293B',
     borderRadius: 16,
     padding: 16,
-    marginBottom: 16,
+    marginBottom: 12,
     borderWidth: 1,
     borderColor: '#22C55E30',
   },
@@ -506,6 +668,46 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
+  pdfStatusCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#1E293B',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+  },
+  pdfStatusLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  pdfStatusText: {
+    gap: 2,
+  },
+  pdfStatusTitle: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  pdfStatusSubtitle: {
+    color: '#64748B',
+    fontSize: 12,
+  },
+  viewPdfButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#8B5CF6',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+    gap: 6,
+  },
+  viewPdfText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '500',
+  },
   actionsContainer: {
     backgroundColor: '#1E293B',
     borderRadius: 16,
@@ -517,23 +719,39 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginBottom: 12,
   },
-  actionsRow: {
+  actionsGrid: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    justifyContent: 'space-between',
+    gap: 12,
   },
   actionButton: {
+    flex: 1,
     alignItems: 'center',
     backgroundColor: '#8B5CF6',
-    paddingHorizontal: 24,
     paddingVertical: 16,
     borderRadius: 12,
-    minWidth: 90,
   },
   actionText: {
     color: '#FFFFFF',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '500',
     marginTop: 6,
+    textAlign: 'center',
+  },
+  emailButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#334155',
+    borderRadius: 12,
+    paddingVertical: 14,
+    marginTop: 12,
+    gap: 8,
+  },
+  emailButtonText: {
+    color: '#3B82F6',
+    fontSize: 14,
+    fontWeight: '500',
   },
   section: {
     backgroundColor: '#1E293B',
@@ -584,6 +802,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     marginTop: 8,
+    backgroundColor: '#22C55E15',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
   },
   signedIndicatorText: {
     color: '#22C55E',
@@ -644,15 +866,67 @@ const styles = StyleSheet.create({
   complianceNote: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    backgroundColor: '#334155',
+    backgroundColor: '#22C55E10',
     borderRadius: 12,
     padding: 16,
     gap: 10,
+    borderWidth: 1,
+    borderColor: '#22C55E30',
   },
   complianceText: {
     flex: 1,
     color: '#94A3B8',
     fontSize: 12,
     lineHeight: 18,
+  },
+  // PDF Preview Modal Styles
+  previewContainer: {
+    flex: 1,
+    backgroundColor: '#0F172A',
+  },
+  previewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1E293B',
+  },
+  previewCloseText: {
+    color: '#3B82F6',
+    fontSize: 16,
+  },
+  previewTitle: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  webview: {
+    flex: 1,
+    backgroundColor: '#1E293B',
+  },
+  previewActions: {
+    flexDirection: 'row',
+    padding: 16,
+    gap: 12,
+    backgroundColor: '#1E293B',
+    borderTopWidth: 1,
+    borderTopColor: '#334155',
+  },
+  previewActionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#8B5CF6',
+    paddingVertical: 14,
+    borderRadius: 12,
+    gap: 8,
+  },
+  previewActionText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '500',
   },
 });
