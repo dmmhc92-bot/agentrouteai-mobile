@@ -207,7 +207,15 @@ export default function NewScopeScreen() {
     }
 
     setIsSaving(true);
+    
     try {
+      // Log signature data for debugging
+      console.log('=== SAVING SOA ===');
+      console.log('Beneficiary Signature length:', beneficiarySignature?.length || 0);
+      console.log('Beneficiary Signature prefix:', beneficiarySignature?.substring(0, 50) || 'EMPTY');
+      console.log('Agent Signature length:', agentSignature?.length || 0);
+      console.log('Agent Signature prefix:', agentSignature?.substring(0, 50) || 'EMPTY');
+      
       // Build products list for PDF
       const products = [];
       if (formData.medicare_advantage) products.push('Medicare Advantage (Part C)');
@@ -220,7 +228,8 @@ export default function NewScopeScreen() {
       // Add signature timestamps
       const now = new Date().toISOString();
 
-      const scope = await api.createScope({
+      // Prepare request payload
+      const payload = {
         lead_id: leadId!,
         form_fields: {
           ...formData,
@@ -232,33 +241,92 @@ export default function NewScopeScreen() {
         signature: beneficiarySignature,
         agent_typed_name: formData.agent_name.trim(),
         agent_signature: agentSignature,
-      });
+      };
+      
+      console.log('Sending SOA request to backend...');
+      
+      const scope = await api.createScope(payload);
+      
+      console.log('SOA Response received:');
+      console.log('  - ID:', scope.id);
+      console.log('  - Has PDF:', !!scope.pdf_base64);
+      console.log('  - PDF size:', scope.pdf_base64?.length || 0);
+      console.log('  - PDF error:', scope.pdf_error || 'None');
+      console.log('  - Signature stored:', !!scope.signature);
+      console.log('  - Agent signature stored:', !!scope.agent_signature);
+
+      // Validate the save was successful
+      if (!scope.id) {
+        throw new Error('Server did not return a valid document ID');
+      }
 
       // Check if PDF was generated successfully
       if (scope.pdf_error) {
         console.warn('PDF generation issue:', scope.pdf_error);
-        // Still continue - PDF can be regenerated later
         Alert.alert(
-          'Document Saved',
-          'Your Scope of Appointment was saved, but there was an issue generating the PDF. The PDF will be available when you view the document.',
-          [{ text: 'OK' }]
+          'Document Saved with Warning',
+          'Your Scope of Appointment signatures were saved, but PDF generation had an issue. You can regenerate the PDF from the document view.',
+          [{ 
+            text: 'Continue', 
+            onPress: () => {
+              setStep('complete');
+              setTimeout(() => {
+                router.replace(`/scope/${scope.id}`);
+              }, 1000);
+            }
+          }]
         );
-      } else if (!scope.pdf_base64) {
-        console.warn('PDF not generated during save, will be generated on view');
-      } else {
-        console.log('SOA saved successfully with PDF');
+        return;
+      }
+      
+      if (!scope.pdf_base64) {
+        console.warn('PDF not generated, but signatures saved');
+        Alert.alert(
+          'Signatures Saved',
+          'Your signatures were saved successfully. The PDF will be generated when you view the document.',
+          [{ 
+            text: 'View Document', 
+            onPress: () => {
+              setStep('complete');
+              setTimeout(() => {
+                router.replace(`/scope/${scope.id}`);
+              }, 1000);
+            }
+          }]
+        );
+        return;
       }
 
+      // Full success - PDF generated with signatures
+      console.log('✓ SOA saved successfully with PDF containing signatures');
+      
       setStep('complete');
       
       // Navigate to view the completed document
       setTimeout(() => {
         router.replace(`/scope/${scope.id}`);
       }, 1500);
+      
     } catch (error: any) {
-      console.error('Save error:', error);
-      const message = error.response?.data?.detail || 'Failed to save document. Please try again.';
-      Alert.alert('Save Failed', message, [{ text: 'OK' }]);
+      console.error('=== SAVE ERROR ===');
+      console.error('Error type:', error?.name);
+      console.error('Error message:', error?.message);
+      console.error('Response status:', error?.response?.status);
+      console.error('Response data:', JSON.stringify(error?.response?.data, null, 2));
+      
+      let message = 'Failed to save document. Please try again.';
+      
+      if (error.response?.data?.detail) {
+        message = error.response.data.detail;
+      } else if (error.message) {
+        message = error.message;
+      }
+      
+      Alert.alert(
+        'Save Failed', 
+        message,
+        [{ text: 'OK' }]
+      );
     } finally {
       setIsSaving(false);
     }
