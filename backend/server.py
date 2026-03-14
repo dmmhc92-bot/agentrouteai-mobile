@@ -1565,34 +1565,36 @@ async def get_scope(scope_id: str, current_user: dict = Depends(get_current_user
 
 @api_router.get("/soa-template")
 async def get_soa_template():
-    """Get the SOA PDF template as base64 for frontend pdf-lib generation"""
+    """
+    Get the ORIGINAL uploaded SOA form image as base64.
+    This returns the exact uploaded JPEG file - no conversion, no recreation.
+    Frontend will use pdf-lib to embed this exact image as the PDF background.
+    """
     import os
-    template_path = '/app/backend/soa_template.pdf'
-    
-    if not os.path.exists(template_path):
-        # Create the PDF template from the image if it doesn't exist
-        from reportlab.lib.pagesizes import letter
-        from reportlab.pdfgen import canvas as pdfcanvas
-        from reportlab.lib.utils import ImageReader
-        
-        jpg_path = '/app/backend/soa_template.jpg'
-        if os.path.exists(jpg_path):
-            c = pdfcanvas.Canvas(template_path, pagesize=letter)
-            width, height = letter
-            template_img = ImageReader(jpg_path)
-            c.drawImage(template_img, 0, 0, width=width, height=height)
-            c.save()
-            logger.info("[SOA Template] Created PDF template from JPG")
-        else:
-            raise HTTPException(status_code=404, detail="SOA template not found")
-    
-    with open(template_path, 'rb') as f:
-        pdf_bytes = f.read()
-    
     import base64
-    pdf_base64 = base64.b64encode(pdf_bytes).decode()
     
-    return {"template_base64": pdf_base64}
+    # Use the ORIGINAL uploaded form file - DO NOT convert or recreate
+    original_form_path = '/app/backend/soa_user_template.jpg'
+    
+    if not os.path.exists(original_form_path):
+        logger.error("[SOA Template] Original form file not found at: " + original_form_path)
+        raise HTTPException(status_code=404, detail="Original SOA form not found")
+    
+    with open(original_form_path, 'rb') as f:
+        form_bytes = f.read()
+    
+    form_base64 = base64.b64encode(form_bytes).decode()
+    
+    logger.info(f"[SOA Template] Serving ORIGINAL form: {len(form_bytes)} bytes")
+    
+    # Return the original image with metadata
+    return {
+        "form_base64": form_base64,
+        "format": "jpeg",
+        "width": 1167,
+        "height": 1463,
+        "note": "This is the exact uploaded form file - no conversion applied"
+    }
 
 @api_router.get("/scope/lead/{lead_id}")
 async def get_lead_scopes(lead_id: str, current_user: dict = Depends(get_current_user)):
