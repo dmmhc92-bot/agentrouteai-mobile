@@ -2480,7 +2480,7 @@ async def scan_document(request: dict, current_user: dict = Depends(get_current_
         document_type = request.get("document_type", "auto")  # auto, business_card, contact_sheet, handwritten, flyer
         
         if not image_base64:
-            raise HTTPException(status_code=400, detail="No image provided")
+            raise HTTPException(status_code=400, detail="No image provided. Please capture or select an image to scan.")
         
         # Strip data URL prefix if present and detect mime type
         mime_type = "image/jpeg"
@@ -2493,6 +2493,12 @@ async def scan_document(request: dict, current_user: dict = Depends(get_current_
                     mime_type = "image/png"
                 elif "image/webp" in header:
                     mime_type = "image/webp"
+                elif "image/gif" in header:
+                    mime_type = "image/gif"
+        
+        # Validate base64 string
+        if len(image_base64) < 100:
+            raise HTTPException(status_code=400, detail="Image data is too small. Please capture a valid image.")
         
         # Determine file extension
         ext = ".jpg"
@@ -2500,10 +2506,20 @@ async def scan_document(request: dict, current_user: dict = Depends(get_current_
             ext = ".png"
         elif mime_type == "image/webp":
             ext = ".webp"
+        elif mime_type == "image/gif":
+            ext = ".gif"
         
         # Write image to temporary file (Gemini requires file path)
         import base64
-        image_bytes = base64.b64decode(image_base64)
+        try:
+            image_bytes = base64.b64decode(image_base64)
+        except Exception as decode_error:
+            logger.error(f"Base64 decode error: {decode_error}")
+            raise HTTPException(status_code=400, detail="Invalid image format. Please try capturing the image again.")
+        
+        # Validate minimum image size (at least 1KB for a meaningful image)
+        if len(image_bytes) < 1000:
+            raise HTTPException(status_code=400, detail="Image is too small to scan. Please capture a clearer image.")
         
         with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp_file:
             tmp_file.write(image_bytes)
