@@ -94,27 +94,91 @@ export default function ScopeDetailScreen() {
     }
   };
 
-  const getPdfData = async (): Promise<string | null> => {
-    console.log('Getting PDF data...');
+  // Generate PDF using pdf-lib on the frontend (source of truth)
+  const generatePdfLocally = async (): Promise<string | null> => {
+    if (!scope) return null;
     
+    console.log('[ScopeView] Generating PDF locally using pdf-lib...');
+    
+    try {
+      const formData = {
+        beneficiary_name: scope.form_fields?.beneficiary_name || scope.typed_name || '',
+        beneficiary_phone: scope.form_fields?.beneficiary_phone || '',
+        beneficiary_address: scope.form_fields?.beneficiary_address || '',
+        agent_name: scope.form_fields?.agent_name || scope.agent_typed_name || '',
+        agent_phone: scope.form_fields?.agent_phone || '',
+        agent_id_number: scope.form_fields?.agent_id_number || '',
+        agent_license: scope.form_fields?.agent_license || '',
+        appointment_date: scope.form_fields?.appointment_date || '',
+        signature_date: scope.form_fields?.signature_date || '',
+        initial_contact_method: scope.form_fields?.initial_contact_method || '',
+        plans_to_represent: scope.form_fields?.plans_to_represent || '',
+        medicare_advantage: scope.form_fields?.medicare_advantage || false,
+        medicare_supplement: scope.form_fields?.medicare_supplement || false,
+        prescription_drug: scope.form_fields?.prescription_drug || false,
+        dental_vision_hearing: scope.form_fields?.dental_vision_hearing || false,
+        hospital_indemnity: scope.form_fields?.hospital_indemnity || false,
+        other_products: scope.form_fields?.other_products || '',
+        auth_rep_name: scope.form_fields?.auth_rep_name || '',
+        auth_rep_relationship: scope.form_fields?.auth_rep_relationship || '',
+      };
+      
+      const signatures = {
+        beneficiarySignature: scope.signature || null,
+        agentSignature: scope.agent_signature || null,
+        beneficiaryTypedName: scope.typed_name || '',
+        agentTypedName: scope.agent_typed_name || '',
+      };
+      
+      console.log('[ScopeView] Form data prepared');
+      console.log('[ScopeView] Signatures - Beneficiary:', !!signatures.beneficiarySignature, 'Agent:', !!signatures.agentSignature);
+      
+      const pdfBase64 = await generateSOAPdf(formData, signatures);
+      
+      console.log('[ScopeView] PDF generated locally, size:', pdfBase64.length);
+      return pdfBase64;
+      
+    } catch (error: any) {
+      console.error('[ScopeView] Local PDF generation failed:', error.message);
+      return null;
+    }
+  };
+
+  const getPdfData = async (): Promise<string | null> => {
+    console.log('[ScopeView] Getting PDF data...');
+    
+    // First, try to generate PDF locally using pdf-lib (this is the source of truth)
+    setPdfLoading(true);
+    try {
+      const localPdf = await generatePdfLocally();
+      if (localPdf && localPdf.length > 1000) {
+        console.log('[ScopeView] Using locally generated PDF (pdf-lib)');
+        setPdfLoading(false);
+        return localPdf;
+      }
+    } catch (e) {
+      console.warn('[ScopeView] Local generation failed, trying backend');
+    }
+    
+    // Fallback to cached PDF from scope
     if (scope?.pdf_base64) {
-      console.log('Using cached PDF, size:', scope.pdf_base64.length);
+      console.log('[ScopeView] Using cached backend PDF, size:', scope.pdf_base64.length);
+      setPdfLoading(false);
       return scope.pdf_base64;
     }
     
-    setPdfLoading(true);
+    // Last resort: Fetch from backend
     try {
-      console.log('Fetching PDF from server...');
+      console.log('[ScopeView] Fetching PDF from server...');
       const pdfResponse = await api.getScopePdf(id!);
       if (pdfResponse.pdf_base64) {
-        console.log('PDF received, size:', pdfResponse.pdf_base64.length);
-        // Update local state with the PDF
+        console.log('[ScopeView] PDF received from backend, size:', pdfResponse.pdf_base64.length);
         setScope(prev => prev ? { ...prev, pdf_base64: pdfResponse.pdf_base64 } : null);
         return pdfResponse.pdf_base64;
       }
-      console.warn('No PDF in response');
+      console.warn('[ScopeView] No PDF in response');
     } catch (error) {
-      console.error('Error getting PDF:', error);
+      console.error('[ScopeView] Error getting PDF:', error);
       Alert.alert('PDF Error', 'Could not generate or retrieve the PDF document.');
     } finally {
       setPdfLoading(false);
