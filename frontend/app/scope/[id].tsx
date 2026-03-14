@@ -201,6 +201,22 @@ export default function ScopeDetailScreen() {
     }
   };
 
+  const logDelivery = async (method: string, contact?: string, notes?: string) => {
+    try {
+      await api.logScopeDelivery(id!, {
+        delivery_method: method,
+        recipient_contact: contact,
+        notes: notes,
+      });
+      // Refresh scope to get updated delivery history
+      const updatedScope = await api.getScope(id!);
+      setScope(updatedScope);
+    } catch (error) {
+      console.error('Error logging delivery:', error);
+      // Don't show error to user - this is a background operation
+    }
+  };
+
   const handleShare = async () => {
     setActionLoading('share');
     try {
@@ -225,6 +241,8 @@ export default function ScopeDetailScreen() {
           dialogTitle: 'Share Scope of Appointment',
           UTI: 'com.adobe.pdf',
         });
+        // Log delivery after successful share
+        await logDelivery('share', undefined, 'Shared via device share sheet');
       } else {
         // Fallback to basic share with message
         const shareMessage = `Scope of Appointment Document\n\nBeneficiary: ${scope?.typed_name || 'N/A'}\nDocument ID: ${scope?.id?.slice(0, 8).toUpperCase()}\nCreated: ${formatDate(scope?.created_date || '')}`;
@@ -233,6 +251,7 @@ export default function ScopeDetailScreen() {
           message: shareMessage,
           title: 'Scope of Appointment',
         });
+        await logDelivery('share', undefined, 'Shared via text message');
       }
     } catch (error: any) {
       console.error('Share error:', error);
@@ -264,6 +283,10 @@ export default function ScopeDetailScreen() {
       dialogTitle: 'Send via Email',
       UTI: 'com.adobe.pdf',
     });
+    
+    // Log delivery after user opens email dialog
+    const leadEmail = lead?.email || scope?.form_fields?.beneficiary_email;
+    await logDelivery('email', leadEmail, 'Sent via email');
   };
 
   const formatDate = (dateString: string) => {
