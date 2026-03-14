@@ -1461,32 +1461,68 @@ async def create_scope(scope_data: ScopeCreate, current_user: dict = Depends(get
     
     # Get lead and agent info for PDF generation
     lead = await db.leads.find_one({"id": scope_data.lead_id})
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    
     agent = await db.users.find_one({"id": current_user["id"]})
+    
+    # Validate signatures exist
+    if not scope_data.signature or len(scope_data.signature) < 100:
+        logger.warning(f"Missing or invalid beneficiary signature: length={len(scope_data.signature or '')}")
+        raise HTTPException(status_code=400, detail="Valid beneficiary signature is required")
+    
+    if not scope_data.agent_signature or len(scope_data.agent_signature) < 100:
+        logger.warning(f"Missing or invalid agent signature: length={len(scope_data.agent_signature or '')}")
+        raise HTTPException(status_code=400, detail="Valid agent signature is required")
+    
+    logger.info(f"Creating SOA for lead {scope_data.lead_id} - Beneficiary sig length: {len(scope_data.signature)}, Agent sig length: {len(scope_data.agent_signature)}")
+    
+    # Extract signature timestamps from form_fields if available
+    form_fields = scope_data.form_fields or {}
+    beneficiary_signed_at = form_fields.get('beneficiary_signed_at') or datetime.utcnow().isoformat()
+    agent_signed_at = form_fields.get('agent_signed_at') or datetime.utcnow().isoformat()
     
     scope_doc = {
         "id": scope_id,
         "lead_id": scope_data.lead_id,
-        "form_fields": scope_data.form_fields,
+        "form_fields": form_fields,
         "typed_name": scope_data.typed_name,
-        "signature": scope_data.signature or "",
-        "agent_typed_name": scope_data.agent_typed_name or agent.get("name", "") if agent else "",
-        "agent_signature": scope_data.agent_signature or "",
+        "signature": scope_data.signature,
+        "agent_typed_name": scope_data.agent_typed_name or (agent.get("name", "") if agent else ""),
+        "agent_signature": scope_data.agent_signature,
+        "beneficiary_signed_at": beneficiary_signed_at,
+        "agent_signed_at": agent_signed_at,
         "created_date": datetime.utcnow(),
         "created_by_user": current_user["id"],
+        "status": "signed",  # Mark as signed since we have both signatures
         "pdf_base64": None  # Will be generated
     }
     
     # Generate PDF and store it
+    pdf_error = None
     try:
+        logger.info(f"Generating PDF for SOA {scope_id}")
         pdf_data = await generate_scope_pdf(scope_doc, lead, agent)
         scope_doc["pdf_base64"] = pdf_data["pdf_base64"]
+        logger.info(f"PDF generated successfully for SOA {scope_id}, size: {len(pdf_data['pdf_base64'])} chars")
     except Exception as e:
-        logger.error(f"Failed to generate PDF: {e}")
+        pdf_error = str(e)
+        logger.error(f"Failed to generate PDF for SOA {scope_id}: {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
     
+    # Save the document even if PDF fails (signatures are stored)
     await db.scope_forms.insert_one(scope_doc)
     await log_activity(current_user["id"], "scope_created", "Created Scope of Appointment", scope_data.lead_id)
     
-    return {
+    # Update lead stage to SOA_COMPLETED if PDF was generated
+    if scope_doc.get("pdf_base64"):
+        await db.leads.update_one(
+            {"id": scope_data.lead_id},
+            {"$set": {"stage": "soa_completed", "soa_status": "signed"}}
+        )
+    
+    response = {
         "id": scope_doc["id"],
         "lead_id": scope_doc["lead_id"],
         "form_fields": scope_doc["form_fields"],
@@ -1494,10 +1530,19 @@ async def create_scope(scope_data: ScopeCreate, current_user: dict = Depends(get
         "signature": scope_doc["signature"],
         "agent_typed_name": scope_doc["agent_typed_name"],
         "agent_signature": scope_doc["agent_signature"],
+        "beneficiary_signed_at": scope_doc["beneficiary_signed_at"],
+        "agent_signed_at": scope_doc["agent_signed_at"],
         "pdf_base64": scope_doc.get("pdf_base64"),
         "created_date": scope_doc["created_date"],
-        "created_by_user": scope_doc["created_by_user"]
+        "created_by_user": scope_doc["created_by_user"],
+        "status": scope_doc["status"]
     }
+    
+    # Include pdf_error in response if PDF generation failed
+    if pdf_error:
+        response["pdf_error"] = f"PDF generation failed: {pdf_error}. Signature was saved - PDF can be regenerated."
+    
+    return response
 
 @api_router.get("/scope/{scope_id}")
 async def get_scope(scope_id: str, current_user: dict = Depends(get_current_user)):
