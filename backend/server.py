@@ -3675,6 +3675,262 @@ async def get_team_planner_summary(current_user: dict = Depends(require_manager_
         "team_summary": team_summary
     }
 
+# ==================== TEAM TREE VIEW ROUTES ====================
+
+async def build_user_node(user: dict) -> dict:
+    """Build a user node with stats for the tree view"""
+    user_id = user["id"]
+    
+    # Count stats
+    lead_count = await db.leads.count_documents({
+        "$or": [{"created_by_user": user_id}, {"assigned_to_user": user_id}]
+    })
+    
+    # Get production total
+    production_records = await db.production.find({"created_by_user": user_id}).to_list(1000)
+    production_total = sum(p.get("premium", 0) for p in production_records)
+    
+    # Get commission total
+    commission_records = await db.commissions.find({"created_by_user": user_id}).to_list(1000)
+    commission_total = sum(c.get("agent_commission", 0) for c in commission_records)
+    
+    # Count team members (for managers)
+    team_count = await db.users.count_documents({"manager_id": user_id, "deleted_at": None})
+    
+    # Calculate activity status
+    last_login = user.get("last_login")
+    activity_status = "inactive"
+    activity_color = "#64748B"
+    if last_login:
+        hours_since = (datetime.utcnow() - last_login).total_seconds() / 3600
+        if hours_since < 1:
+            activity_status = "online"
+            activity_color = "#22C55E"
+        elif hours_since < 24:
+            activity_status = "today"
+            activity_color = "#3B82F6"
+        elif hours_since < 72:
+            activity_status = "recent"
+            activity_color = "#F59E0B"
+        else:
+            activity_status = "inactive"
+            activity_color = "#EF4444"
+    
+    return {
+        "id": user["id"],
+        "name": user.get("name", "Unknown"),
+        "email": user.get("email", ""),
+        "role": user.get("role", "agent"),
+        "phone": user.get("phone"),
+        "territory": user.get("territory"),
+        "lead_count": lead_count,
+        "production_total": production_total,
+        "commission_total": commission_total,
+        "team_count": team_count,
+        "last_login": user.get("last_login"),
+        "activity_status": activity_status,
+        "activity_color": activity_color,
+        "commission_rate": user.get("commission_rate", 0.6),
+        "children": []
+    }
+
+async def build_tree_branch(user_id: str, depth: int = 0, max_depth: int = 5) -> dict:
+    """Recursively build a tree branch for a user and their downline"""
+    if depth > max_depth:
+        return None
+    
+    user = await db.users.find_one({"id": user_id, "deleted_at": None})
+    if not user:
+        return None
+    
+    node = await build_user_node(user)
+    
+    # Get direct reports
+    downline = await db.users.find({"manager_id": user_id, "deleted_at": None}).to_list(100)
+    
+    for subordinate in downline:
+        child_node = await build_tree_branch(subordinate["id"], depth + 1, max_depth)
+        if child_node:
+            node["children"].append(child_node)
+    
+    return node
+
+@api_router.get("/team/tree")
+async def get_team_tree(current_user: dict = Depends(get_current_user)):
+    """
+    Get the team hierarchy tree.
+    - Admin sees the full organization tree
+    - Manager sees their own branch (themselves + downline)
+    - Agent cannot access (403)
+    """
+    user_role = current_user.get("role", "agent")
+    
+    if user_role == "agent":
+        raise HTTPException(status_code=403, detail="Agents cannot access the team tree view")
+    
+    if user_role == "admin":
+        # Build full tree starting from admin/managers with no manager
+        # Get all top-level users (admins and managers without a manager)
+        top_level_users = await db.users.find({
+            "$or": [
+                {"role": "admin", "deleted_at": None},
+                {"role": "manager", "manager_id": None, "deleted_at": None},
+                {"role": "manager", "manager_id": {"$exists": False}, "deleted_at": None}
+            ]
+        }).to_list(100)
+        
+        tree = []
+        processed_ids = set()
+        
+        for user in top_level_users:
+            if user["id"] not in processed_ids:
+                branch = await build_tree_branch(user["id"])
+                if branch:
+                    tree.append(branch)
+                    processed_ids.add(user["id"])
+        
+        # Also get any managers not in tree yet (orphaned)
+        all_managers = await db.users.find({"role": "manager", "deleted_at": None}).to_list(100)
+        for manager in all_managers:
+            if manager["id"] not in processed_ids:
+                branch = await build_tree_branch(manager["id"])
+                if branch:
+                    tree.append(branch)
+                    processed_ids.add(manager["id"])
+        
+        # Get any agents not assigned to a manager
+        unassigned_agents = await db.users.find({
+            "role": "agent",
+            "deleted_at": None,
+            "$or": [
+                {"manager_id": None},
+                {"manager_id": {"$exists": False}}
+            ]
+        }).to_list(100)
+        
+        unassigned_branch = {
+            "id": "unassigned",
+            "name": "Unassigned Agents",
+            "email": "",
+            "role": "group",
+            "lead_count": 0,
+            "production_total": 0,
+            "commission_total": 0,
+            "team_count": len(unassigned_agents),
+            "activity_status": "group",
+            "activity_color": "#64748B",
+            "children": []
+        }
+        
+        for agent in unassigned_agents:
+            node = await build_user_node(agent)
+            unassigned_branch["children"].append(node)
+            unassigned_branch["lead_count"] += node["lead_count"]
+            unassigned_branch["production_total"] += node["production_total"]
+        
+        if unassigned_branch["children"]:
+            tree.append(unassigned_branch)
+        
+        # Calculate totals
+        total_users = await db.users.count_documents({"deleted_at": None})
+        total_agents = await db.users.count_documents({"role": "agent", "deleted_at": None})
+        total_managers = await db.users.count_documents({"role": "manager", "deleted_at": None})
+        total_admins = await db.users.count_documents({"role": "admin", "deleted_at": None})
+        
+        return {
+            "tree": tree,
+            "summary": {
+                "total_users": total_users,
+                "total_agents": total_agents,
+                "total_managers": total_managers,
+                "total_admins": total_admins
+            },
+            "viewer_role": user_role,
+            "viewer_id": current_user["id"]
+        }
+    
+    else:  # Manager
+        # Build tree starting from the manager themselves
+        branch = await build_tree_branch(current_user["id"])
+        
+        if not branch:
+            raise HTTPException(status_code=404, detail="User tree not found")
+        
+        # Count team stats
+        total_in_branch = 1  # Include self
+        
+        def count_children(node):
+            count = len(node.get("children", []))
+            for child in node.get("children", []):
+                count += count_children(child)
+            return count
+        
+        total_in_branch += count_children(branch)
+        
+        return {
+            "tree": [branch],
+            "summary": {
+                "total_users": total_in_branch,
+                "total_agents": await db.users.count_documents({"manager_id": current_user["id"], "role": "agent", "deleted_at": None}),
+                "total_managers": 0,
+                "total_admins": 0
+            },
+            "viewer_role": user_role,
+            "viewer_id": current_user["id"]
+        }
+
+@api_router.get("/team/tree/{user_id}")
+async def get_user_tree_node(user_id: str, current_user: dict = Depends(require_manager_or_admin)):
+    """Get a specific user's tree node with details"""
+    user = await db.users.find_one({"id": user_id, "deleted_at": None})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Check access
+    user_role = current_user.get("role", "agent")
+    if user_role != "admin":
+        # Manager can only view themselves or their downline
+        if user_id != current_user["id"]:
+            is_downline = await db.users.find_one({"id": user_id, "manager_id": current_user["id"]})
+            if not is_downline:
+                raise HTTPException(status_code=403, detail="Access denied")
+    
+    node = await build_user_node(user)
+    
+    # Get additional details
+    # Recent activity
+    activities = await db.activity_logs.find({"user_id": user_id}).sort("created_at", -1).limit(10).to_list(10)
+    recent_activity = []
+    for act in activities:
+        if "_id" in act:
+            del act["_id"]
+        recent_activity.append({
+            "action": act.get("action_type"),
+            "description": act.get("description"),
+            "created_at": act.get("created_at")
+        })
+    
+    # Pipeline summary
+    leads = await db.leads.find({
+        "$or": [{"created_by_user": user_id}, {"assigned_to_user": user_id}]
+    }).to_list(500)
+    
+    pipeline_summary = {}
+    for lead in leads:
+        stage = lead.get("stage", "new_lead")
+        pipeline_summary[stage] = pipeline_summary.get(stage, 0) + 1
+    
+    node["recent_activity"] = recent_activity
+    node["pipeline_summary"] = pipeline_summary
+    node["manager_id"] = user.get("manager_id")
+    
+    # Get manager name if exists
+    if user.get("manager_id"):
+        manager = await db.users.find_one({"id": user["manager_id"]}, {"name": 1})
+        node["manager_name"] = manager.get("name") if manager else None
+    
+    return node
+
 # ==================== SUBSCRIPTION ROUTES ====================
 
 @api_router.get("/subscription/status")
