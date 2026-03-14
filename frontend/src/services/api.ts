@@ -392,6 +392,97 @@ class ApiService {
     const response = await apiClient.get(`/team/leaderboard?period=${period}`);
     return response.data;
   }
+
+  // Territory Management
+  async getTerritories() {
+    const response = await apiClient.get('/territories');
+    return response.data;
+  }
+
+  async getTerritory(territoryId: string) {
+    const response = await apiClient.get(`/territories/${territoryId}`);
+    return response.data;
+  }
+
+  async createTerritory(data: {
+    name: string;
+    description?: string;
+    geographic_type: string;
+    zip_codes?: string[];
+    cities?: string[];
+    counties?: string[];
+    states?: string[];
+    custom_areas?: string[];
+    assigned_agents?: string[];
+  }) {
+    const response = await apiClient.post('/territories', data);
+    return response.data;
+  }
+
+  async updateTerritory(territoryId: string, data: any) {
+    const response = await apiClient.put(`/territories/${territoryId}`, data);
+    return response.data;
+  }
+
+  async deleteTerritory(territoryId: string) {
+    const response = await apiClient.delete(`/territories/${territoryId}`);
+    return response.data;
+  }
+
+  // Lead Distribution
+  async getUnassignedLeads() {
+    const response = await apiClient.get('/lead-distribution/unassigned');
+    return response.data;
+  }
+
+  async getLeadAssignments() {
+    const response = await apiClient.get('/lead-distribution/assignments');
+    return response.data;
+  }
+
+  async assignLead(leadId: string, agentId: string, notes?: string) {
+    const response = await apiClient.post('/lead-distribution/assign', {
+      lead_id: leadId,
+      agent_id: agentId,
+      notes,
+    });
+    return response.data;
+  }
+
+  async bulkAssignLeads(leadIds: string[], agentId: string) {
+    const response = await apiClient.post('/lead-distribution/bulk-assign', {
+      lead_ids: leadIds,
+      agent_id: agentId,
+    });
+    return response.data;
+  }
+
+  async autoDistributeLeads(leadIds: string[], agentIds: string[], method: string = 'round_robin') {
+    const response = await apiClient.post('/lead-distribution/auto-distribute', {
+      lead_ids: leadIds,
+      agent_ids: agentIds,
+      method,
+    });
+    return response.data;
+  }
+
+  async bulkUploadLeads(leads: any[], autoAssign: boolean = false, territoryBased: boolean = false) {
+    const response = await apiClient.post('/lead-distribution/bulk-upload', {
+      leads,
+      auto_assign: autoAssign,
+      territory_based: territoryBased,
+    });
+    return response.data;
+  }
+
+  async reassignLead(leadId: string, newAgentId: string, reason?: string) {
+    const response = await apiClient.post('/lead-distribution/reassign', {
+      lead_id: leadId,
+      new_agent_id: newAgentId,
+      reason,
+    });
+    return response.data;
+  }
 }
 
 export const api = new ApiService();
