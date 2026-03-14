@@ -102,12 +102,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const signIn = async (email: string, password: string) => {
+  const signIn = async (email: string, password: string): Promise<User> => {
     const response = await api.login(email, password);
     await storage.setItem('auth_token', response.access_token);
     setToken(response.access_token);
     api.setAuthToken(response.access_token);
     setUser(response.user);
+    return response.user;
   };
 
   const signUp = async (name: string, email: string, password: string, role?: string, managerId?: string) => {
