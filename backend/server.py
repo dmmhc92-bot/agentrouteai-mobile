@@ -2050,28 +2050,31 @@ async def generate_scope_pdf(scope: dict, lead: dict, agent: dict) -> dict:
         signature_drawn = False
         if signature_data and len(signature_data) > 100:  # Basic validation
             try:
-                # Check for SVG (we can't render SVG directly in ReportLab)
-                if signature_data.startswith("data:") and "svg" in signature_data[:50].lower():
-                    logger.warning("SVG signature detected, falling back to typed name")
-                else:
-                    # Process the signature image
-                    sig_buffer = process_signature_image(signature_data)
-                    sig_image = ImageReader(sig_buffer)
-                    
-                    # Draw the image
-                    p.drawImage(
-                        sig_image, 
-                        50, 
-                        y_pos - sig_box_height + 5, 
-                        width=sig_box_width - 10, 
-                        height=sig_box_height - 10, 
-                        preserveAspectRatio=True, 
-                        mask=None  # No mask needed since we converted to RGB
-                    )
-                    signature_drawn = True
-                    logger.info(f"Successfully drew signature image for {label}")
+                # Process the signature image (handles both PNG and SVG)
+                sig_buffer = process_signature_image(signature_data)
+                sig_image = ImageReader(sig_buffer)
+                
+                # Draw the image
+                p.drawImage(
+                    sig_image, 
+                    50, 
+                    y_pos - sig_box_height + 5, 
+                    width=sig_box_width - 10, 
+                    height=sig_box_height - 10, 
+                    preserveAspectRatio=True, 
+                    mask=None  # No mask needed since we converted to RGB
+                )
+                signature_drawn = True
+                logger.info(f"Successfully drew signature image for {label}")
             except Exception as e:
                 logger.error(f"Error drawing signature for {label}: {type(e).__name__}: {e}")
+        
+        # Fallback to typed name if signature wasn't drawn
+        if not signature_drawn:
+            p.setFont("Helvetica-Oblique", 14)
+            p.setFillColor(dark_gray)
+            display_name = typed_name or "Signature"
+            p.drawString(55, y_pos - 30, display_name)
         
         # Fallback to typed name if signature wasn't drawn
         if not signature_drawn:
