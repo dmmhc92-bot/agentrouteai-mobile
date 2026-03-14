@@ -26,6 +26,21 @@ export default function SignInScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
+  const getRouteForRole = (role: string): string => {
+    switch (role) {
+      case 'admin':
+        // Admin goes to Command Center
+        return '/command-center';
+      case 'manager':
+        // Manager goes to Command Center (shows their downline)
+        return '/command-center';
+      case 'agent':
+      default:
+        // Agent goes to standard dashboard
+        return '/(tabs)/dashboard';
+    }
+  };
+
   const handleSignIn = async () => {
     if (!email || !password) {
       Alert.alert('Error', 'Please enter email and password');
@@ -35,13 +50,43 @@ export default function SignInScreen() {
     setIsLoading(true);
     try {
       await signIn(email, password);
-      router.replace('/(tabs)/dashboard');
+      
+      // Get the user data from the API response (stored in context)
+      // The signIn function already sets the user in context
+      // We need to access the user role from the response
+      const response = await fetch(
+        `${process.env.EXPO_PUBLIC_BACKEND_URL || ''}/api/auth/me`,
+        {
+          headers: {
+            'Authorization': `Bearer ${await getStoredToken()}`,
+          },
+        }
+      );
+      
+      if (response.ok) {
+        const userData = await response.json();
+        const route = getRouteForRole(userData.role);
+        router.replace(route as any);
+      } else {
+        // Fallback to agent dashboard
+        router.replace('/(tabs)/dashboard');
+      }
     } catch (error: any) {
       const message = error.response?.data?.detail || 'Invalid email or password';
       Alert.alert('Sign In Failed', message);
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // Helper to get stored token
+  const getStoredToken = async (): Promise<string> => {
+    if (Platform.OS === 'web') {
+      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+      return await AsyncStorage.getItem('auth_token') || '';
+    }
+    const SecureStore = require('expo-secure-store');
+    return await SecureStore.getItemAsync('auth_token') || '';
   };
 
   return (
