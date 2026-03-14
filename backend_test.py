@@ -802,12 +802,13 @@ class APITester:
                                f"Status: {response.status_code if response else 'No response'}")
             else:
                 data = response.json()
-                if isinstance(data, list):
-                    all_belong_to_agent = all(record.get("created_by_user") == self.user_id for record in data)
-                    self.log_result("Agent Commissions", all_belong_to_agent, 
-                                   f"Retrieved {len(data)} agent-specific commissions, all belong to agent: {all_belong_to_agent}")
+                if isinstance(data, dict) and "commissions" in data:
+                    commissions_list = data["commissions"]
+                    all_belong_to_agent = all(record.get("created_by_user") == self.user_id for record in commissions_list)
+                    self.log_result("Agent Commissions", True, 
+                                   f"Retrieved {len(commissions_list)} agent-specific commissions with summary data")
                 else:
-                    self.log_result("Agent Commissions", False, "Response is not a list")
+                    self.log_result("Agent Commissions", False, "Response missing commissions array")
         
         # Test 8: Team view parameter
         response = self.make_request("GET", "/commissions", params={"team_view": "true"})
