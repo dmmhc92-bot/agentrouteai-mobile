@@ -1594,6 +1594,64 @@ async def get_scope_pdf(scope_id: str, current_user: dict = Depends(get_current_
     
     return pdf_data
 
+# ==================== SOA DELIVERY LOGGING ====================
+
+@api_router.post("/scope/{scope_id}/log-delivery")
+async def log_scope_delivery(scope_id: str, delivery_data: ScopeDeliveryLog, current_user: dict = Depends(get_current_user)):
+    """Log when an SOA document is shared/sent to a client"""
+    scope = await db.scope_forms.find_one({"id": scope_id})
+    if not scope:
+        raise HTTPException(status_code=404, detail="Scope not found")
+    
+    # Create delivery log entry
+    delivery_entry = {
+        "id": str(uuid.uuid4()),
+        "scope_id": scope_id,
+        "lead_id": scope.get("lead_id"),
+        "delivery_method": delivery_data.delivery_method,
+        "recipient_contact": delivery_data.recipient_contact,
+        "notes": delivery_data.notes,
+        "delivered_at": datetime.utcnow(),
+        "delivered_by_user": current_user["id"]
+    }
+    
+    # Update scope document with delivery history
+    await db.scope_forms.update_one(
+        {"id": scope_id},
+        {"$push": {"delivery_history": delivery_entry}}
+    )
+    
+    # Log activity
+    await log_activity(
+        current_user["id"],
+        "scope_delivered",
+        f"SOA sent via {delivery_data.delivery_method}",
+        scope.get("lead_id")
+    )
+    
+    return ScopeDeliveryResponse(
+        id=delivery_entry["id"],
+        scope_id=scope_id,
+        lead_id=scope.get("lead_id", ""),
+        delivery_method=delivery_data.delivery_method,
+        recipient_contact=delivery_data.recipient_contact,
+        notes=delivery_data.notes,
+        delivered_at=delivery_entry["delivered_at"],
+        delivered_by_user=current_user["id"]
+    )
+
+@api_router.get("/scope/{scope_id}/delivery-history")
+async def get_scope_delivery_history(scope_id: str, current_user: dict = Depends(get_current_user)):
+    """Get delivery history for an SOA document"""
+    scope = await db.scope_forms.find_one({"id": scope_id})
+    if not scope:
+        raise HTTPException(status_code=404, detail="Scope not found")
+    
+    return {
+        "scope_id": scope_id,
+        "delivery_history": scope.get("delivery_history", [])
+    }
+
 # ==================== AI ASSISTANT ROUTES ====================
 
 @api_router.post("/ai/chat")
