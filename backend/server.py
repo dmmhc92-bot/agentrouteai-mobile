@@ -1757,14 +1757,30 @@ async def generate_stamped_pdf(scope_id: str, current_user: dict = Depends(get_c
             return False
         
         try:
-            # Extract base64 data
-            if ',' in sig_data:
-                sig_base64 = sig_data.split(',')[1]
-            else:
-                sig_base64 = sig_data
+            logger.info(f"[PDF Gen] Processing {label} signature ({len(sig_data)} chars)")
             
-            sig_bytes = base64.b64decode(sig_base64)
-            sig_image = Image.open(BytesIO(sig_bytes))
+            # Check if it's SVG format
+            if sig_data.strip().startswith('<svg') or sig_data.strip().startswith('<?xml'):
+                logger.info(f"[PDF Gen] {label} signature is SVG format - creating PNG from it")
+                # Convert SVG to PNG using cairosvg if available, otherwise create simple fallback
+                try:
+                    import cairosvg
+                    png_bytes = cairosvg.svg2png(bytestring=sig_data.encode(), output_width=int(width*2), output_height=int(height*2))
+                    sig_image = Image.open(BytesIO(png_bytes))
+                except ImportError:
+                    logger.warning(f"[PDF Gen] cairosvg not available - creating transparent placeholder")
+                    # Create a simple transparent image as fallback
+                    sig_image = Image.new('RGBA', (int(width*2), int(height*2)), (0, 0, 0, 0))
+            else:
+                # Regular base64 image (PNG or JPEG)
+                # Extract base64 data
+                if ',' in sig_data:
+                    sig_base64 = sig_data.split(',')[1]
+                else:
+                    sig_base64 = sig_data
+                
+                sig_bytes = base64.b64decode(sig_base64)
+                sig_image = Image.open(BytesIO(sig_bytes))
             
             # Convert to RGBA for transparency
             if sig_image.mode != 'RGBA':
@@ -1785,6 +1801,8 @@ async def generate_stamped_pdf(scope_id: str, current_user: dict = Depends(get_c
             
         except Exception as e:
             logger.error(f"[PDF Gen] Failed to embed {label} signature: {e}")
+            import traceback
+            logger.error(f"[PDF Gen] Traceback: {traceback.format_exc()}")
             return False
     
     embed_signature(beneficiary_signature, ben_sig_x, ben_sig_y, ben_sig_width, ben_sig_height, "Beneficiary")
