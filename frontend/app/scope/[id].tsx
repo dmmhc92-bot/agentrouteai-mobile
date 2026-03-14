@@ -322,6 +322,13 @@ export default function ScopeDetailScreen() {
   const handleShare = async () => {
     setActionLoading('share');
     try {
+      // On web, open in new tab and let user share from there
+      if (isWeb) {
+        await openPdfInBrowser();
+        setActionLoading(null);
+        return;
+      }
+      
       const fileUri = await savePdfToTempFile();
       if (!fileUri) {
         Alert.alert('Error', 'Could not generate PDF');
