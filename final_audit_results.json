@@ -1,0 +1,277 @@
+{
+  "audit_date": "2026-03-14T17:25:28.143537",
+  "backend_url": "https://lead-scanner-ocr.preview.emergentagent.com/api",
+  "results": [
+    {
+      "test": "Authentication",
+      "role": "admin",
+      "success": true,
+      "message": "Successfully authenticated as admin@agentroute.com",
+      "severity": "normal",
+      "timestamp": "2026-03-14T17:25:20.660910"
+    },
+    {
+      "test": "Authentication",
+      "role": "manager",
+      "success": true,
+      "message": "Successfully authenticated as manager@agentroute.com",
+      "severity": "normal",
+      "timestamp": "2026-03-14T17:25:21.040068"
+    },
+    {
+      "test": "Authentication",
+      "role": "agent",
+      "success": true,
+      "message": "Successfully authenticated as agent@agentroute.com",
+      "severity": "normal",
+      "timestamp": "2026-03-14T17:25:21.394195"
+    },
+    {
+      "test": "Access to distribution_summary",
+      "role": "admin",
+      "success": true,
+      "message": "Correctly has access",
+      "severity": "normal",
+      "timestamp": "2026-03-14T17:25:21.534252"
+    },
+    {
+      "test": "Access to agent_performance",
+      "role": "admin",
+      "success": true,
+      "message": "Correctly has access",
+      "severity": "normal",
+      "timestamp": "2026-03-14T17:25:21.679860"
+    },
+    {
+      "test": "Access to compliance_dashboard",
+      "role": "admin",
+      "success": true,
+      "message": "Admin correctly has access",
+      "severity": "normal",
+      "timestamp": "2026-03-14T17:25:21.804937"
+    },
+    {
+      "test": "Access to compliance_summary",
+      "role": "admin",
+      "success": true,
+      "message": "Correctly has access",
+      "severity": "normal",
+      "timestamp": "2026-03-14T17:25:21.931913"
+    },
+    {
+      "test": "Access to compliance_records",
+      "role": "admin",
+      "success": true,
+      "message": "Correctly has access",
+      "severity": "normal",
+      "timestamp": "2026-03-14T17:25:22.088893"
+    },
+    {
+      "test": "Access to distribution_summary",
+      "role": "manager",
+      "success": true,
+      "message": "Correctly has access",
+      "severity": "normal",
+      "timestamp": "2026-03-14T17:25:22.224221"
+    },
+    {
+      "test": "Access to agent_performance",
+      "role": "manager",
+      "success": true,
+      "message": "Correctly has access",
+      "severity": "normal",
+      "timestamp": "2026-03-14T17:25:22.385474"
+    },
+    {
+      "test": "Access to compliance_dashboard",
+      "role": "manager",
+      "success": true,
+      "message": "Manager correctly has access",
+      "severity": "normal",
+      "timestamp": "2026-03-14T17:25:22.506172"
+    },
+    {
+      "test": "Access to compliance_summary",
+      "role": "manager",
+      "success": true,
+      "message": "Correctly has access",
+      "severity": "normal",
+      "timestamp": "2026-03-14T17:25:22.636584"
+    },
+    {
+      "test": "Access to compliance_records",
+      "role": "manager",
+      "success": true,
+      "message": "Correctly has access",
+      "severity": "normal",
+      "timestamp": "2026-03-14T17:25:22.781804"
+    },
+    {
+      "test": "Access Control - distribution_summary",
+      "role": "agent",
+      "success": true,
+      "message": "Correctly denied access",
+      "severity": "security",
+      "timestamp": "2026-03-14T17:25:22.923036"
+    },
+    {
+      "test": "Access Control - agent_performance",
+      "role": "agent",
+      "success": true,
+      "message": "Correctly denied access",
+      "severity": "security",
+      "timestamp": "2026-03-14T17:25:23.066581"
+    },
+    {
+      "test": "Access Control - compliance_dashboard",
+      "role": "agent",
+      "success": false,
+      "message": "SECURITY VULNERABILITY: Agent can access compliance dashboard",
+      "severity": "security",
+      "timestamp": "2026-03-14T17:25:23.219686"
+    },
+    {
+      "test": "Access Control - compliance_summary",
+      "role": "agent",
+      "success": true,
+      "message": "Correctly denied access",
+      "severity": "security",
+      "timestamp": "2026-03-14T17:25:23.351531"
+    },
+    {
+      "test": "Access Control - compliance_records",
+      "role": "agent",
+      "success": true,
+      "message": "Correctly denied access",
+      "severity": "security",
+      "timestamp": "2026-03-14T17:25:23.488547"
+    },
+    {
+      "test": "Leads Access",
+      "role": "admin",
+      "success": true,
+      "message": "Retrieved 17 leads",
+      "severity": "normal",
+      "timestamp": "2026-03-14T17:25:23.612527"
+    },
+    {
+      "test": "Lead Creation",
+      "role": "admin",
+      "success": true,
+      "message": "Created lead: 00283a8b-a1ee-4ed2-95ca-9ef03a6c504e",
+      "severity": "normal",
+      "timestamp": "2026-03-14T17:25:24.445833"
+    },
+    {
+      "test": "SOA Creation",
+      "role": "admin",
+      "success": true,
+      "message": "Created SOA: 28a7e3bc-24d5-45cb-b59d-d624e1e2acb8",
+      "severity": "normal",
+      "timestamp": "2026-03-14T17:25:24.580670"
+    },
+    {
+      "test": "SOA PDF Generation",
+      "role": "admin",
+      "success": true,
+      "message": "PDF generated successfully",
+      "severity": "normal",
+      "timestamp": "2026-03-14T17:25:24.704115"
+    },
+    {
+      "test": "Appointments Access",
+      "role": "admin",
+      "success": true,
+      "message": "Retrieved 9 appointments",
+      "severity": "normal",
+      "timestamp": "2026-03-14T17:25:24.833021"
+    },
+    {
+      "test": "Leads Access",
+      "role": "manager",
+      "success": true,
+      "message": "Retrieved 2 leads",
+      "severity": "normal",
+      "timestamp": "2026-03-14T17:25:24.969382"
+    },
+    {
+      "test": "Lead Creation",
+      "role": "manager",
+      "success": true,
+      "message": "Created lead: 0b68eccd-f1f8-4f81-b828-1afc9749abde",
+      "severity": "normal",
+      "timestamp": "2026-03-14T17:25:25.770120"
+    },
+    {
+      "test": "SOA Creation",
+      "role": "manager",
+      "success": true,
+      "message": "Created SOA: f3045e86-8891-421d-a253-95927aa21d60",
+      "severity": "normal",
+      "timestamp": "2026-03-14T17:25:25.926990"
+    },
+    {
+      "test": "SOA PDF Generation",
+      "role": "manager",
+      "success": true,
+      "message": "PDF generated successfully",
+      "severity": "normal",
+      "timestamp": "2026-03-14T17:25:26.054161"
+    },
+    {
+      "test": "Appointments Access",
+      "role": "manager",
+      "success": true,
+      "message": "Retrieved 2 appointments",
+      "severity": "normal",
+      "timestamp": "2026-03-14T17:25:26.229971"
+    },
+    {
+      "test": "Leads Access",
+      "role": "agent",
+      "success": true,
+      "message": "Retrieved 1 leads",
+      "severity": "normal",
+      "timestamp": "2026-03-14T17:25:26.357824"
+    },
+    {
+      "test": "Lead Creation",
+      "role": "agent",
+      "success": true,
+      "message": "Created lead: b099fb82-944b-457a-b773-28e1dfd6117d",
+      "severity": "normal",
+      "timestamp": "2026-03-14T17:25:27.717343"
+    },
+    {
+      "test": "SOA Creation",
+      "role": "agent",
+      "success": true,
+      "message": "Created SOA: 4a86078b-51b0-43e8-878f-80401bd84214",
+      "severity": "normal",
+      "timestamp": "2026-03-14T17:25:27.849092"
+    },
+    {
+      "test": "SOA PDF Generation",
+      "role": "agent",
+      "success": true,
+      "message": "PDF generated successfully",
+      "severity": "normal",
+      "timestamp": "2026-03-14T17:25:28.005409"
+    },
+    {
+      "test": "Appointments Access",
+      "role": "agent",
+      "success": true,
+      "message": "Retrieved 1 appointments",
+      "severity": "normal",
+      "timestamp": "2026-03-14T17:25:28.143177"
+    }
+  ],
+  "summary": {
+    "total_tests": 33,
+    "passed": 32,
+    "failed": 1,
+    "security_issues": 1,
+    "critical_issues": 0
+  }
+}
