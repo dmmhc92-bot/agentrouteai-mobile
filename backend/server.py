@@ -1572,6 +1572,8 @@ async def get_scope_pdf(scope_id: str, current_user: dict = Depends(get_current_
     
     return pdf_data
 
+# ==================== AI ASSISTANT ROUTES ====================
+
 @api_router.post("/ai/chat")
 async def ai_chat(request: dict, current_user: dict = Depends(get_current_user)):
     try:
