@@ -187,6 +187,13 @@ class ApiService {
     return response.data;
   }
 
+  async generateScopePdf(scopeId: string) {
+    // Generate the stamped PDF using the EXACT original PDF form on the backend
+    // This fills form fields and stamps signatures onto the original document
+    const response = await apiClient.post(`/scope/${scopeId}/generate-pdf`);
+    return response.data;
+  }
+
   async getAllScopes(skip: number = 0, limit: number = 50) {
     const response = await apiClient.get(`/scope/admin/all?skip=${skip}&limit=${limit}`);
     return response.data;
