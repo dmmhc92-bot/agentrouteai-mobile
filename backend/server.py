@@ -1706,6 +1706,398 @@ async def get_scope_delivery_history(scope_id: str, current_user: dict = Depends
         "delivery_history": scope.get("delivery_history", [])
     }
 
+# ==================== COMMISSION TRACKING ROUTES ====================
+
+@api_router.get("/commissions")
+async def get_commissions(
+    status: Optional[str] = None,
+    team_view: bool = False,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get commission records with role-based access.
+    - Agents see only their own commissions
+    - Managers see their downline + their own
+    - Admins see all commissions
+    """
+    user_role = current_user.get("role", "agent")
+    is_team_view = team_view and user_role in ["admin", "manager"]
+    
+    # Determine which user IDs to include
+    if is_team_view or user_role == "admin":
+        if user_role == "admin":
+            user_ids = [u["id"] async for u in db.users.find({}, {"id": 1})]
+        else:
+            user_ids = [current_user["id"]]
+            async for agent in db.users.find({"manager_id": current_user["id"]}, {"id": 1}):
+                user_ids.append(agent["id"])
+    else:
+        user_ids = [current_user["id"]]
+    
+    # Build query
+    query = {"created_by_user": {"$in": user_ids}}
+    if status:
+        valid_statuses = [s.value for s in CommissionStatus]
+        if status in valid_statuses:
+            query["commission_status"] = status
+    
+    # Get commission records
+    commissions = await db.commissions.find(query).sort("created_date", -1).to_list(1000)
+    
+    # Enrich with lead and agent names
+    result = []
+    for comm in commissions:
+        lead_name = None
+        if comm.get("lead_id"):
+            lead = await db.leads.find_one({"id": comm["lead_id"]}, {"name": 1})
+            lead_name = lead.get("name") if lead else None
+        
+        agent_name = None
+        agent = await db.users.find_one({"id": comm.get("created_by_user")}, {"name": 1})
+        agent_name = agent.get("name") if agent else None
+        
+        result.append(CommissionRecordResponse(
+            id=comm["id"],
+            lead_id=comm.get("lead_id"),
+            lead_name=lead_name,
+            production_id=comm.get("production_id"),
+            policy_type=comm.get("policy_type", ""),
+            carrier=comm.get("carrier", ""),
+            premium=comm.get("premium", 0),
+            estimated_commission=comm.get("estimated_commission", 0),
+            agent_commission=comm.get("agent_commission", 0),
+            manager_override=comm.get("manager_override", 0),
+            agency_share=comm.get("agency_share", 0),
+            paid_amount=comm.get("paid_amount"),
+            commission_status=comm.get("commission_status", "estimated"),
+            payment_date=comm.get("payment_date"),
+            created_by_user=comm.get("created_by_user", ""),
+            agent_name=agent_name,
+            created_date=comm.get("created_date", datetime.utcnow()),
+            notes=comm.get("notes", "")
+        ))
+    
+    return result
+
+@api_router.post("/commissions")
+async def create_commission(
+    commission_data: CommissionRecordCreate,
+    current_user: dict = Depends(get_current_user)
+):
+    """Create a new commission record"""
+    # Get commission splits based on user
+    user = await db.users.find_one({"id": current_user["id"]})
+    agent_rate = user.get("commission_rate", 0.6) if user else 0.6
+    manager_rate = 0.2
+    agency_rate = 0.2
+    
+    commission_id = str(uuid.uuid4())
+    commission_doc = {
+        "id": commission_id,
+        "lead_id": commission_data.lead_id,
+        "production_id": commission_data.production_id,
+        "policy_type": commission_data.policy_type,
+        "carrier": commission_data.carrier,
+        "premium": commission_data.premium,
+        "estimated_commission": commission_data.estimated_commission,
+        "agent_commission": commission_data.estimated_commission * agent_rate,
+        "manager_override": commission_data.estimated_commission * manager_rate,
+        "agency_share": commission_data.estimated_commission * agency_rate,
+        "paid_amount": None,
+        "commission_status": commission_data.commission_status,
+        "payment_date": None,
+        "created_by_user": current_user["id"],
+        "created_date": datetime.utcnow(),
+        "notes": commission_data.notes or ""
+    }
+    
+    await db.commissions.insert_one(commission_doc)
+    await log_activity(
+        current_user["id"],
+        "commission_created",
+        f"Commission created: {commission_data.policy_type} - ${commission_data.estimated_commission}",
+        commission_data.lead_id
+    )
+    
+    # Get lead name for response
+    lead_name = None
+    if commission_data.lead_id:
+        lead = await db.leads.find_one({"id": commission_data.lead_id}, {"name": 1})
+        lead_name = lead.get("name") if lead else None
+    
+    return CommissionRecordResponse(
+        id=commission_id,
+        lead_id=commission_data.lead_id,
+        lead_name=lead_name,
+        production_id=commission_data.production_id,
+        policy_type=commission_data.policy_type,
+        carrier=commission_data.carrier,
+        premium=commission_data.premium,
+        estimated_commission=commission_data.estimated_commission,
+        agent_commission=commission_doc["agent_commission"],
+        manager_override=commission_doc["manager_override"],
+        agency_share=commission_doc["agency_share"],
+        paid_amount=None,
+        commission_status=commission_data.commission_status,
+        payment_date=None,
+        created_by_user=current_user["id"],
+        agent_name=user.get("name") if user else None,
+        created_date=commission_doc["created_date"],
+        notes=commission_doc["notes"]
+    )
+
+@api_router.put("/commissions/{commission_id}")
+async def update_commission(
+    commission_id: str,
+    update_data: CommissionRecordUpdate,
+    current_user: dict = Depends(get_current_user)
+):
+    """Update commission status, paid amount, or payment date"""
+    commission = await db.commissions.find_one({"id": commission_id})
+    if not commission:
+        raise HTTPException(status_code=404, detail="Commission record not found")
+    
+    # Check authorization (agent can only update their own, manager/admin can update downline)
+    user_role = current_user.get("role", "agent")
+    if user_role == "agent" and commission.get("created_by_user") != current_user["id"]:
+        raise HTTPException(status_code=403, detail="Not authorized to update this commission")
+    
+    # Build update dict
+    update_dict = {}
+    if update_data.commission_status:
+        valid_statuses = [s.value for s in CommissionStatus]
+        if update_data.commission_status not in valid_statuses:
+            raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {valid_statuses}")
+        update_dict["commission_status"] = update_data.commission_status
+    
+    if update_data.paid_amount is not None:
+        update_dict["paid_amount"] = update_data.paid_amount
+    
+    if update_data.payment_date:
+        update_dict["payment_date"] = datetime.fromisoformat(update_data.payment_date.replace('Z', '+00:00'))
+    
+    if update_data.notes is not None:
+        update_dict["notes"] = update_data.notes
+    
+    if update_dict:
+        await db.commissions.update_one({"id": commission_id}, {"$set": update_dict})
+        await log_activity(
+            current_user["id"],
+            "commission_updated",
+            f"Commission updated: {update_data.commission_status or 'status unchanged'}",
+            commission.get("lead_id")
+        )
+    
+    return {"message": "Commission updated", "commission_id": commission_id}
+
+@api_router.get("/commissions/{commission_id}")
+async def get_commission(commission_id: str, current_user: dict = Depends(get_current_user)):
+    """Get a single commission record"""
+    commission = await db.commissions.find_one({"id": commission_id})
+    if not commission:
+        raise HTTPException(status_code=404, detail="Commission record not found")
+    
+    # Get lead and agent names
+    lead_name = None
+    if commission.get("lead_id"):
+        lead = await db.leads.find_one({"id": commission["lead_id"]}, {"name": 1})
+        lead_name = lead.get("name") if lead else None
+    
+    agent_name = None
+    agent = await db.users.find_one({"id": commission.get("created_by_user")}, {"name": 1})
+    agent_name = agent.get("name") if agent else None
+    
+    return CommissionRecordResponse(
+        id=commission["id"],
+        lead_id=commission.get("lead_id"),
+        lead_name=lead_name,
+        production_id=commission.get("production_id"),
+        policy_type=commission.get("policy_type", ""),
+        carrier=commission.get("carrier", ""),
+        premium=commission.get("premium", 0),
+        estimated_commission=commission.get("estimated_commission", 0),
+        agent_commission=commission.get("agent_commission", 0),
+        manager_override=commission.get("manager_override", 0),
+        agency_share=commission.get("agency_share", 0),
+        paid_amount=commission.get("paid_amount"),
+        commission_status=commission.get("commission_status", "estimated"),
+        payment_date=commission.get("payment_date"),
+        created_by_user=commission.get("created_by_user", ""),
+        agent_name=agent_name,
+        created_date=commission.get("created_date", datetime.utcnow()),
+        notes=commission.get("notes", "")
+    )
+
+@api_router.get("/commissions/summary/totals")
+async def get_commission_summary(
+    team_view: bool = False,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get commission summary totals by status.
+    Supports role-based access.
+    """
+    user_role = current_user.get("role", "agent")
+    is_team_view = team_view and user_role in ["admin", "manager"]
+    
+    # Determine which user IDs to include
+    if is_team_view or user_role == "admin":
+        if user_role == "admin":
+            user_ids = [u["id"] async for u in db.users.find({}, {"id": 1})]
+        else:
+            user_ids = [current_user["id"]]
+            async for agent in db.users.find({"manager_id": current_user["id"]}, {"id": 1}):
+                user_ids.append(agent["id"])
+    else:
+        user_ids = [current_user["id"]]
+    
+    # Aggregate by status
+    pipeline = [
+        {"$match": {"created_by_user": {"$in": user_ids}}},
+        {"$group": {
+            "_id": "$commission_status",
+            "total": {"$sum": "$estimated_commission"},
+            "agent_total": {"$sum": "$agent_commission"},
+            "count": {"$sum": 1}
+        }}
+    ]
+    status_results = await db.commissions.aggregate(pipeline).to_list(10)
+    
+    # Build totals
+    totals = {
+        "estimated": 0,
+        "pending": 0,
+        "approved": 0,
+        "paid": 0
+    }
+    agent_totals = {
+        "estimated": 0,
+        "pending": 0,
+        "approved": 0,
+        "paid": 0
+    }
+    by_status = {}
+    
+    for result in status_results:
+        status = result["_id"] or "estimated"
+        if status in totals:
+            totals[status] = result["total"]
+            agent_totals[status] = result["agent_total"]
+        by_status[status] = result["count"]
+    
+    # Aggregate by carrier
+    carrier_pipeline = [
+        {"$match": {"created_by_user": {"$in": user_ids}}},
+        {"$group": {
+            "_id": "$carrier",
+            "total": {"$sum": "$estimated_commission"}
+        }}
+    ]
+    carrier_results = await db.commissions.aggregate(carrier_pipeline).to_list(100)
+    by_carrier = {r["_id"]: r["total"] for r in carrier_results if r["_id"]}
+    
+    # Aggregate by policy type
+    policy_pipeline = [
+        {"$match": {"created_by_user": {"$in": user_ids}}},
+        {"$group": {
+            "_id": "$policy_type",
+            "total": {"$sum": "$estimated_commission"}
+        }}
+    ]
+    policy_results = await db.commissions.aggregate(policy_pipeline).to_list(100)
+    by_policy_type = {r["_id"]: r["total"] for r in policy_results if r["_id"]}
+    
+    # Get paid amounts sum
+    paid_pipeline = [
+        {"$match": {"created_by_user": {"$in": user_ids}, "paid_amount": {"$ne": None}}},
+        {"$group": {
+            "_id": None,
+            "total_paid": {"$sum": "$paid_amount"}
+        }}
+    ]
+    paid_result = await db.commissions.aggregate(paid_pipeline).to_list(1)
+    total_paid_amount = paid_result[0]["total_paid"] if paid_result else 0
+    
+    total_count = await db.commissions.count_documents({"created_by_user": {"$in": user_ids}})
+    
+    return {
+        "total_estimated": totals["estimated"],
+        "total_pending": totals["pending"],
+        "total_approved": totals["approved"],
+        "total_paid": totals["paid"],
+        "total_paid_amount": total_paid_amount,
+        "agent_totals": agent_totals,
+        "records_count": total_count,
+        "by_status": by_status,
+        "by_carrier": by_carrier,
+        "by_policy_type": by_policy_type,
+        "is_team_view": is_team_view
+    }
+
+@api_router.get("/commissions/agent/{agent_id}")
+async def get_agent_commissions(
+    agent_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get commissions for a specific agent.
+    Only managers/admins can view other agents' commissions.
+    """
+    user_role = current_user.get("role", "agent")
+    
+    # Authorization check
+    if agent_id != current_user["id"]:
+        if user_role == "agent":
+            raise HTTPException(status_code=403, detail="Not authorized to view other agents' commissions")
+        elif user_role == "manager":
+            # Check if agent is in manager's downline
+            agent = await db.users.find_one({"id": agent_id})
+            if not agent or agent.get("manager_id") != current_user["id"]:
+                raise HTTPException(status_code=403, detail="Agent not in your downline")
+    
+    # Get commissions
+    commissions = await db.commissions.find({"created_by_user": agent_id}).sort("created_date", -1).to_list(500)
+    
+    # Get agent info
+    agent = await db.users.find_one({"id": agent_id}, {"name": 1, "email": 1})
+    agent_name = agent.get("name") if agent else "Unknown"
+    
+    # Calculate summary
+    total_estimated = sum(c.get("estimated_commission", 0) for c in commissions)
+    total_agent = sum(c.get("agent_commission", 0) for c in commissions)
+    total_paid = sum(c.get("paid_amount", 0) or 0 for c in commissions if c.get("commission_status") == "paid")
+    
+    status_counts = {}
+    for c in commissions:
+        status = c.get("commission_status", "estimated")
+        status_counts[status] = status_counts.get(status, 0) + 1
+    
+    return {
+        "agent_id": agent_id,
+        "agent_name": agent_name,
+        "total_records": len(commissions),
+        "total_estimated_commission": total_estimated,
+        "total_agent_commission": total_agent,
+        "total_paid": total_paid,
+        "status_breakdown": status_counts,
+        "commissions": [
+            {
+                "id": c["id"],
+                "lead_id": c.get("lead_id"),
+                "policy_type": c.get("policy_type"),
+                "carrier": c.get("carrier"),
+                "premium": c.get("premium", 0),
+                "estimated_commission": c.get("estimated_commission", 0),
+                "agent_commission": c.get("agent_commission", 0),
+                "paid_amount": c.get("paid_amount"),
+                "commission_status": c.get("commission_status", "estimated"),
+                "payment_date": c.get("payment_date"),
+                "created_date": c.get("created_date")
+            }
+            for c in commissions[:50]  # Limit to 50 records
+        ]
+    }
+
 # ==================== AI ASSISTANT ROUTES ====================
 
 @api_router.post("/ai/chat")
