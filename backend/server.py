@@ -703,8 +703,19 @@ async def login(credentials: dict):
     email = credentials.get("email", "").lower()
     password = credentials.get("password", "")
     
+    logger.info(f"Login attempt for email: {email}")
     user = await db.users.find_one({"email": email, "deleted_at": None})
-    if not user or not verify_password(password, user["password_hash"]):
+    logger.info(f"User found: {user is not None}")
+    
+    if not user:
+        logger.warning(f"User not found for email: {email}")
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    
+    password_valid = verify_password(password, user["password_hash"])
+    logger.info(f"Password verification result: {password_valid}")
+    
+    if not password_valid:
+        logger.warning(f"Invalid password for email: {email}")
         raise HTTPException(status_code=401, detail="Invalid email or password")
     
     await db.users.update_one({"id": user["id"]}, {"$set": {"last_login": datetime.utcnow()}})
