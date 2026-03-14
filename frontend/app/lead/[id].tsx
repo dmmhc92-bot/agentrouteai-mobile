@@ -742,4 +742,142 @@ const styles = StyleSheet.create({
     color: '#94A3B8',
     fontSize: 13,
   },
+  // Pipeline Card Styles
+  pipelineCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#1E293B',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+  },
+  pipelineCardLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  pipelineIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  pipelineInfo: {
+    gap: 2,
+  },
+  pipelineLabel: {
+    color: '#94A3B8',
+    fontSize: 12,
+  },
+  pipelineStage: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  pipelineCardRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  pipelineUpdateText: {
+    color: '#64748B',
+    fontSize: 14,
+  },
+  // Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#1E293B',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    maxHeight: '85%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  modalTitle: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  modalSubtitle: {
+    color: '#94A3B8',
+    fontSize: 14,
+    marginBottom: 16,
+  },
+  inputLabel: {
+    color: '#94A3B8',
+    fontSize: 12,
+    marginBottom: 8,
+    marginTop: 12,
+  },
+  stageList: {
+    maxHeight: 300,
+  },
+  stageOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#0F172A',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  stageOptionIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  stageOptionText: {
+    flex: 1,
+    color: '#E2E8F0',
+    fontSize: 14,
+  },
+  currentBadge: {
+    backgroundColor: '#334155',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  currentBadgeText: {
+    color: '#94A3B8',
+    fontSize: 10,
+    fontWeight: '500',
+  },
+  notesInput: {
+    backgroundColor: '#0F172A',
+    borderRadius: 12,
+    padding: 16,
+    color: '#FFFFFF',
+    fontSize: 14,
+    minHeight: 80,
+    textAlignVertical: 'top',
+  },
+  updateButton: {
+    backgroundColor: '#3B82F6',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    marginTop: 20,
+  },
+  updateButtonDisabled: {
+    backgroundColor: '#64748B',
+  },
+  updateButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
 });
