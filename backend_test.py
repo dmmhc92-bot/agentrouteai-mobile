@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Comprehensive Backend API Test Suite for AgentRoute AI
-Tests all API endpoints with proper authentication flow
+Backend Test Suite for AgentRoute AI - SOA PDF Page Mapping Fix
+Focus: Testing the critical PDF page mapping fix for Scope of Appointment
 """
 
 import requests
@@ -10,6 +10,7 @@ import base64
 from datetime import datetime, timedelta
 import uuid
 import sys
+import os
 
 # Configuration
 BASE_URL = "https://agentroute-ai.preview.emergentagent.com/api"
@@ -24,6 +25,13 @@ TEST_LEAD = {
     "email": "jane@company.com",
     "address": "350 5th Avenue, New York, NY 10118"
 }
+
+# SOA PDF Test Credentials (from review request)
+SOA_TEST_CREDENTIALS = {
+    "email": "admin@agentroute.com",
+    "password": "Admin123!"
+}
+SOA_TEST_SCOPE_ID = "test-pdf-scope-001"
 
 class APITester:
     def __init__(self):
