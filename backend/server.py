@@ -1696,7 +1696,7 @@ async def generate_stamped_pdf(scope_id: str, current_user: dict = Depends(get_c
         'appointment_date': {'x': 480, 'y': 387, 'size': 9},                  # Near plans field
         
         # Agent signature - on the "Agent's Signature" line
-        'agent_signature': {'x': 80, 'y': 355, 'w': 200, 'h': 40},           # Agent signature line
+        'agent_signature': {'x': 80, 'y': 410, 'w': 200, 'h': 40},           # Agent signature line
     }
     
     stamped_items = []
