@@ -68,11 +68,9 @@ export default function ComplianceTrackingScreen() {
     }
   };
 
-  useFocusEffect(
-    useCallback(() => {
-      loadData();
-    }, [activeFilter])
-  );
+  useEffect(() => {
+    loadData();
+  }, [activeFilter]);
 
   const onRefresh = () => {
     setRefreshing(true);
