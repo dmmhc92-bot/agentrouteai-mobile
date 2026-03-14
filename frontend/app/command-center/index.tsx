@@ -12,8 +12,8 @@ import {
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { api } from '../src/services/api';
-import { useAuth } from '../src/contexts/AuthContext';
+import { api } from '../../src/services/api';
+import { useAuth } from '../../src/contexts/AuthContext';
 import { format, formatDistanceToNow } from 'date-fns';
 
 interface AgentStats {
