@@ -887,7 +887,311 @@ async def get_production_dashboard(current_user: dict = Depends(get_current_user
         }
     }
 
-# ==================== SCOPE OF APPOINTMENT ROUTES ====================
+# ==================== POLICY SALES PIPELINE ROUTES ====================
+
+# Stage labels for display
+PIPELINE_STAGE_LABELS = {
+    "new_lead": "Lead",
+    "appointment_scheduled": "Appointment Scheduled",
+    "application_submitted": "Application Submitted",
+    "underwriting_review": "Underwriting Review",
+    "additional_requirements": "Additional Requirements",
+    "approved": "Approved",
+    "policy_issued": "Policy Issued",
+    "policy_placed": "Policy Placed",
+    "commission_pending": "Commission Pending",
+    "commission_paid": "Commission Paid"
+}
+
+@api_router.get("/pipeline")
+async def get_pipeline(team_view: bool = False, current_user: dict = Depends(get_current_user)):
+    """
+    Get the sales pipeline view.
+    - Agents see only their own cases
+    - Managers/Admins can see full team pipeline with team_view=true
+    """
+    user_role = current_user.get("role", "agent")
+    is_team_view = team_view and user_role in ["admin", "manager"]
+    
+    # Determine which user IDs to include
+    if is_team_view:
+        if user_role == "admin":
+            # Admin sees all users
+            user_ids = [u["id"] async for u in db.users.find({}, {"id": 1})]
+        else:
+            # Manager sees their direct reports + themselves
+            user_ids = [current_user["id"]]
+            async for agent in db.users.find({"manager_id": current_user["id"]}, {"id": 1}):
+                user_ids.append(agent["id"])
+    else:
+        user_ids = [current_user["id"]]
+    
+    # Get all leads for these users
+    leads_cursor = db.leads.find({"created_by_user": {"$in": user_ids}})
+    all_leads = await leads_cursor.to_list(1000)
+    
+    # Get production data for commission calculations
+    production_cursor = db.production.find({"created_by_user": {"$in": user_ids}})
+    all_production = await production_cursor.to_list(1000)
+    
+    # Build production lookup by lead_id
+    production_by_lead = {}
+    for prod in all_production:
+        lead_id = prod.get("lead_id")
+        if lead_id:
+            if lead_id not in production_by_lead:
+                production_by_lead[lead_id] = {"premium": 0, "commission": 0, "count": 0}
+            production_by_lead[lead_id]["premium"] += prod.get("premium", 0)
+            production_by_lead[lead_id]["commission"] += prod.get("agent_commission", prod.get("commission", 0))
+            production_by_lead[lead_id]["count"] += 1
+    
+    # Organize leads by stage
+    stages = []
+    total_premium = 0
+    total_commission = 0
+    total_cases = len(all_leads)
+    
+    for stage_value in LeadStage:
+        stage_leads = [l for l in all_leads if l.get("stage") == stage_value.value]
+        stage_premium = 0
+        stage_commission = 0
+        
+        formatted_leads = []
+        for lead in stage_leads:
+            lead_id = lead.get("id")
+            prod_info = production_by_lead.get(lead_id, {"premium": 0, "commission": 0})
+            stage_premium += prod_info["premium"]
+            stage_commission += prod_info["commission"]
+            
+            # Get agent name if team view
+            agent_name = None
+            if is_team_view:
+                agent = await db.users.find_one({"id": lead.get("created_by_user")}, {"name": 1})
+                agent_name = agent.get("name") if agent else "Unknown"
+            
+            formatted_leads.append({
+                "id": lead_id,
+                "name": lead.get("name"),
+                "phone": lead.get("phone"),
+                "email": lead.get("email"),
+                "created_date": lead.get("created_date").isoformat() if lead.get("created_date") else None,
+                "last_contact_date": lead.get("last_contact_date").isoformat() if lead.get("last_contact_date") else None,
+                "premium": prod_info["premium"],
+                "commission": prod_info["commission"],
+                "agent_name": agent_name,
+                "agent_id": lead.get("created_by_user"),
+                "underwriting_status": lead.get("underwriting_status", "not_submitted"),
+                "policy_type": lead.get("policy_type"),
+                "notes": lead.get("notes", "")[:100]  # Truncate for list view
+            })
+        
+        total_premium += stage_premium
+        total_commission += stage_commission
+        
+        stages.append({
+            "stage": stage_value.value,
+            "label": PIPELINE_STAGE_LABELS.get(stage_value.value, stage_value.value),
+            "count": len(stage_leads),
+            "total_premium": stage_premium,
+            "total_commission": stage_commission,
+            "leads": formatted_leads
+        })
+    
+    # Summary stats
+    summary = {
+        "total_cases": total_cases,
+        "total_premium": total_premium,
+        "total_commission": total_commission,
+        "conversion_rate": round((len([l for l in all_leads if l.get("stage") in ["policy_issued", "policy_placed", "commission_pending", "commission_paid"]]) / total_cases * 100) if total_cases > 0 else 0, 1),
+        "stages_summary": {s["stage"]: s["count"] for s in stages}
+    }
+    
+    return {
+        "stages": stages,
+        "summary": summary,
+        "is_team_view": is_team_view
+    }
+
+@api_router.put("/pipeline/move")
+async def move_pipeline_case(update: PipelineCaseUpdate, current_user: dict = Depends(get_current_user)):
+    """
+    Move a case to a different pipeline stage.
+    Optionally update premium/commission when moving to certain stages.
+    """
+    # Validate stage
+    valid_stages = [s.value for s in LeadStage]
+    if update.new_stage not in valid_stages:
+        raise HTTPException(status_code=400, detail=f"Invalid stage. Must be one of: {valid_stages}")
+    
+    # Get the lead
+    lead = await db.leads.find_one({"id": update.lead_id})
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    
+    # Check authorization
+    user_role = current_user.get("role", "agent")
+    if user_role == "agent" and lead.get("created_by_user") != current_user["id"]:
+        # Check if assigned to this agent
+        if lead.get("assigned_to_user") != current_user["id"]:
+            raise HTTPException(status_code=403, detail="Not authorized to update this lead")
+    
+    old_stage = lead.get("stage", "new_lead")
+    
+    # Update the lead stage
+    update_data = {
+        "stage": update.new_stage,
+        "last_contact_date": datetime.utcnow()
+    }
+    
+    # If notes provided, append to existing notes
+    if update.notes:
+        existing_notes = lead.get("notes", "")
+        timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M")
+        new_note = f"\n[{timestamp}] Stage: {PIPELINE_STAGE_LABELS.get(update.new_stage, update.new_stage)} - {update.notes}"
+        update_data["notes"] = existing_notes + new_note
+    
+    # Update underwriting status based on stage
+    stage_to_underwriting = {
+        "application_submitted": "submitted",
+        "underwriting_review": "pending_review",
+        "additional_requirements": "pending_review",
+        "approved": "approved",
+        "policy_issued": "issued",
+        "policy_placed": "issued"
+    }
+    if update.new_stage in stage_to_underwriting:
+        update_data["underwriting_status"] = stage_to_underwriting[update.new_stage]
+    
+    await db.leads.update_one({"id": update.lead_id}, {"$set": update_data})
+    
+    # If moving to application_submitted or later with premium/commission, create production record
+    production_stages = ["application_submitted", "underwriting_review", "approved", "policy_issued", "policy_placed", "commission_pending", "commission_paid"]
+    if update.new_stage in production_stages and update.premium and update.premium > 0:
+        # Check if production record already exists for this lead
+        existing_prod = await db.production.find_one({"lead_id": update.lead_id})
+        
+        if not existing_prod:
+            # Get commission splits
+            user = await db.users.find_one({"id": current_user["id"]})
+            agent_rate = user.get("commission_rate", 0.6) if user else 0.6
+            manager_rate = 0.2
+            agency_rate = 0.2
+            
+            commission = update.commission or (update.premium * 0.1)  # Default 10% commission if not specified
+            
+            prod_doc = {
+                "id": str(uuid.uuid4()),
+                "lead_id": update.lead_id,
+                "user_id": lead.get("created_by_user"),
+                "policy_type": update.policy_type or "unknown",
+                "premium": update.premium,
+                "commission": commission,
+                "agent_commission": commission * agent_rate,
+                "manager_override": commission * manager_rate,
+                "agency_share": commission * agency_rate,
+                "created_by_user": current_user["id"],
+                "created_date": datetime.utcnow(),
+                "status": "pending" if update.new_stage != "commission_paid" else "paid"
+            }
+            await db.production.insert_one(prod_doc)
+        else:
+            # Update existing production record
+            prod_update = {}
+            if update.premium:
+                prod_update["premium"] = update.premium
+            if update.commission:
+                user = await db.users.find_one({"id": current_user["id"]})
+                agent_rate = user.get("commission_rate", 0.6) if user else 0.6
+                prod_update["commission"] = update.commission
+                prod_update["agent_commission"] = update.commission * agent_rate
+            if update.new_stage == "commission_paid":
+                prod_update["status"] = "paid"
+                prod_update["paid_date"] = datetime.utcnow()
+            
+            if prod_update:
+                await db.production.update_one({"lead_id": update.lead_id}, {"$set": prod_update})
+    
+    # Log the activity
+    await log_activity(
+        current_user["id"], 
+        "pipeline_move", 
+        f"Moved from {PIPELINE_STAGE_LABELS.get(old_stage, old_stage)} to {PIPELINE_STAGE_LABELS.get(update.new_stage, update.new_stage)}",
+        update.lead_id
+    )
+    
+    return {
+        "message": "Pipeline stage updated",
+        "lead_id": update.lead_id,
+        "old_stage": old_stage,
+        "new_stage": update.new_stage
+    }
+
+@api_router.get("/pipeline/stats")
+async def get_pipeline_stats(team_view: bool = False, current_user: dict = Depends(get_current_user)):
+    """
+    Get pipeline statistics for production tracking.
+    """
+    user_role = current_user.get("role", "agent")
+    is_team_view = team_view and user_role in ["admin", "manager"]
+    
+    # Determine which user IDs to include
+    if is_team_view:
+        if user_role == "admin":
+            user_ids = [u["id"] async for u in db.users.find({}, {"id": 1})]
+        else:
+            user_ids = [current_user["id"]]
+            async for agent in db.users.find({"manager_id": current_user["id"]}, {"id": 1}):
+                user_ids.append(agent["id"])
+    else:
+        user_ids = [current_user["id"]]
+    
+    # Calculate date ranges
+    now = datetime.utcnow()
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    week_start = today_start - timedelta(days=today_start.weekday())
+    month_start = today_start.replace(day=1)
+    
+    async def get_period_stats(start_date):
+        pipeline = [
+            {"$match": {"created_by_user": {"$in": user_ids}, "created_date": {"$gte": start_date}}},
+            {"$group": {
+                "_id": None,
+                "premium": {"$sum": "$premium"},
+                "commission": {"$sum": "$agent_commission"},
+                "count": {"$sum": 1}
+            }}
+        ]
+        result = await db.production.aggregate(pipeline).to_list(1)
+        return result[0] if result else {"premium": 0, "commission": 0, "count": 0}
+    
+    daily = await get_period_stats(today_start)
+    weekly = await get_period_stats(week_start)
+    monthly = await get_period_stats(month_start)
+    
+    # Get stage counts
+    stage_counts = {}
+    for stage in LeadStage:
+        count = await db.leads.count_documents({
+            "created_by_user": {"$in": user_ids},
+            "stage": stage.value
+        })
+        stage_counts[stage.value] = count
+    
+    # Calculate velocity (average days in each stage)
+    # For now, just return basic stats
+    
+    return {
+        "production": {
+            "daily": {"premium": daily["premium"], "commission": daily["commission"], "policies": daily["count"]},
+            "weekly": {"premium": weekly["premium"], "commission": weekly["commission"], "policies": weekly["count"]},
+            "monthly": {"premium": monthly["premium"], "commission": monthly["commission"], "policies": monthly["count"]}
+        },
+        "stage_counts": stage_counts,
+        "total_in_pipeline": sum(stage_counts.values()),
+        "active_cases": sum(stage_counts[s] for s in ["appointment_scheduled", "application_submitted", "underwriting_review", "additional_requirements"]),
+        "closed_won": sum(stage_counts[s] for s in ["policy_issued", "policy_placed", "commission_pending", "commission_paid"]),
+        "is_team_view": is_team_view
+    }
 
 @api_router.post("/scope")
 async def create_scope(scope_data: ScopeCreate, current_user: dict = Depends(get_current_user)):
