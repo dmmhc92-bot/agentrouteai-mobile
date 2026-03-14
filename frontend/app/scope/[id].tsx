@@ -63,7 +63,19 @@ export default function ScopeDetailScreen() {
 
   const loadScope = async () => {
     try {
+      console.log('=== LOADING SOA ===');
+      console.log('Scope ID:', id);
+      
       const data = await api.getScope(id!);
+      
+      console.log('SOA loaded:');
+      console.log('  - ID:', data.id);
+      console.log('  - Has PDF:', !!data.pdf_base64);
+      console.log('  - PDF size:', data.pdf_base64?.length || 0);
+      console.log('  - Beneficiary signature:', data.signature?.substring(0, 50) || 'NONE');
+      console.log('  - Agent signature:', data.agent_signature?.substring(0, 50) || 'NONE');
+      console.log('  - Status:', data.status);
+      
       setScope(data);
       
       // Also load lead info
@@ -82,20 +94,27 @@ export default function ScopeDetailScreen() {
   };
 
   const getPdfData = async (): Promise<string | null> => {
+    console.log('Getting PDF data...');
+    
     if (scope?.pdf_base64) {
+      console.log('Using cached PDF, size:', scope.pdf_base64.length);
       return scope.pdf_base64;
     }
     
     setPdfLoading(true);
     try {
+      console.log('Fetching PDF from server...');
       const pdfResponse = await api.getScopePdf(id!);
       if (pdfResponse.pdf_base64) {
+        console.log('PDF received, size:', pdfResponse.pdf_base64.length);
         // Update local state with the PDF
         setScope(prev => prev ? { ...prev, pdf_base64: pdfResponse.pdf_base64 } : null);
         return pdfResponse.pdf_base64;
       }
+      console.warn('No PDF in response');
     } catch (error) {
       console.error('Error getting PDF:', error);
+      Alert.alert('PDF Error', 'Could not generate or retrieve the PDF document.');
     } finally {
       setPdfLoading(false);
     }
