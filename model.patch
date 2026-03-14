@@ -27,7 +27,7 @@ index cd89897..e69de29 100644
 -+from datetime import datetime
 -+
 -+# Configuration
--+BACKEND_URL = "https://lead-scanner-ocr.preview.emergentagent.com/api"
+-+BACKEND_URL = "https://field-sales-crm-3.preview.emergentagent.com/api"
 -+
 -+# Test credentials
 -+TEST_CREDENTIALS = {
@@ -391,7 +391,7 @@ index cd89897..e69de29 100644
 ---+import time
 ---+
 ---+# Configuration
----+BASE_URL = "https://lead-scanner-ocr.preview.emergentagent.com/api"
+---+BASE_URL = "https://field-sales-crm-3.preview.emergentagent.com/api"
 ---+TIMEOUT = 30
 ---+
 ---+# Test credentials from review request
@@ -1043,7 +1043,7 @@ index cd89897..e69de29 100644
 ---+import time
 ---+
 ---+# Configuration
----+BASE_URL = "https://lead-scanner-ocr.preview.emergentagent.com/api"
+---+BASE_URL = "https://field-sales-crm-3.preview.emergentagent.com/api"
 ---+TIMEOUT = 30
 ---+
 ---+# Test credentials from review request
@@ -1860,7 +1860,7 @@ index cd89897..e69de29 100644
 -------------+#!/usr/bin/env python3
 -------------+import requests
 -------------+
--------------+BASE_URL = "https://lead-scanner-ocr.preview.emergentagent.com/api"
+-------------+BASE_URL = "https://field-sales-crm-3.preview.emergentagent.com/api"
 -------------+
 -------------+# Test without auth
 -------------+response = requests.get(f"{BASE_URL}/auth/me", headers={})
@@ -2035,7 +2035,7 @@ index cd89897..e69de29 100644
 -----------+import time
 -----------+
 -----------+# Configuration
------------+BASE_URL = "https://lead-scanner-ocr.preview.emergentagent.com/api"
+-----------+BASE_URL = "https://field-sales-crm-3.preview.emergentagent.com/api"
 -----------+TEST_EMAIL = "demo@agentroute.com"
 -----------+TEST_PASSWORD = "Demo1234!"
 -----------+
@@ -2446,7 +2446,7 @@ index cd89897..e69de29 100644
 -----------+from datetime import datetime
 -----------+
 -----------+# Configuration
------------+BASE_URL = "https://lead-scanner-ocr.preview.emergentagent.com/api"
+-----------+BASE_URL = "https://field-sales-crm-3.preview.emergentagent.com/api"
 -----------+
 -----------+class RoleBasedTester:
 -----------+    def __init__(self):
@@ -2643,7 +2643,7 @@ index cd89897..e69de29 100644
 ---------+import os
 ---------+
 ---------+# Get backend URL from environment
----------+BACKEND_URL = os.environ.get('EXPO_PUBLIC_BACKEND_URL', 'https://lead-scanner-ocr.preview.emergentagent.com')
+---------+BACKEND_URL = os.environ.get('EXPO_PUBLIC_BACKEND_URL', 'https://field-sales-crm-3.preview.emergentagent.com')
 ---------+API_BASE = f"{BACKEND_URL}/api"
 ---------+
 ---------+class SOAWorkflowTester:
@@ -3301,7 +3301,7 @@ index cd89897..e69de29 100644
 -+import uuid
 -+
 -+# Configuration
--+BACKEND_URL = "https://lead-scanner-ocr.preview.emergentagent.com/api"
+-+BACKEND_URL = "https://field-sales-crm-3.preview.emergentagent.com/api"
 -+
 -+# Test credentials as specified in the audit request
 -+TEST_CREDENTIALS = {

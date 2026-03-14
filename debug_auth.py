@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import requests
 
-BASE_URL = "https://lead-scanner-ocr.preview.emergentagent.com/api"
+BASE_URL = "https://field-sales-crm-3.preview.emergentagent.com/api"
 
 # Test without auth
 response = requests.get(f"{BASE_URL}/auth/me", headers={})

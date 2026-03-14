@@ -10,7 +10,7 @@ import sys
 from datetime import datetime
 
 # Configuration
-BACKEND_URL = "https://lead-scanner-ocr.preview.emergentagent.com/api"
+BACKEND_URL = "https://field-sales-crm-3.preview.emergentagent.com/api"
 
 # Test credentials
 TEST_CREDENTIALS = {
