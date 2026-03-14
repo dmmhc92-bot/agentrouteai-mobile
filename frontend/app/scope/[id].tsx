@@ -285,19 +285,47 @@ export default function ScopeDetailScreen() {
   const handlePrint = async () => {
     setActionLoading('print');
     try {
-      // On web, open in browser and let user print from there
+      const pdfBase64 = await getPdfData();
+      if (!pdfBase64) {
+        Alert.alert('Error', 'Could not generate PDF for printing');
+        return;
+      }
+
+      // On web, open PDF and let user print from browser
       if (isWeb) {
-        await openPdfInBrowser();
-        Alert.alert('Print', 'Use your browser\'s print function (Ctrl/Cmd + P) to print the document.');
+        try {
+          const byteCharacters = atob(pdfBase64);
+          const byteNumbers = new Array(byteCharacters.length);
+          for (let i = 0; i < byteCharacters.length; i++) {
+            byteNumbers[i] = byteCharacters.charCodeAt(i);
+          }
+          const byteArray = new Uint8Array(byteNumbers);
+          const blob = new Blob([byteArray], { type: 'application/pdf' });
+          const fileUrl = URL.createObjectURL(blob);
+          
+          const a = document.createElement('a');
+          a.href = fileUrl;
+          a.target = '_blank';
+          a.rel = 'noopener noreferrer';
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          
+          Alert.alert('Print', 'Use your browser\'s print function (Ctrl/Cmd + P) to print the document.');
+        } catch (error) {
+          console.error('Print error on web:', error);
+          Alert.alert('Error', 'Could not open PDF for printing');
+        }
         setActionLoading(null);
         return;
       }
       
-      const fileUri = await savePdfToTempFile();
-      if (!fileUri) {
-        Alert.alert('Error', 'Could not generate PDF for printing');
-        return;
-      }
+      const filename = getFilename();
+      const fileUri = `${FileSystem.cacheDirectory}${filename}`;
+      
+      await FileSystem.writeAsStringAsync(fileUri, pdfBase64, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
 
       // Use file URI for printing (works on both iOS and Android)
       await Print.printAsync({ uri: fileUri });
