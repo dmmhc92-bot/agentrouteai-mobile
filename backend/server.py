@@ -493,8 +493,8 @@ class ComplianceRecord(BaseModel):
     compliance_status: str  # missing_soa, pending_signature, signed, compliant
     agent_id: str
     agent_name: str
-    created_date: datetime
-    last_updated: datetime
+    created_date: Optional[datetime] = None
+    last_updated: Optional[datetime] = None
 
 class ComplianceSummary(BaseModel):
     total_leads: int
