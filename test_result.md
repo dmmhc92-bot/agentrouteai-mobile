@@ -253,7 +253,8 @@ metadata:
   run_ui: false
 
 test_plan:
-  current_focus: []
+  current_focus: 
+    - "Commission Tracking API"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
@@ -271,3 +272,5 @@ agent_communication:
       message: "Implemented SOA Delivery Logging feature. Two new endpoints added: POST /api/scope/{scope_id}/log-delivery (to log when document is sent to client) and GET /api/scope/{scope_id}/delivery-history (to retrieve delivery history). Frontend updated to call log-delivery on Share and Email actions, and UI displays delivery history in the scope detail screen. Manual curl tests confirmed both endpoints work correctly. Please test: 1) POST log-delivery with email/share methods, 2) GET delivery-history, 3) Verify delivery_history is included when fetching scope document via GET /api/scope/{id}."
     - agent: "testing"
       message: "SOA Delivery Logging feature testing completed successfully. All requested endpoints working correctly: ✅ POST /api/scope/{scope_id}/log-delivery (200) - Successfully logs deliveries for email, share, and SMS methods with proper data structure including delivery_method, recipient_contact, notes, delivered_at timestamp, and delivered_by_user. ✅ GET /api/scope/{scope_id}/delivery-history (200) - Retrieves complete delivery history with all logged entries. ✅ GET /api/scope/{scope_id} (200) - SOA document properly includes delivery_history field. ✅ Error handling (404) - Correctly returns 404 for invalid scope IDs. Comprehensive test flow completed: user authentication → lead creation → SOA creation → multiple delivery logging (email/share/sms) → delivery history retrieval → SOA document verification. All delivery logs properly stored in scope document's delivery_history array. Data persistence verified across all endpoints. 36/37 backend tests passed (97.3% success rate). SOA Delivery Logging feature is fully functional and ready for production use."
+    - agent: "main"
+      message: "Implemented Commission Tracking system with full API backend and frontend screen. New endpoints: POST /api/commissions (create with auto split calculation 60/20/20%), GET /api/commissions (list with role-based access), PUT /api/commissions/{id} (update status/paid_amount/date), GET /api/commissions/summary/totals (summary by status/carrier/type), GET /api/commissions/agent/{id} (agent-specific view). Frontend screen at /commissions.tsx shows summary cards, status filters, commission list, and update modal. Manual curl tests confirm all splits calculated correctly and statuses update properly. Please test: 1) All CRUD endpoints, 2) Role-based access (agent vs admin), 3) Status transitions (estimated→pending→approved→paid), 4) Paid amount recording."
