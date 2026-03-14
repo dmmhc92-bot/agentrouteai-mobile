@@ -1,0 +1,549 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Alert,
+  ActivityIndicator,
+  Linking,
+} from 'react-native';
+import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
+import { api } from '../../src/services/api';
+import { format } from 'date-fns';
+
+interface Lead {
+  id: string;
+  name: string;
+  phone: string;
+  email: string;
+  address: string;
+  notes: string;
+  created_date: string;
+}
+
+interface Appointment {
+  id: string;
+  appointment_date: string;
+  appointment_time: string;
+  status: string;
+  notes: string;
+}
+
+interface Scope {
+  id: string;
+  typed_name: string;
+  created_date: string;
+}
+
+export default function LeadDetailScreen() {
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const { id } = useLocalSearchParams<{ id: string }>();
+
+  const [lead, setLead] = useState<Lead | null>(null);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [scopes, setScopes] = useState<Scope[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const loadData = async () => {
+    if (!id || id === 'new') return;
+    try {
+      const [leadData, appointmentsData, scopesData] = await Promise.all([
+        api.getLead(id),
+        api.getLeadAppointments(id),
+        api.getLeadScopes(id),
+      ]);
+      setLead(leadData);
+      setAppointments(appointmentsData);
+      setScopes(scopesData);
+    } catch (error) {
+      console.log('Error loading lead:', error);
+      Alert.alert('Error', 'Failed to load lead details');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [id])
+  );
+
+  const handleDelete = () => {
+    Alert.alert('Delete Lead', 'Are you sure you want to delete this lead?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await api.deleteLead(id!);
+            router.back();
+          } catch (error) {
+            Alert.alert('Error', 'Failed to delete lead');
+          }
+        },
+      },
+    ]);
+  };
+
+  const handleCall = () => {
+    if (lead?.phone) {
+      Linking.openURL(`tel:${lead.phone}`);
+    }
+  };
+
+  const handleEmail = () => {
+    if (lead?.email) {
+      Linking.openURL(`mailto:${lead.email}`);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <View style={[styles.container, styles.loadingContainer, { paddingTop: insets.top }]}>
+        <ActivityIndicator size="large" color="#3B82F6" />
+      </View>
+    );
+  }
+
+  if (!lead) {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        <View style={styles.header}>
+          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+            <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+          </TouchableOpacity>
+        </View>
+        <View style={styles.errorState}>
+          <Text style={styles.errorText}>Lead not found</Text>
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      <View style={styles.header}>
+        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+          <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          <TouchableOpacity
+            style={styles.headerButton}
+            onPress={() => router.push(`/lead/edit/${id}`)}
+          >
+            <Ionicons name="create-outline" size={22} color="#FFFFFF" />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.headerButton} onPress={handleDelete}>
+            <Ionicons name="trash-outline" size={22} color="#EF4444" />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+        {/* Lead Header */}
+        <View style={styles.leadHeader}>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>{lead.name.charAt(0).toUpperCase()}</Text>
+          </View>
+          <Text style={styles.leadName}>{lead.name}</Text>
+          <Text style={styles.leadDate}>
+            Added {format(new Date(lead.created_date), 'MMM d, yyyy')}
+          </Text>
+        </View>
+
+        {/* Quick Actions */}
+        <View style={styles.quickActions}>
+          {lead.phone && (
+            <TouchableOpacity style={styles.quickAction} onPress={handleCall}>
+              <View style={[styles.quickActionIcon, { backgroundColor: '#22C55E20' }]}>
+                <Ionicons name="call" size={22} color="#22C55E" />
+              </View>
+              <Text style={styles.quickActionText}>Call</Text>
+            </TouchableOpacity>
+          )}
+          {lead.email && (
+            <TouchableOpacity style={styles.quickAction} onPress={handleEmail}>
+              <View style={[styles.quickActionIcon, { backgroundColor: '#3B82F620' }]}>
+                <Ionicons name="mail" size={22} color="#3B82F6" />
+              </View>
+              <Text style={styles.quickActionText}>Email</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity
+            style={styles.quickAction}
+            onPress={() => router.push(`/appointment/new?leadId=${id}`)}
+          >
+            <View style={[styles.quickActionIcon, { backgroundColor: '#F59E0B20' }]}>
+              <Ionicons name="calendar" size={22} color="#F59E0B" />
+            </View>
+            <Text style={styles.quickActionText}>Schedule</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.quickAction}
+            onPress={() => router.push(`/scope/new?leadId=${id}`)}
+          >
+            <View style={[styles.quickActionIcon, { backgroundColor: '#8B5CF620' }]}>
+              <Ionicons name="document-text" size={22} color="#8B5CF6" />
+            </View>
+            <Text style={styles.quickActionText}>Scope</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Contact Info */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Contact Information</Text>
+          <View style={styles.infoCard}>
+            {lead.phone && (
+              <InfoRow icon="call-outline" label="Phone" value={lead.phone} />
+            )}
+            {lead.email && (
+              <InfoRow icon="mail-outline" label="Email" value={lead.email} />
+            )}
+            {lead.address && (
+              <InfoRow icon="location-outline" label="Address" value={lead.address} />
+            )}
+            {!lead.phone && !lead.email && !lead.address && (
+              <Text style={styles.noInfo}>No contact information</Text>
+            )}
+          </View>
+        </View>
+
+        {/* Notes */}
+        {lead.notes && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Notes</Text>
+            <View style={styles.notesCard}>
+              <Text style={styles.notesText}>{lead.notes}</Text>
+            </View>
+          </View>
+        )}
+
+        {/* Appointments */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Appointments</Text>
+            <TouchableOpacity onPress={() => router.push(`/appointment/new?leadId=${id}`)}>
+              <Ionicons name="add-circle" size={24} color="#3B82F6" />
+            </TouchableOpacity>
+          </View>
+          {appointments.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyText}>No appointments scheduled</Text>
+            </View>
+          ) : (
+            appointments.map((apt) => (
+              <TouchableOpacity
+                key={apt.id}
+                style={styles.appointmentCard}
+                onPress={() => router.push(`/appointment/${apt.id}`)}
+              >
+                <View style={styles.appointmentInfo}>
+                  <Text style={styles.appointmentDate}>
+                    {format(new Date(apt.appointment_date), 'MMM d, yyyy')}
+                  </Text>
+                  <Text style={styles.appointmentTime}>{apt.appointment_time}</Text>
+                </View>
+                <View
+                  style={[
+                    styles.statusBadge,
+                    {
+                      backgroundColor:
+                        apt.status === 'completed'
+                          ? '#22C55E20'
+                          : apt.status === 'cancelled'
+                          ? '#EF444420'
+                          : '#3B82F620',
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.statusText,
+                      {
+                        color:
+                          apt.status === 'completed'
+                            ? '#22C55E'
+                            : apt.status === 'cancelled'
+                            ? '#EF4444'
+                            : '#3B82F6',
+                      },
+                    ]}
+                  >
+                    {apt.status}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            ))
+          )}
+        </View>
+
+        {/* Scope Documents */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Scope of Appointment</Text>
+            <TouchableOpacity onPress={() => router.push(`/scope/new?leadId=${id}`)}>
+              <Ionicons name="add-circle" size={24} color="#3B82F6" />
+            </TouchableOpacity>
+          </View>
+          {scopes.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyText}>No scope documents</Text>
+            </View>
+          ) : (
+            scopes.map((scope) => (
+              <TouchableOpacity
+                key={scope.id}
+                style={styles.scopeCard}
+                onPress={() => router.push(`/scope/${scope.id}`)}
+              >
+                <Ionicons name="document-text" size={24} color="#8B5CF6" />
+                <View style={styles.scopeInfo}>
+                  <Text style={styles.scopeName}>Signed by: {scope.typed_name}</Text>
+                  <Text style={styles.scopeDate}>
+                    {format(new Date(scope.created_date), 'MMM d, yyyy')}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color="#64748B" />
+              </TouchableOpacity>
+            ))
+          )}
+        </View>
+      </ScrollView>
+    </View>
+  );
+}
+
+function InfoRow({ icon, label, value }: { icon: string; label: string; value: string }) {
+  return (
+    <View style={styles.infoRow}>
+      <Ionicons name={icon as any} size={20} color="#94A3B8" />
+      <View style={styles.infoContent}>
+        <Text style={styles.infoLabel}>{label}</Text>
+        <Text style={styles.infoValue}>{value}</Text>
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#0F172A',
+  },
+  loadingContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  backButton: {
+    width: 44,
+    height: 44,
+    justifyContent: 'center',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  headerButton: {
+    width: 44,
+    height: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: 16,
+    paddingBottom: 40,
+  },
+  errorState: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorText: {
+    color: '#EF4444',
+    fontSize: 16,
+  },
+  leadHeader: {
+    alignItems: 'center',
+    paddingVertical: 20,
+  },
+  avatar: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#3B82F6',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  avatarText: {
+    color: '#FFFFFF',
+    fontSize: 32,
+    fontWeight: '600',
+  },
+  leadName: {
+    color: '#FFFFFF',
+    fontSize: 28,
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  leadDate: {
+    color: '#94A3B8',
+    fontSize: 14,
+  },
+  quickActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingVertical: 16,
+    marginBottom: 16,
+  },
+  quickAction: {
+    alignItems: 'center',
+  },
+  quickActionIcon: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  quickActionText: {
+    color: '#E2E8F0',
+    fontSize: 12,
+  },
+  section: {
+    marginBottom: 24,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  sectionTitle: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 12,
+  },
+  infoCard: {
+    backgroundColor: '#1E293B',
+    borderRadius: 16,
+    padding: 16,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#334155',
+  },
+  infoContent: {
+    marginLeft: 12,
+    flex: 1,
+  },
+  infoLabel: {
+    color: '#94A3B8',
+    fontSize: 12,
+    marginBottom: 2,
+  },
+  infoValue: {
+    color: '#FFFFFF',
+    fontSize: 16,
+  },
+  noInfo: {
+    color: '#64748B',
+    fontSize: 14,
+    textAlign: 'center',
+    paddingVertical: 12,
+  },
+  notesCard: {
+    backgroundColor: '#1E293B',
+    borderRadius: 16,
+    padding: 16,
+  },
+  notesText: {
+    color: '#E2E8F0',
+    fontSize: 15,
+    lineHeight: 24,
+  },
+  emptyState: {
+    backgroundColor: '#1E293B',
+    borderRadius: 12,
+    padding: 20,
+    alignItems: 'center',
+  },
+  emptyText: {
+    color: '#64748B',
+    fontSize: 14,
+  },
+  appointmentCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#1E293B',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 8,
+  },
+  appointmentInfo: {
+    flex: 1,
+  },
+  appointmentDate: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  appointmentTime: {
+    color: '#94A3B8',
+    fontSize: 14,
+  },
+  statusBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  statusText: {
+    fontSize: 12,
+    fontWeight: '500',
+    textTransform: 'capitalize',
+  },
+  scopeCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1E293B',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 8,
+  },
+  scopeInfo: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  scopeName: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  scopeDate: {
+    color: '#94A3B8',
+    fontSize: 13,
+  },
+});
