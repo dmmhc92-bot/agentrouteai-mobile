@@ -1557,6 +1557,10 @@ async def get_scope(scope_id: str, current_user: dict = Depends(get_current_user
     scope.setdefault("agent_typed_name", "")
     scope.setdefault("agent_signature", "")
     scope.setdefault("pdf_base64", None)
+    scope.setdefault("beneficiary_signed_at", None)
+    scope.setdefault("agent_signed_at", None)
+    scope.setdefault("status", "signed" if scope.get("signature") else "draft")
+    scope.setdefault("delivery_history", [])
     return scope
 
 @api_router.get("/scope/lead/{lead_id}")
