@@ -257,11 +257,14 @@ metadata:
 
 test_plan:
   current_focus: 
-    - "Role-Based End-to-End Audit"
-    - "Lead Distribution System"
-    - "Medicare Compliance Tracking"
-    - "SOA Workflow per Role"
-    - "Dashboard Visibility per Role"
+    - "Complete iOS Mobile E2E Test - All Roles"
+    - "Login and Session Persistence"
+    - "Dashboard Data Loading per Role"
+    - "Lead Creation and Assignment"
+    - "Appointment Creation and Editing"
+    - "SOA Signing and PDF Generation"
+    - "Role-Based Data Visibility"
+    - "Navigation and Button Functionality"
   stuck_tasks: []
   test_all: true
   test_priority: "high_first"
