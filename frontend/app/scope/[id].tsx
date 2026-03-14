@@ -110,10 +110,15 @@ export default function ScopeDetailScreen() {
     return `SOA_${leadName}_${date}.pdf`;
   };
 
-  // Save PDF to temp file and return the file path
+  // Save PDF to temp file and return the file path (iOS/Android only)
   const savePdfToTempFile = async (): Promise<string | null> => {
     const pdfBase64 = await getPdfData();
     if (!pdfBase64) {
+      return null;
+    }
+    
+    // On web, we can't use FileSystem the same way
+    if (isWeb) {
       return null;
     }
     
@@ -125,6 +130,38 @@ export default function ScopeDetailScreen() {
     });
     
     return fileUri;
+  };
+
+  // Open PDF in browser (web only)
+  const openPdfInBrowser = async () => {
+    const pdfBase64 = await getPdfData();
+    if (!pdfBase64) {
+      Alert.alert('Error', 'Could not load PDF document');
+      return;
+    }
+    
+    // Create a data URL and open it
+    const dataUrl = `data:application/pdf;base64,${pdfBase64}`;
+    
+    // For web, we can create a blob and open it
+    try {
+      const byteCharacters = atob(pdfBase64);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type: 'application/pdf' });
+      const blobUrl = URL.createObjectURL(blob);
+      window.open(blobUrl, '_blank');
+    } catch (error) {
+      console.error('Error opening PDF:', error);
+      // Fallback: try to download
+      const link = document.createElement('a');
+      link.href = dataUrl;
+      link.download = getFilename();
+      link.click();
+    }
   };
 
   // iOS-native PDF preview using Sharing (opens Quick Look)
