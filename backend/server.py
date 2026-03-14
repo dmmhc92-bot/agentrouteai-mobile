@@ -1145,7 +1145,7 @@ async def scan_document(request: dict, current_user: dict = Depends(get_current_
     Returns: name, phone, email, company, address, job_title
     """
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        from emergentintegrations.llm.chat import LlmChat, UserMessage, FileContent
         api_key = os.environ.get("EMERGENT_LLM_KEY")
         if not api_key:
             raise HTTPException(status_code=500, detail="OCR not configured - EMERGENT_LLM_KEY not set")
@@ -1156,7 +1156,22 @@ async def scan_document(request: dict, current_user: dict = Depends(get_current_
         
         # Strip data URL prefix if present
         if image_base64.startswith("data:"):
-            image_base64 = image_base64.split(",")[1]
+            # Extract content type and base64 data
+            parts = image_base64.split(",")
+            if len(parts) == 2:
+                content_type_part = parts[0]  # e.g., "data:image/jpeg;base64"
+                image_base64 = parts[1]
+                # Extract mime type
+                if "image/png" in content_type_part:
+                    content_type = "image/png"
+                elif "image/gif" in content_type_part:
+                    content_type = "image/gif"
+                else:
+                    content_type = "image/jpeg"
+            else:
+                content_type = "image/jpeg"
+        else:
+            content_type = "image/jpeg"
         
         # Enhanced system prompt for comprehensive business card extraction
         system_prompt = """You are an expert OCR system specialized in extracting contact information from business cards.
@@ -1189,9 +1204,16 @@ Rules:
             system_message=system_prompt
         ).with_model("openai", "gpt-4.1")
         
+        # Create FileContent for the image
+        file_content = FileContent(
+            content_type=content_type,
+            file_content_base64=image_base64
+        )
+        
+        # Send message with image
         response = await chat.send_message(UserMessage(
             text="Extract all contact information from this business card image. Return only JSON.",
-            image_urls=[f"data:image/jpeg;base64,{image_base64}"]
+            file_contents=[file_content]
         ))
         
         logger.info(f"OCR raw response: {response[:500] if response else 'empty'}")
@@ -1213,7 +1235,7 @@ Rules:
         result = {
             "name": (extracted.get("name") or "").strip(),
             "phone": (extracted.get("phone") or extracted.get("mobile") or "").strip(),
-            "email": (extracted.get("email") or "").strip().lower(),
+            "email": (extracted.get("email") or "").strip().lower() if extracted.get("email") else "",
             "company": (extracted.get("company") or "").strip(),
             "job_title": (extracted.get("job_title") or "").strip(),
             "address": (extracted.get("address") or "").strip(),
