@@ -4039,6 +4039,473 @@ This app is a productivity tool and does not provide insurance advice.
 Contact: support@agentroute.ai"""
     }
 
+# ==================== AGENCY COMMAND CENTER ====================
+
+class AgencyCommandCenterSummary(BaseModel):
+    total_active_agents: int
+    leads_this_week: int
+    appointments_today: int
+    applications_submitted: int
+    policies_issued: int
+    pending_commissions: float
+    paid_commissions: float
+
+class TeamPerformanceSection(BaseModel):
+    top_producers: List[Dict[str, Any]]
+    top_managers: List[Dict[str, Any]]
+    lowest_activity: List[Dict[str, Any]]
+    overdue_followups: List[Dict[str, Any]]
+
+class PipelineHealthSection(BaseModel):
+    underwriting_review: List[Dict[str, Any]]
+    additional_requirements: List[Dict[str, Any]]
+    approved_cases: List[Dict[str, Any]]
+    issued_policies: List[Dict[str, Any]]
+    stalled_cases: List[Dict[str, Any]]
+
+class ActivityTrackingSection(BaseModel):
+    logged_in_today: List[Dict[str, Any]]
+    not_logged_recently: List[Dict[str, Any]]
+    appointments_today: List[Dict[str, Any]]
+    overdue_lead_activity: List[Dict[str, Any]]
+
+@api_router.get("/agency-command-center/summary")
+async def get_agency_command_center_summary(current_user: dict = Depends(require_manager_or_admin)):
+    """Get summary cards for Agency Command Center"""
+    user_ids = await get_user_accessible_ids(current_user["id"], current_user.get("role", "agent"))
+    
+    today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    week_start = today - timedelta(days=today.weekday())
+    
+    # Total active agents (logged in within last 7 days)
+    seven_days_ago = today - timedelta(days=7)
+    total_active_agents = await db.users.count_documents({
+        "id": {"$in": user_ids},
+        "role": "agent",
+        "deleted_at": None,
+        "last_login": {"$gte": seven_days_ago}
+    })
+    
+    # Leads created this week
+    leads_this_week = await db.leads.count_documents({
+        "created_by_user": {"$in": user_ids},
+        "created_date": {"$gte": week_start},
+        "deleted_at": None
+    })
+    
+    # Appointments scheduled for today
+    today_str = today.strftime("%Y-%m-%d")
+    appointments_today = await db.appointments.count_documents({
+        "created_by_user": {"$in": user_ids},
+        "appointment_date": today_str,
+        "status": {"$in": ["scheduled", "pending"]}
+    })
+    
+    # Applications submitted (leads in application_submitted or later stages)
+    applications_submitted = await db.leads.count_documents({
+        "created_by_user": {"$in": user_ids},
+        "stage": {"$in": ["application_submitted", "underwriting_review", "additional_requirements", "approved", "policy_issued", "policy_placed"]},
+        "deleted_at": None
+    })
+    
+    # Policies issued
+    policies_issued = await db.leads.count_documents({
+        "created_by_user": {"$in": user_ids},
+        "stage": {"$in": ["policy_issued", "policy_placed", "commission_pending", "commission_paid"]},
+        "deleted_at": None
+    })
+    
+    # Commission summary
+    pending_pipeline = [
+        {"$match": {"created_by_user": {"$in": user_ids}, "commission_status": {"$in": ["estimated", "pending", "approved"]}}},
+        {"$group": {"_id": None, "total": {"$sum": "$estimated_commission"}}}
+    ]
+    pending_result = await db.commissions.aggregate(pending_pipeline).to_list(1)
+    pending_commissions = pending_result[0]["total"] if pending_result else 0
+    
+    paid_pipeline = [
+        {"$match": {"created_by_user": {"$in": user_ids}, "commission_status": "paid"}},
+        {"$group": {"_id": None, "total": {"$sum": "$paid_amount"}}}
+    ]
+    paid_result = await db.commissions.aggregate(paid_pipeline).to_list(1)
+    paid_commissions = paid_result[0]["total"] if paid_result else 0
+    
+    return AgencyCommandCenterSummary(
+        total_active_agents=total_active_agents,
+        leads_this_week=leads_this_week,
+        appointments_today=appointments_today,
+        applications_submitted=applications_submitted,
+        policies_issued=policies_issued,
+        pending_commissions=pending_commissions,
+        paid_commissions=paid_commissions
+    )
+
+@api_router.get("/agency-command-center/team-performance")
+async def get_agency_team_performance(current_user: dict = Depends(require_manager_or_admin)):
+    """Get team performance section data"""
+    user_ids = await get_user_accessible_ids(current_user["id"], current_user.get("role", "agent"))
+    
+    today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    month_start = today.replace(day=1)
+    three_days_ago = today - timedelta(days=3)
+    
+    # Top producers (by premium this month)
+    top_prod_pipeline = [
+        {"$match": {"created_by_user": {"$in": user_ids}, "created_date": {"$gte": month_start}}},
+        {"$group": {"_id": "$created_by_user", "total_premium": {"$sum": "$premium"}, "total_commission": {"$sum": "$agent_commission"}, "policies": {"$sum": 1}}},
+        {"$sort": {"total_premium": -1}},
+        {"$limit": 10}
+    ]
+    top_prod = await db.production.aggregate(top_prod_pipeline).to_list(10)
+    
+    top_producers = []
+    for p in top_prod:
+        user = await db.users.find_one({"id": p["_id"]})
+        if user:
+            top_producers.append({
+                "id": user["id"],
+                "name": user["name"],
+                "email": user["email"],
+                "role": user.get("role", "agent"),
+                "total_premium": p["total_premium"],
+                "total_commission": p["total_commission"],
+                "policies": p["policies"],
+                "last_login": user.get("last_login").isoformat() if user.get("last_login") else None
+            })
+    
+    # Top managers/uplines (by team production)
+    managers = await db.users.find({"id": {"$in": user_ids}, "role": {"$in": ["manager", "admin"]}, "deleted_at": None}).to_list(100)
+    top_managers = []
+    for mgr in managers:
+        # Get downline production
+        downline = await db.users.find({"manager_id": mgr["id"], "deleted_at": None}, {"id": 1}).to_list(100)
+        downline_ids = [d["id"] for d in downline] + [mgr["id"]]
+        
+        mgr_prod = await db.production.aggregate([
+            {"$match": {"created_by_user": {"$in": downline_ids}, "created_date": {"$gte": month_start}}},
+            {"$group": {"_id": None, "total_premium": {"$sum": "$premium"}, "total_commission": {"$sum": "$manager_override"}, "policies": {"$sum": 1}}}
+        ]).to_list(1)
+        
+        team_premium = mgr_prod[0]["total_premium"] if mgr_prod else 0
+        team_override = mgr_prod[0]["total_commission"] if mgr_prod else 0
+        team_policies = mgr_prod[0]["policies"] if mgr_prod else 0
+        
+        top_managers.append({
+            "id": mgr["id"],
+            "name": mgr["name"],
+            "email": mgr["email"],
+            "role": mgr.get("role", "manager"),
+            "team_size": len(downline),
+            "team_premium": team_premium,
+            "override_earned": team_override,
+            "team_policies": team_policies,
+            "last_login": mgr.get("last_login").isoformat() if mgr.get("last_login") else None
+        })
+    
+    top_managers.sort(key=lambda x: x["team_premium"], reverse=True)
+    top_managers = top_managers[:10]
+    
+    # Lowest activity agents (no login in 3+ days or no leads in 7 days)
+    inactive_agents = await db.users.find({
+        "id": {"$in": user_ids},
+        "role": "agent",
+        "deleted_at": None,
+        "$or": [
+            {"last_login": {"$lt": three_days_ago}},
+            {"last_login": None}
+        ]
+    }).to_list(20)
+    
+    lowest_activity = []
+    for agent in inactive_agents:
+        # Get their lead count in last 7 days
+        lead_count = await db.leads.count_documents({
+            "created_by_user": agent["id"],
+            "created_date": {"$gte": today - timedelta(days=7)},
+            "deleted_at": None
+        })
+        lowest_activity.append({
+            "id": agent["id"],
+            "name": agent["name"],
+            "email": agent["email"],
+            "last_login": agent.get("last_login").isoformat() if agent.get("last_login") else None,
+            "days_since_login": (today - agent.get("last_login", today - timedelta(days=999))).days if agent.get("last_login") else 999,
+            "leads_last_7_days": lead_count
+        })
+    
+    lowest_activity.sort(key=lambda x: x["days_since_login"], reverse=True)
+    lowest_activity = lowest_activity[:10]
+    
+    # Overdue follow-ups
+    overdue_tasks = await db.tasks.find({
+        "created_by_user": {"$in": user_ids},
+        "status": "pending",
+        "due_date": {"$lt": today.strftime("%Y-%m-%d")}
+    }).sort("due_date", 1).to_list(20)
+    
+    overdue_followups = []
+    for task in overdue_tasks:
+        user = await db.users.find_one({"id": task["created_by_user"]})
+        lead = await db.leads.find_one({"id": task.get("lead_id")}) if task.get("lead_id") else None
+        overdue_followups.append({
+            "id": task["id"],
+            "title": task["title"],
+            "task_type": task.get("task_type", "follow_up"),
+            "due_date": task["due_date"],
+            "days_overdue": (today - datetime.strptime(task["due_date"], "%Y-%m-%d")).days,
+            "agent_id": task["created_by_user"],
+            "agent_name": user["name"] if user else "Unknown",
+            "lead_id": task.get("lead_id"),
+            "lead_name": lead["name"] if lead else None
+        })
+    
+    return TeamPerformanceSection(
+        top_producers=top_producers,
+        top_managers=top_managers,
+        lowest_activity=lowest_activity,
+        overdue_followups=overdue_followups
+    )
+
+@api_router.get("/agency-command-center/pipeline-health")
+async def get_agency_pipeline_health(current_user: dict = Depends(require_manager_or_admin)):
+    """Get pipeline health section data"""
+    user_ids = await get_user_accessible_ids(current_user["id"], current_user.get("role", "agent"))
+    
+    today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    seven_days_ago = today - timedelta(days=7)
+    
+    async def get_leads_by_stage(stages: List[str], limit: int = 20) -> List[Dict]:
+        leads = await db.leads.find({
+            "created_by_user": {"$in": user_ids},
+            "stage": {"$in": stages},
+            "deleted_at": None
+        }).sort("created_date", -1).to_list(limit)
+        
+        result = []
+        for lead in leads:
+            user = await db.users.find_one({"id": lead["created_by_user"]})
+            # Check if stalled (no activity in 7 days)
+            last_activity = lead.get("last_contact_date") or lead.get("created_date")
+            is_stalled = last_activity < seven_days_ago if last_activity else True
+            
+            result.append({
+                "id": lead["id"],
+                "name": lead["name"],
+                "phone": lead.get("phone", ""),
+                "email": lead.get("email", ""),
+                "stage": lead["stage"],
+                "created_date": lead["created_date"].isoformat() if lead.get("created_date") else None,
+                "last_contact_date": lead.get("last_contact_date").isoformat() if lead.get("last_contact_date") else None,
+                "agent_id": lead["created_by_user"],
+                "agent_name": user["name"] if user else "Unknown",
+                "is_stalled": is_stalled,
+                "days_in_stage": (today - lead.get("created_date", today)).days
+            })
+        return result
+    
+    # Underwriting review
+    underwriting_review = await get_leads_by_stage(["underwriting_review"])
+    
+    # Additional requirements
+    additional_requirements = await get_leads_by_stage(["additional_requirements"])
+    
+    # Approved cases
+    approved_cases = await get_leads_by_stage(["approved"])
+    
+    # Issued policies
+    issued_policies = await get_leads_by_stage(["policy_issued", "policy_placed"])
+    
+    # Stalled cases (no activity in 7+ days, not in final stages)
+    active_stages = ["new_lead", "appointment_scheduled", "application_submitted", "underwriting_review", "additional_requirements", "approved"]
+    stalled_leads = await db.leads.find({
+        "created_by_user": {"$in": user_ids},
+        "stage": {"$in": active_stages},
+        "deleted_at": None,
+        "$or": [
+            {"last_contact_date": {"$lt": seven_days_ago}},
+            {"last_contact_date": None, "created_date": {"$lt": seven_days_ago}}
+        ]
+    }).sort("last_contact_date", 1).to_list(20)
+    
+    stalled_cases = []
+    for lead in stalled_leads:
+        user = await db.users.find_one({"id": lead["created_by_user"]})
+        last_activity = lead.get("last_contact_date") or lead.get("created_date")
+        days_stalled = (today - last_activity).days if last_activity else 999
+        
+        stalled_cases.append({
+            "id": lead["id"],
+            "name": lead["name"],
+            "phone": lead.get("phone", ""),
+            "email": lead.get("email", ""),
+            "stage": lead["stage"],
+            "created_date": lead["created_date"].isoformat() if lead.get("created_date") else None,
+            "last_contact_date": lead.get("last_contact_date").isoformat() if lead.get("last_contact_date") else None,
+            "agent_id": lead["created_by_user"],
+            "agent_name": user["name"] if user else "Unknown",
+            "days_stalled": days_stalled
+        })
+    
+    stalled_cases.sort(key=lambda x: x["days_stalled"], reverse=True)
+    
+    return PipelineHealthSection(
+        underwriting_review=underwriting_review,
+        additional_requirements=additional_requirements,
+        approved_cases=approved_cases,
+        issued_policies=issued_policies,
+        stalled_cases=stalled_cases
+    )
+
+@api_router.get("/agency-command-center/activity-tracking")
+async def get_agency_activity_tracking(current_user: dict = Depends(require_manager_or_admin)):
+    """Get activity tracking section data"""
+    user_ids = await get_user_accessible_ids(current_user["id"], current_user.get("role", "agent"))
+    
+    today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    today_str = today.strftime("%Y-%m-%d")
+    three_days_ago = today - timedelta(days=3)
+    
+    # Logged in today
+    logged_in_users = await db.users.find({
+        "id": {"$in": user_ids},
+        "last_login": {"$gte": today},
+        "deleted_at": None
+    }).to_list(100)
+    
+    logged_in_today = []
+    for user in logged_in_users:
+        lead_count = await db.leads.count_documents({"created_by_user": user["id"], "deleted_at": None})
+        apt_today = await db.appointments.count_documents({
+            "created_by_user": user["id"],
+            "appointment_date": today_str
+        })
+        logged_in_today.append({
+            "id": user["id"],
+            "name": user["name"],
+            "email": user["email"],
+            "role": user.get("role", "agent"),
+            "last_login": user.get("last_login").isoformat() if user.get("last_login") else None,
+            "leads_count": lead_count,
+            "appointments_today": apt_today
+        })
+    
+    # Not logged in recently (3+ days)
+    not_logged = await db.users.find({
+        "id": {"$in": user_ids},
+        "role": {"$in": ["agent", "manager"]},
+        "deleted_at": None,
+        "$or": [
+            {"last_login": {"$lt": three_days_ago}},
+            {"last_login": None}
+        ]
+    }).to_list(50)
+    
+    not_logged_recently = []
+    for user in not_logged:
+        days_since = (today - user.get("last_login", today - timedelta(days=999))).days if user.get("last_login") else 999
+        not_logged_recently.append({
+            "id": user["id"],
+            "name": user["name"],
+            "email": user["email"],
+            "role": user.get("role", "agent"),
+            "last_login": user.get("last_login").isoformat() if user.get("last_login") else None,
+            "days_since_login": days_since
+        })
+    
+    not_logged_recently.sort(key=lambda x: x["days_since_login"], reverse=True)
+    
+    # Users with appointments today
+    apt_today_pipeline = [
+        {"$match": {"created_by_user": {"$in": user_ids}, "appointment_date": today_str}},
+        {"$group": {"_id": "$created_by_user", "count": {"$sum": 1}, "appointments": {"$push": {"id": "$id", "lead_id": "$lead_id", "time": "$appointment_time", "status": "$status"}}}}
+    ]
+    apt_grouped = await db.appointments.aggregate(apt_today_pipeline).to_list(100)
+    
+    appointments_today_list = []
+    for apt in apt_grouped:
+        user = await db.users.find_one({"id": apt["_id"]})
+        if user:
+            # Enrich appointments with lead names
+            enriched_apts = []
+            for a in apt["appointments"][:5]:  # Limit to 5 per agent
+                lead = await db.leads.find_one({"id": a["lead_id"]})
+                enriched_apts.append({
+                    "id": a["id"],
+                    "lead_id": a["lead_id"],
+                    "lead_name": lead["name"] if lead else "Unknown",
+                    "time": a["time"],
+                    "status": a["status"]
+                })
+            
+            appointments_today_list.append({
+                "id": user["id"],
+                "name": user["name"],
+                "email": user["email"],
+                "role": user.get("role", "agent"),
+                "appointment_count": apt["count"],
+                "appointments": enriched_apts
+            })
+    
+    # Overdue lead activity (leads with overdue next_follow_up)
+    overdue_leads = await db.leads.find({
+        "created_by_user": {"$in": user_ids},
+        "next_follow_up": {"$lt": today},
+        "stage": {"$nin": ["policy_issued", "policy_placed", "commission_pending", "commission_paid"]},
+        "deleted_at": None
+    }).sort("next_follow_up", 1).to_list(30)
+    
+    overdue_lead_activity = []
+    agent_overdue_map = {}
+    
+    for lead in overdue_leads:
+        agent_id = lead["created_by_user"]
+        if agent_id not in agent_overdue_map:
+            user = await db.users.find_one({"id": agent_id})
+            agent_overdue_map[agent_id] = {
+                "id": agent_id,
+                "name": user["name"] if user else "Unknown",
+                "email": user["email"] if user else "",
+                "overdue_count": 0,
+                "leads": []
+            }
+        
+        days_overdue = (today - lead["next_follow_up"]).days if lead.get("next_follow_up") else 0
+        agent_overdue_map[agent_id]["overdue_count"] += 1
+        if len(agent_overdue_map[agent_id]["leads"]) < 5:
+            agent_overdue_map[agent_id]["leads"].append({
+                "id": lead["id"],
+                "name": lead["name"],
+                "phone": lead.get("phone", ""),
+                "stage": lead["stage"],
+                "next_follow_up": lead["next_follow_up"].isoformat() if lead.get("next_follow_up") else None,
+                "days_overdue": days_overdue
+            })
+    
+    overdue_lead_activity = list(agent_overdue_map.values())
+    overdue_lead_activity.sort(key=lambda x: x["overdue_count"], reverse=True)
+    
+    return ActivityTrackingSection(
+        logged_in_today=logged_in_today,
+        not_logged_recently=not_logged_recently,
+        appointments_today=appointments_today_list,
+        overdue_lead_activity=overdue_lead_activity
+    )
+
+@api_router.get("/agency-command-center/full")
+async def get_agency_command_center_full(current_user: dict = Depends(require_manager_or_admin)):
+    """Get complete Agency Command Center data in one call"""
+    summary = await get_agency_command_center_summary(current_user)
+    team_performance = await get_agency_team_performance(current_user)
+    pipeline_health = await get_agency_pipeline_health(current_user)
+    activity_tracking = await get_agency_activity_tracking(current_user)
+    
+    return {
+        "summary": summary,
+        "team_performance": team_performance,
+        "pipeline_health": pipeline_health,
+        "activity_tracking": activity_tracking
+    }
+
 # ==================== HEALTH CHECK ====================
 
 @api_router.get("/")
