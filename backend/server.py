@@ -2826,6 +2826,480 @@ async def get_coaching_alerts(current_user: dict = Depends(require_manager_or_ad
     
     return alerts
 
+# ==================== TERRITORY MANAGEMENT ROUTES ====================
+
+@api_router.get("/territories")
+async def get_territories(current_user: dict = Depends(get_current_user)):
+    """Get territories based on user role"""
+    user_role = current_user.get("role", "agent")
+    
+    if user_role == "admin":
+        territories = await db.territories.find({}).to_list(1000)
+    elif user_role == "manager":
+        # Manager sees territories they created or assigned to their agents
+        downline_ids = [agent["id"] async for agent in db.users.find({"manager_id": current_user["id"]}, {"id": 1})]
+        downline_ids.append(current_user["id"])
+        territories = await db.territories.find({
+            "$or": [
+                {"created_by": current_user["id"]},
+                {"assigned_agents": {"$in": downline_ids}}
+            ]
+        }).to_list(1000)
+    else:
+        # Agent sees territories assigned to them
+        territories = await db.territories.find({"assigned_agents": current_user["id"]}).to_list(1000)
+    
+    result = []
+    for t in territories:
+        if "_id" in t:
+            del t["_id"]
+        # Get agent names
+        agent_names = []
+        for agent_id in t.get("assigned_agents", []):
+            agent = await db.users.find_one({"id": agent_id}, {"name": 1})
+            if agent:
+                agent_names.append(agent["name"])
+        
+        # Count leads in this territory
+        lead_count = 0
+        zip_codes = t.get("zip_codes", [])
+        if zip_codes:
+            lead_count = await db.leads.count_documents({"address": {"$regex": "|".join(zip_codes)}})
+        
+        result.append(TerritoryResponse(
+            id=t["id"],
+            name=t["name"],
+            description=t.get("description", ""),
+            geographic_type=t.get("geographic_type", "zip_codes"),
+            zip_codes=t.get("zip_codes", []),
+            cities=t.get("cities", []),
+            counties=t.get("counties", []),
+            states=t.get("states", []),
+            custom_areas=t.get("custom_areas", []),
+            assigned_agents=t.get("assigned_agents", []),
+            agent_names=agent_names,
+            lead_count=lead_count,
+            created_by=t.get("created_by", ""),
+            created_date=t.get("created_date", datetime.utcnow())
+        ))
+    
+    return result
+
+@api_router.post("/territories")
+async def create_territory(territory: TerritoryCreate, current_user: dict = Depends(require_manager_or_admin)):
+    """Create a new territory"""
+    territory_id = str(uuid.uuid4())
+    territory_doc = {
+        "id": territory_id,
+        "name": territory.name,
+        "description": territory.description,
+        "geographic_type": territory.geographic_type,
+        "zip_codes": territory.zip_codes or [],
+        "cities": territory.cities or [],
+        "counties": territory.counties or [],
+        "states": territory.states or [],
+        "custom_areas": territory.custom_areas or [],
+        "assigned_agents": territory.assigned_agents or [],
+        "created_by": current_user["id"],
+        "created_date": datetime.utcnow()
+    }
+    
+    await db.territories.insert_one(territory_doc)
+    await log_activity(current_user["id"], "territory_created", f"Territory '{territory.name}' created")
+    
+    return {"id": territory_id, "message": "Territory created"}
+
+@api_router.get("/territories/{territory_id}")
+async def get_territory(territory_id: str, current_user: dict = Depends(get_current_user)):
+    """Get a specific territory"""
+    territory = await db.territories.find_one({"id": territory_id})
+    if not territory:
+        raise HTTPException(status_code=404, detail="Territory not found")
+    
+    if "_id" in territory:
+        del territory["_id"]
+    
+    # Get agent names
+    agent_names = []
+    for agent_id in territory.get("assigned_agents", []):
+        agent = await db.users.find_one({"id": agent_id}, {"name": 1})
+        if agent:
+            agent_names.append(agent["name"])
+    
+    territory["agent_names"] = agent_names
+    
+    # Get leads in territory
+    leads = []
+    zip_codes = territory.get("zip_codes", [])
+    if zip_codes:
+        for zc in zip_codes:
+            territory_leads = await db.leads.find({"address": {"$regex": zc}}).to_list(100)
+            for lead in territory_leads:
+                if "_id" in lead:
+                    del lead["_id"]
+                leads.append(lead)
+    
+    territory["leads"] = leads
+    territory["lead_count"] = len(leads)
+    
+    return territory
+
+@api_router.put("/territories/{territory_id}")
+async def update_territory(territory_id: str, update: TerritoryUpdate, current_user: dict = Depends(require_manager_or_admin)):
+    """Update a territory"""
+    territory = await db.territories.find_one({"id": territory_id})
+    if not territory:
+        raise HTTPException(status_code=404, detail="Territory not found")
+    
+    update_dict = {}
+    if update.name is not None:
+        update_dict["name"] = update.name
+    if update.description is not None:
+        update_dict["description"] = update.description
+    if update.geographic_type is not None:
+        update_dict["geographic_type"] = update.geographic_type
+    if update.zip_codes is not None:
+        update_dict["zip_codes"] = update.zip_codes
+    if update.cities is not None:
+        update_dict["cities"] = update.cities
+    if update.counties is not None:
+        update_dict["counties"] = update.counties
+    if update.states is not None:
+        update_dict["states"] = update.states
+    if update.custom_areas is not None:
+        update_dict["custom_areas"] = update.custom_areas
+    if update.assigned_agents is not None:
+        update_dict["assigned_agents"] = update.assigned_agents
+    
+    if update_dict:
+        await db.territories.update_one({"id": territory_id}, {"$set": update_dict})
+    
+    return {"message": "Territory updated"}
+
+@api_router.delete("/territories/{territory_id}")
+async def delete_territory(territory_id: str, current_user: dict = Depends(require_manager_or_admin)):
+    """Delete a territory"""
+    result = await db.territories.delete_one({"id": territory_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Territory not found")
+    return {"message": "Territory deleted"}
+
+# ==================== LEAD DISTRIBUTION ROUTES ====================
+
+@api_router.get("/lead-distribution/unassigned")
+async def get_unassigned_leads(current_user: dict = Depends(require_manager_or_admin)):
+    """Get leads that are not assigned to any agent"""
+    leads = await db.leads.find({
+        "$or": [
+            {"assigned_to_user": None},
+            {"assigned_to_user": {"$exists": False}},
+            {"assigned_to_user": ""}
+        ]
+    }).sort("created_date", -1).to_list(500)
+    
+    result = []
+    for lead in leads:
+        if "_id" in lead:
+            del lead["_id"]
+        result.append(lead)
+    
+    return result
+
+@api_router.get("/lead-distribution/assignments")
+async def get_lead_assignments(current_user: dict = Depends(require_manager_or_admin)):
+    """Get summary of lead assignments per agent"""
+    user_role = current_user.get("role", "agent")
+    
+    if user_role == "admin":
+        agents = await db.users.find({"role": "agent", "deleted_at": None}).to_list(1000)
+    else:
+        agents = await db.users.find({"manager_id": current_user["id"], "deleted_at": None}).to_list(1000)
+    
+    assignments = []
+    for agent in agents:
+        assigned_count = await db.leads.count_documents({"assigned_to_user": agent["id"]})
+        created_count = await db.leads.count_documents({"created_by_user": agent["id"]})
+        
+        # Get territory info
+        territories = await db.territories.find({"assigned_agents": agent["id"]}).to_list(10)
+        territory_names = [t["name"] for t in territories]
+        
+        assignments.append({
+            "agent_id": agent["id"],
+            "agent_name": agent["name"],
+            "agent_email": agent["email"],
+            "assigned_leads": assigned_count,
+            "created_leads": created_count,
+            "total_leads": assigned_count + created_count,
+            "territories": territory_names,
+            "workload_score": assigned_count + created_count  # For balancing
+        })
+    
+    return sorted(assignments, key=lambda x: x["total_leads"], reverse=True)
+
+@api_router.post("/lead-distribution/assign")
+async def assign_lead_to_agent(assignment: LeadAssignment, current_user: dict = Depends(require_manager_or_admin)):
+    """Assign a single lead to an agent"""
+    lead = await db.leads.find_one({"id": assignment.lead_id})
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    
+    agent = await db.users.find_one({"id": assignment.agent_id, "deleted_at": None})
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    
+    # Update lead assignment
+    update_data = {
+        "assigned_to_user": assignment.agent_id,
+        "assignment_date": datetime.utcnow(),
+        "assigned_by": current_user["id"]
+    }
+    
+    if assignment.notes:
+        update_data["assignment_notes"] = assignment.notes
+    
+    await db.leads.update_one({"id": assignment.lead_id}, {"$set": update_data})
+    await log_activity(current_user["id"], "lead_assigned", f"Lead assigned to {agent['name']}", assignment.lead_id)
+    
+    return {"message": f"Lead assigned to {agent['name']}", "agent_name": agent["name"]}
+
+@api_router.post("/lead-distribution/bulk-assign")
+async def bulk_assign_leads(assignment: BulkLeadAssignment, current_user: dict = Depends(require_manager_or_admin)):
+    """Assign multiple leads to a single agent"""
+    agent = await db.users.find_one({"id": assignment.agent_id, "deleted_at": None})
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    
+    assigned = 0
+    for lead_id in assignment.lead_ids:
+        result = await db.leads.update_one(
+            {"id": lead_id},
+            {"$set": {
+                "assigned_to_user": assignment.agent_id,
+                "assignment_date": datetime.utcnow(),
+                "assigned_by": current_user["id"]
+            }}
+        )
+        if result.modified_count > 0:
+            assigned += 1
+    
+    await log_activity(current_user["id"], "bulk_lead_assignment", f"{assigned} leads assigned to {agent['name']}")
+    
+    return {"message": f"{assigned} leads assigned to {agent['name']}", "assigned_count": assigned}
+
+@api_router.post("/lead-distribution/auto-distribute")
+async def auto_distribute_leads(request: LeadDistributionRequest, current_user: dict = Depends(require_manager_or_admin)):
+    """Auto-distribute leads among agents using specified method"""
+    if not request.lead_ids:
+        raise HTTPException(status_code=400, detail="No leads provided")
+    if not request.agent_ids:
+        raise HTTPException(status_code=400, detail="No agents provided")
+    
+    # Verify agents exist
+    agents = await db.users.find({"id": {"$in": request.agent_ids}, "deleted_at": None}).to_list(100)
+    if len(agents) != len(request.agent_ids):
+        raise HTTPException(status_code=400, detail="Some agents not found")
+    
+    assigned = 0
+    agent_assignments = {agent["id"]: 0 for agent in agents}
+    
+    if request.method == "round_robin":
+        # Simple round-robin distribution
+        for i, lead_id in enumerate(request.lead_ids):
+            agent_id = request.agent_ids[i % len(request.agent_ids)]
+            await db.leads.update_one(
+                {"id": lead_id},
+                {"$set": {
+                    "assigned_to_user": agent_id,
+                    "assignment_date": datetime.utcnow(),
+                    "assigned_by": current_user["id"],
+                    "assignment_method": "auto_round_robin"
+                }}
+            )
+            agent_assignments[agent_id] += 1
+            assigned += 1
+    
+    elif request.method == "workload_balanced":
+        # Balance based on existing workload
+        agent_workloads = {}
+        for agent in agents:
+            count = await db.leads.count_documents({
+                "$or": [{"assigned_to_user": agent["id"]}, {"created_by_user": agent["id"]}]
+            })
+            agent_workloads[agent["id"]] = count
+        
+        for lead_id in request.lead_ids:
+            # Assign to agent with lowest workload
+            min_agent = min(agent_workloads, key=agent_workloads.get)
+            await db.leads.update_one(
+                {"id": lead_id},
+                {"$set": {
+                    "assigned_to_user": min_agent,
+                    "assignment_date": datetime.utcnow(),
+                    "assigned_by": current_user["id"],
+                    "assignment_method": "auto_workload_balanced"
+                }}
+            )
+            agent_workloads[min_agent] += 1
+            agent_assignments[min_agent] += 1
+            assigned += 1
+    
+    elif request.method == "territory_based":
+        # Assign based on territory match
+        for lead_id in request.lead_ids:
+            lead = await db.leads.find_one({"id": lead_id})
+            if not lead:
+                continue
+            
+            lead_address = lead.get("address", "")
+            assigned_agent = None
+            
+            # Check each agent's territories
+            for agent_id in request.agent_ids:
+                territories = await db.territories.find({"assigned_agents": agent_id}).to_list(100)
+                for territory in territories:
+                    for zc in territory.get("zip_codes", []):
+                        if zc in lead_address:
+                            assigned_agent = agent_id
+                            break
+                    if assigned_agent:
+                        break
+                if assigned_agent:
+                    break
+            
+            # If no territory match, use round-robin fallback
+            if not assigned_agent:
+                min_agent = min(agent_assignments, key=agent_assignments.get)
+                assigned_agent = min_agent
+            
+            await db.leads.update_one(
+                {"id": lead_id},
+                {"$set": {
+                    "assigned_to_user": assigned_agent,
+                    "assignment_date": datetime.utcnow(),
+                    "assigned_by": current_user["id"],
+                    "assignment_method": "auto_territory_based"
+                }}
+            )
+            agent_assignments[assigned_agent] += 1
+            assigned += 1
+    
+    await log_activity(current_user["id"], "auto_lead_distribution", f"{assigned} leads auto-distributed via {request.method}")
+    
+    # Build result with agent names
+    distribution_result = []
+    for agent in agents:
+        distribution_result.append({
+            "agent_id": agent["id"],
+            "agent_name": agent["name"],
+            "assigned_count": agent_assignments.get(agent["id"], 0)
+        })
+    
+    return {
+        "message": f"Distributed {assigned} leads among {len(agents)} agents",
+        "method": request.method,
+        "total_assigned": assigned,
+        "distribution": distribution_result
+    }
+
+@api_router.post("/lead-distribution/bulk-upload")
+async def bulk_upload_leads(upload: BulkLeadUpload, current_user: dict = Depends(require_manager_or_admin)):
+    """Upload multiple leads at once with optional auto-assignment"""
+    created_leads = []
+    
+    for lead_data in upload.leads:
+        lead_id = str(uuid.uuid4())
+        lead_doc = {
+            "id": lead_id,
+            "name": lead_data.get("name", "Unknown"),
+            "phone": lead_data.get("phone", ""),
+            "email": lead_data.get("email", ""),
+            "address": lead_data.get("address", ""),
+            "notes": lead_data.get("notes", ""),
+            "source": lead_data.get("source", "bulk_upload"),
+            "stage": "new_lead",
+            "created_by_user": current_user["id"],
+            "created_date": datetime.utcnow(),
+            "uploaded_by": current_user["id"]
+        }
+        
+        await db.leads.insert_one(lead_doc)
+        created_leads.append(lead_id)
+    
+    await log_activity(current_user["id"], "bulk_lead_upload", f"Uploaded {len(created_leads)} leads")
+    
+    # Auto-assign if requested
+    if upload.auto_assign and created_leads:
+        # Get available agents
+        if current_user.get("role") == "admin":
+            agents = await db.users.find({"role": "agent", "deleted_at": None}).to_list(100)
+        else:
+            agents = await db.users.find({"manager_id": current_user["id"], "deleted_at": None}).to_list(100)
+        
+        if agents:
+            agent_ids = [a["id"] for a in agents]
+            method = "territory_based" if upload.territory_based else "workload_balanced"
+            
+            # Auto-distribute
+            request = LeadDistributionRequest(
+                lead_ids=created_leads,
+                agent_ids=agent_ids,
+                method=method
+            )
+            await auto_distribute_leads(request, current_user)
+    
+    return {
+        "message": f"Uploaded {len(created_leads)} leads",
+        "lead_count": len(created_leads),
+        "lead_ids": created_leads,
+        "auto_assigned": upload.auto_assign
+    }
+
+@api_router.post("/lead-distribution/reassign")
+async def reassign_lead(request: dict, current_user: dict = Depends(require_manager_or_admin)):
+    """Reassign a lead from one agent to another"""
+    lead_id = request.get("lead_id")
+    new_agent_id = request.get("new_agent_id")
+    reason = request.get("reason", "")
+    
+    lead = await db.leads.find_one({"id": lead_id})
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    
+    new_agent = await db.users.find_one({"id": new_agent_id, "deleted_at": None})
+    if not new_agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    
+    old_agent_id = lead.get("assigned_to_user")
+    old_agent_name = "Unassigned"
+    if old_agent_id:
+        old_agent = await db.users.find_one({"id": old_agent_id})
+        old_agent_name = old_agent["name"] if old_agent else "Unknown"
+    
+    await db.leads.update_one(
+        {"id": lead_id},
+        {"$set": {
+            "assigned_to_user": new_agent_id,
+            "assignment_date": datetime.utcnow(),
+            "assigned_by": current_user["id"],
+            "reassignment_reason": reason,
+            "previous_agent": old_agent_id
+        }}
+    )
+    
+    await log_activity(
+        current_user["id"],
+        "lead_reassigned",
+        f"Lead reassigned from {old_agent_name} to {new_agent['name']}" + (f" - Reason: {reason}" if reason else ""),
+        lead_id
+    )
+    
+    return {
+        "message": f"Lead reassigned to {new_agent['name']}",
+        "previous_agent": old_agent_name,
+        "new_agent": new_agent["name"]
+    }
+
 # ==================== SUBSCRIPTION ROUTES ====================
 
 @api_router.get("/subscription/status")
