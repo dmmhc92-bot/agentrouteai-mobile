@@ -211,7 +211,8 @@ async function loadTemplate(): Promise<Uint8Array> {
   // Load from backend
   try {
     const backendUrl = getBackendUrl();
-    const url = `${backendUrl}/api/soa-template`;
+    // Use relative URL on web, full URL on native
+    const url = backendUrl ? `${backendUrl}/api/soa-template` : '/api/soa-template';
     console.log('[PDFGenerator] Fetching template from:', url);
     
     const response = await fetch(url);
