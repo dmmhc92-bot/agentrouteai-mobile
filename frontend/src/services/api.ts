@@ -322,6 +322,55 @@ class ApiService {
     const response = await apiClient.get(`/pipeline/stats?team_view=${teamView}`);
     return response.data;
   }
+
+  // Commission Tracking
+  async getCommissions(status?: string, teamView: boolean = false) {
+    let url = `/commissions?team_view=${teamView}`;
+    if (status) {
+      url += `&status=${status}`;
+    }
+    const response = await apiClient.get(url);
+    return response.data;
+  }
+
+  async createCommission(data: {
+    lead_id?: string;
+    production_id?: string;
+    policy_type: string;
+    carrier: string;
+    premium: number;
+    estimated_commission: number;
+    commission_status?: string;
+    notes?: string;
+  }) {
+    const response = await apiClient.post('/commissions', data);
+    return response.data;
+  }
+
+  async getCommission(commissionId: string) {
+    const response = await apiClient.get(`/commissions/${commissionId}`);
+    return response.data;
+  }
+
+  async updateCommission(commissionId: string, data: {
+    commission_status?: string;
+    paid_amount?: number;
+    payment_date?: string;
+    notes?: string;
+  }) {
+    const response = await apiClient.put(`/commissions/${commissionId}`, data);
+    return response.data;
+  }
+
+  async getCommissionSummary(teamView: boolean = false) {
+    const response = await apiClient.get(`/commissions/summary/totals?team_view=${teamView}`);
+    return response.data;
+  }
+
+  async getAgentCommissions(agentId: string) {
+    const response = await apiClient.get(`/commissions/agent/${agentId}`);
+    return response.data;
+  }
 }
 
 export const api = new ApiService();
