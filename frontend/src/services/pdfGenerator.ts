@@ -8,11 +8,20 @@
  * Uses the exact user-uploaded form as the template.
  */
 
-import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import * as Print from 'expo-print';
 import Constants from 'expo-constants';
+
+// Lazy-loaded pdf-lib to avoid bundling issues
+let PDFLib: typeof import('pdf-lib') | null = null;
+
+async function getPdfLib() {
+  if (!PDFLib) {
+    PDFLib = await import('pdf-lib');
+  }
+  return PDFLib;
+}
 
 // SOA Template PDF as base64 (cached for offline use)
 let SOA_TEMPLATE_BASE64: string | null = null;
