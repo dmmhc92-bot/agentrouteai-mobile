@@ -2293,8 +2293,8 @@ async def get_chat_history(current_user: dict = Depends(get_current_user)):
 @api_router.post("/ocr/scan")
 async def scan_document(request: dict, current_user: dict = Depends(get_current_user)):
     """
-    Scan a business card image and extract contact information.
-    Returns: name, phone, email, company, address, job_title
+    Scan a business card, contact sheet, lead form, or flyer to extract contact information.
+    Returns: name, phone, email, company, address, city, state, zip, job_title, notes, confidence scores
     """
     import tempfile
     try:
@@ -2304,6 +2304,8 @@ async def scan_document(request: dict, current_user: dict = Depends(get_current_
             raise HTTPException(status_code=500, detail="OCR not configured - EMERGENT_LLM_KEY not set")
         
         image_base64 = request.get("image_base64", "")
+        document_type = request.get("document_type", "auto")  # auto, business_card, contact_sheet, handwritten, flyer
+        
         if not image_base64:
             raise HTTPException(status_code=400, detail="No image provided")
         
@@ -2335,27 +2337,48 @@ async def scan_document(request: dict, current_user: dict = Depends(get_current_
             tmp_path = tmp_file.name
         
         try:
-            # Enhanced system prompt for comprehensive business card extraction
-            system_prompt = """You are an expert OCR system specialized in extracting contact information from business cards.
+            # Enhanced system prompt for comprehensive lead extraction from multiple document types
+            system_prompt = """You are an expert OCR system specialized in extracting contact and lead information from various document types including:
+- Business cards
+- Printed contact sheets
+- Handwritten lead forms or notes
+- Marketing flyers with contact information
+- Sign-up forms
 
-Extract ALL available information from the business card image and return ONLY a valid JSON object with these fields:
+Extract ALL available information and return ONLY a valid JSON object with these fields:
 {
   "name": "Full name of the person (first and last name)",
-  "phone": "Primary phone number (include country code if visible)",
-  "email": "Email address",
+  "phone": "Primary phone number (cleaned, digits only with country code if visible)",
+  "email": "Email address (exact as written)",
   "company": "Company or organization name",
   "job_title": "Job title or position",
-  "address": "Full business address (street, city, state, zip)",
+  "street_address": "Street address line",
+  "city": "City name",
+  "state": "State (2-letter code if US)",
+  "zip_code": "ZIP or postal code",
   "website": "Website URL if present",
-  "mobile": "Mobile/cell phone if different from main phone"
+  "mobile": "Mobile/cell phone if different from main phone",
+  "notes": "Any additional relevant text, interests, or notes found",
+  "confidence": {
+    "name": 0.0 to 1.0,
+    "phone": 0.0 to 1.0,
+    "email": 0.0 to 1.0,
+    "company": 0.0 to 1.0,
+    "address": 0.0 to 1.0,
+    "overall": 0.0 to 1.0
+  },
+  "document_type_detected": "business_card" | "contact_sheet" | "handwritten" | "flyer" | "form" | "unknown"
 }
 
 Rules:
 - Return ONLY the JSON object, no other text or markdown
-- Use empty string "" for fields not found on the card
-- Clean up phone numbers to a consistent format
-- Preserve the exact email address
-- For addresses, include all parts visible (street, suite, city, state, zip)
+- Use empty string "" for fields not found
+- Clean up phone numbers: remove spaces/dashes, keep country code
+- Preserve exact email addresses
+- For addresses, parse into separate street, city, state, zip when possible
+- For handwritten text, do your best but lower the confidence score
+- Set confidence scores: 1.0 = very clear, 0.7 = likely correct, 0.5 = uncertain, 0.3 = guessing
+- Include any useful notes like "Medicare interested" or "Call after 5pm" in notes field
 """
             
             chat = LlmChat(
@@ -2372,7 +2395,7 @@ Rules:
             
             # Send message with image
             response = await chat.send_message(UserMessage(
-                text="Extract all contact information from this business card image. Return only JSON, no markdown.",
+                text="Extract all contact and lead information from this image. This could be a business card, contact form, handwritten notes, or flyer. Return only JSON, no markdown.",
                 file_contents=[file_content]
             ))
             
@@ -2398,6 +2421,31 @@ Rules:
                 logger.error(f"JSON parse error: {je}, response: {response[:200]}")
                 extracted = {}
             
+            # Build full address from parts if available
+            address_parts = []
+            street = (extracted.get("street_address") or "").strip()
+            city = (extracted.get("city") or "").strip()
+            state = (extracted.get("state") or "").strip()
+            zip_code = (extracted.get("zip_code") or "").strip()
+            
+            if street:
+                address_parts.append(street)
+            if city:
+                address_parts.append(city)
+            if state and zip_code:
+                address_parts.append(f"{state} {zip_code}")
+            elif state:
+                address_parts.append(state)
+            elif zip_code:
+                address_parts.append(zip_code)
+            
+            full_address = ", ".join(address_parts) if address_parts else (extracted.get("address") or "").strip()
+            
+            # Get confidence scores
+            confidence = extracted.get("confidence", {})
+            if not isinstance(confidence, dict):
+                confidence = {}
+            
             # Normalize and clean the extracted data
             result = {
                 "name": (extracted.get("name") or "").strip(),
@@ -2405,12 +2453,26 @@ Rules:
                 "email": (extracted.get("email") or "").strip().lower() if extracted.get("email") else "",
                 "company": (extracted.get("company") or "").strip(),
                 "job_title": (extracted.get("job_title") or "").strip(),
-                "address": (extracted.get("address") or "").strip(),
+                "street_address": street,
+                "city": city,
+                "state": state,
+                "zip_code": zip_code,
+                "address": full_address,
                 "website": (extracted.get("website") or "").strip(),
+                "notes": (extracted.get("notes") or "").strip(),
+                "confidence": {
+                    "name": confidence.get("name", 0.5),
+                    "phone": confidence.get("phone", 0.5),
+                    "email": confidence.get("email", 0.5),
+                    "company": confidence.get("company", 0.5),
+                    "address": confidence.get("address", 0.5),
+                    "overall": confidence.get("overall", 0.5)
+                },
+                "document_type_detected": extracted.get("document_type_detected", "unknown"),
                 "raw_text": response
             }
             
-            logger.info(f"OCR extracted: name={result['name']}, company={result['company']}, email={result['email']}")
+            logger.info(f"OCR extracted: name={result['name']}, company={result['company']}, email={result['email']}, confidence={result['confidence'].get('overall', 0)}")
             return result
             
         finally:
