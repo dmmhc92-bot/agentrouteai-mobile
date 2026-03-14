@@ -202,7 +202,7 @@ export default function NewScopeScreen() {
   const handleSave = async () => {
     const error = validateForm();
     if (error) {
-      Alert.alert('Error', error);
+      Alert.alert('Validation Error', error);
       return;
     }
 
@@ -217,17 +217,27 @@ export default function NewScopeScreen() {
       if (formData.hospital_indemnity) products.push('Hospital Indemnity');
       if (formData.other_products.trim()) products.push(formData.other_products.trim());
 
+      // Add signature timestamps
+      const now = new Date().toISOString();
+
       const scope = await api.createScope({
         lead_id: leadId!,
         form_fields: {
           ...formData,
           products_selected: products,
+          beneficiary_signed_at: now,
+          agent_signed_at: now,
         },
         typed_name: formData.beneficiary_name.trim(),
         signature: beneficiarySignature,
         agent_typed_name: formData.agent_name.trim(),
         agent_signature: agentSignature,
       });
+
+      // Verify PDF was generated
+      if (!scope.pdf_base64) {
+        console.warn('PDF not generated during save, will be generated on view');
+      }
 
       setStep('complete');
       
@@ -236,8 +246,9 @@ export default function NewScopeScreen() {
         router.replace(`/scope/${scope.id}`);
       }, 1500);
     } catch (error: any) {
-      const message = error.response?.data?.detail || 'Failed to save document';
-      Alert.alert('Error', message);
+      console.error('Save error:', error);
+      const message = error.response?.data?.detail || 'Failed to save document. Please try again.';
+      Alert.alert('Save Failed', message);
     } finally {
       setIsSaving(false);
     }
