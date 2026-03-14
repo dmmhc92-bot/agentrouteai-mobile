@@ -20,6 +20,15 @@ import * as Print from 'expo-print';
 import { WebView } from 'react-native-webview';
 import { api } from '../../src/services/api';
 
+interface DeliveryLogEntry {
+  id: string;
+  delivery_method: string;
+  recipient_contact?: string;
+  notes?: string;
+  delivered_at: string;
+  delivered_by_user: string;
+}
+
 interface ScopeData {
   id: string;
   lead_id: string;
@@ -31,6 +40,7 @@ interface ScopeData {
   pdf_base64?: string;
   created_date: string;
   created_by_user: string;
+  delivery_history?: DeliveryLogEntry[];
 }
 
 export default function ScopeDetailScreen() {
