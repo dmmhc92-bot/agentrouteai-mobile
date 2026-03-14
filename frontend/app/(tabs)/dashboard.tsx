@@ -62,13 +62,14 @@ export default function DashboardScreen() {
       setLeads(leadsData);
       setAppointments(appointmentsData);
       
-      // Load compliance cards for admin/manager
-      if (isAdminOrManager) {
+      // Load compliance cards for admin/manager (check role inside the function)
+      const userRole = user?.role;
+      if (userRole === 'admin' || userRole === 'manager') {
         try {
           const complianceData = await api.getComplianceDashboardCards();
           setComplianceCards(complianceData);
         } catch (e) {
-          console.log('Compliance cards not available');
+          console.log('Compliance cards not available:', e);
         }
       }
     } catch (error) {
