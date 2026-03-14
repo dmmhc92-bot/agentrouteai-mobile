@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL || 'https://field-sales-crm-3.preview.emergentagent.com';
+const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL || 'https://field-sales-crm-4.preview.emergentagent.com';
 
 const apiClient = axios.create({
   baseURL: `${BACKEND_URL}/api`,
