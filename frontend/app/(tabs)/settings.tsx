@@ -19,6 +19,7 @@ import { format } from 'date-fns';
 
 // Constants
 const PRIVACY_POLICY_URL = 'https://agentroute-ai.preview.emergentagent.com/api/privacy-policy';
+const TERMS_OF_SERVICE_URL = 'https://agentroute-ai.preview.emergentagent.com/api/terms-of-service';
 const SUPPORT_EMAIL = 'agentrouteai@gmail.com';
 const SUPPORT_SUBJECT = 'AgentRoute Support Request';
 
