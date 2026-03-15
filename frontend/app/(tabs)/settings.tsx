@@ -260,6 +260,27 @@ export default function SettingsScreen() {
           </View>
         </View>
 
+        {/* Team Management Section - Only for Admin/Manager */}
+        {canInviteUsers && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Team Management</Text>
+            <View style={styles.menuCard}>
+              <MenuItem
+                icon="people-outline"
+                title="Manage Team"
+                subtitle={isAdmin ? "Users, invitations, approvals" : "Agents & invitations"}
+                onPress={() => router.push('/team-management')}
+              />
+              <MenuItem
+                icon="git-network-outline"
+                title="Team Hierarchy"
+                subtitle="View organization tree"
+                onPress={() => router.push('/team-tree')}
+              />
+            </View>
+          </View>
+        )}
+
         {/* Menu Items */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Legal & Support</Text>
