@@ -337,17 +337,22 @@ export default function SettingsScreen() {
 function MenuItem({
   icon,
   title,
+  subtitle,
   onPress,
 }: {
   icon: string;
   title: string;
+  subtitle?: string;
   onPress: () => void;
 }) {
   return (
     <TouchableOpacity style={styles.menuItem} onPress={onPress}>
       <View style={styles.menuItemLeft}>
         <Ionicons name={icon as any} size={22} color="#94A3B8" />
-        <Text style={styles.menuItemText}>{title}</Text>
+        <View style={styles.menuItemTextContainer}>
+          <Text style={styles.menuItemText}>{title}</Text>
+          {subtitle && <Text style={styles.menuItemSubtitle}>{subtitle}</Text>}
+        </View>
       </View>
       <Ionicons name="chevron-forward" size={20} color="#64748B" />
     </TouchableOpacity>
