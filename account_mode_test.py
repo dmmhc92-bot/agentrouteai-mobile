@@ -414,7 +414,7 @@ class AccountModeTestRunner:
                 "agent_signature": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg=="
             }
             success, response_data, status_code = self.make_request(
-                "POST", "/scope", soa_data, token=self.tokens["admin"]
+                "POST", "/scope", soa_data, token=admin_token
             )
             if success and isinstance(response_data, dict):
                 scope_id = response_data.get("id")
