@@ -4589,6 +4589,99 @@ async def get_privacy_policy():
 Contact: privacy@agentroute.ai"""
     }
 
+# HTML Privacy Policy page for in-app viewing
+from fastapi.responses import HTMLResponse
+
+@api_router.get("/privacy-policy", response_class=HTMLResponse)
+async def get_privacy_policy_html():
+    html_content = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Privacy Policy - AgentRoute AI</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: #0F172A;
+            color: #E2E8F0;
+            padding: 20px;
+            max-width: 800px;
+            margin: 0 auto;
+            line-height: 1.6;
+        }
+        h1 { color: #3B82F6; font-size: 24px; margin-bottom: 10px; }
+        h2 { color: #94A3B8; font-size: 18px; margin-top: 30px; margin-bottom: 15px; border-bottom: 1px solid #334155; padding-bottom: 8px; }
+        p, li { color: #CBD5E1; margin-bottom: 10px; }
+        ul { padding-left: 20px; }
+        .last-updated { color: #64748B; font-size: 14px; margin-bottom: 30px; }
+        .contact { margin-top: 40px; padding: 20px; background: #1E293B; border-radius: 12px; }
+        .contact a { color: #3B82F6; }
+    </style>
+</head>
+<body>
+    <h1>AgentRoute AI Privacy Policy</h1>
+    <p class="last-updated">Last Updated: January 1, 2024</p>
+    
+    <h2>Information We Collect</h2>
+    <ul>
+        <li>Personal information (name, email, phone number)</li>
+        <li>Lead and customer data you enter into the app</li>
+        <li>Location data (for route optimization, with your permission)</li>
+        <li>Usage analytics to improve our services</li>
+    </ul>
+    
+    <h2>How We Use Your Data</h2>
+    <ul>
+        <li>Provide and improve app functionality</li>
+        <li>Power AI-driven features and recommendations</li>
+        <li>Send notifications, reminders, and important updates</li>
+        <li>Analyze usage patterns to enhance user experience</li>
+    </ul>
+    
+    <h2>Data Storage & Security</h2>
+    <ul>
+        <li>All data is stored in encrypted databases</li>
+        <li>Passwords are securely hashed (never stored in plain text)</li>
+        <li>We use industry-standard security protocols</li>
+        <li>We never sell your personal data to third parties</li>
+    </ul>
+    
+    <h2>Your Rights</h2>
+    <ul>
+        <li>Access and export your data at any time</li>
+        <li>Request deletion of your account and all associated data</li>
+        <li>Opt out of marketing communications</li>
+        <li>Update or correct your personal information</li>
+    </ul>
+    
+    <h2>Account Deletion</h2>
+    <p>You can delete your account at any time through the Settings screen in the app. When you delete your account:</p>
+    <ul>
+        <li>Your personal information will be permanently removed</li>
+        <li>Your leads, appointments, and documents will be deleted</li>
+        <li>This action cannot be undone</li>
+    </ul>
+    
+    <h2>Third-Party Services</h2>
+    <p>We may use third-party services for:</p>
+    <ul>
+        <li>AI processing (OpenAI, Google)</li>
+        <li>Analytics and crash reporting</li>
+        <li>Push notifications</li>
+    </ul>
+    
+    <div class="contact">
+        <h2 style="margin-top: 0;">Contact Us</h2>
+        <p>For privacy-related questions or concerns:</p>
+        <p>Email: <a href="mailto:agentrouteai@gmail.com">agentrouteai@gmail.com</a></p>
+    </div>
+</body>
+</html>
+    """
+    return HTMLResponse(content=html_content)
+
 @api_router.get("/legal/terms")
 async def get_terms():
     return {
