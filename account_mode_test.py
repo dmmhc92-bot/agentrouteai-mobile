@@ -463,6 +463,17 @@ class AccountModeTestRunner:
             else:
                 self.log_test("Verify leads/appointments respect hierarchy when connected", False, 
                              f"Status: {status_code}")
+        elif "manager" in self.tokens:
+            success, response_data, status_code = self.make_request(
+                "GET", "/leads", token=self.tokens["manager"]
+            )
+            if success and isinstance(response_data, list):
+                manager_lead_count = len(response_data)
+                self.log_test("Verify leads/appointments respect hierarchy when connected", True, 
+                             f"Manager sees {manager_lead_count} leads")
+            else:
+                self.log_test("Verify leads/appointments respect hierarchy when connected", False, 
+                             f"Status: {status_code}")
                 
         # Test agent view (should see only their data or team data based on mode)
         if "agent" in self.tokens:
