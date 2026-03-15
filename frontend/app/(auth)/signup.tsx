@@ -331,4 +331,43 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
+  inviteBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#22C55E15',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#22C55E40',
+  },
+  inviteBannerText: {
+    marginLeft: 12,
+    flex: 1,
+  },
+  inviteBannerTitle: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  inviteBannerSubtitle: {
+    color: '#94A3B8',
+    fontSize: 13,
+    marginTop: 2,
+  },
+  validatingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+    marginBottom: 16,
+  },
+  validatingText: {
+    color: '#94A3B8',
+    fontSize: 14,
+    marginLeft: 10,
+  },
+  inputDisabled: {
+    color: '#64748B',
+  },
 });
