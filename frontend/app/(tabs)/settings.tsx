@@ -7,6 +7,8 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
+  Linking,
+  Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -15,6 +17,11 @@ import { useAuth } from '../../src/contexts/AuthContext';
 import { api } from '../../src/services/api';
 import { format } from 'date-fns';
 
+// Constants
+const PRIVACY_POLICY_URL = 'https://agentroute-ai.preview.emergentagent.com/privacy-policy';
+const SUPPORT_EMAIL = 'agentrouteai@gmail.com';
+const SUPPORT_SUBJECT = 'AgentRoute Support Request';
+
 export default function SettingsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -22,6 +29,7 @@ export default function SettingsScreen() {
 
   const [subscription, setSubscription] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
 
   useEffect(() => {
     loadSubscription();
@@ -68,6 +76,92 @@ export default function SettingsScreen() {
       Alert.alert('Restore', result.message);
     } catch (error) {
       Alert.alert('Error', 'Failed to restore purchases');
+    }
+  };
+
+  // Privacy Policy - Opens in browser/WebView
+  const handlePrivacyPolicy = async () => {
+    try {
+      const supported = await Linking.canOpenURL(PRIVACY_POLICY_URL);
+      if (supported) {
+        await Linking.openURL(PRIVACY_POLICY_URL);
+      } else {
+        Alert.alert('Error', 'Unable to open Privacy Policy. Please visit our website.');
+      }
+    } catch (error) {
+      console.error('Error opening Privacy Policy:', error);
+      Alert.alert('Error', 'Failed to open Privacy Policy');
+    }
+  };
+
+  // Delete Account - Real deletion with confirmation
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      'Delete Account',
+      'Are you sure you want to permanently delete your account? This action cannot be undone. All your data including leads, appointments, and documents will be permanently removed.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete Account',
+          style: 'destructive',
+          onPress: () => confirmDeleteAccount(),
+        },
+      ]
+    );
+  };
+
+  const confirmDeleteAccount = async () => {
+    setIsDeletingAccount(true);
+    try {
+      await api.deleteAccount();
+      Alert.alert(
+        'Account Deleted',
+        'Your account has been permanently deleted.',
+        [
+          {
+            text: 'OK',
+            onPress: async () => {
+              await signOut();
+              router.replace('/');
+            },
+          },
+        ]
+      );
+    } catch (error: any) {
+      console.error('Error deleting account:', error);
+      Alert.alert(
+        'Error',
+        error?.message || 'Failed to delete account. Please try again or contact support.'
+      );
+    } finally {
+      setIsDeletingAccount(false);
+    }
+  };
+
+  // Contact Support - Opens email composer
+  const handleContactSupport = async () => {
+    const subject = encodeURIComponent(SUPPORT_SUBJECT);
+    const body = encodeURIComponent(`\n\n---\nUser: ${user?.name || 'Unknown'}\nEmail: ${user?.email || 'Unknown'}\nApp Version: 1.0.0`);
+    const mailtoUrl = `mailto:${SUPPORT_EMAIL}?subject=${subject}&body=${body}`;
+
+    try {
+      const supported = await Linking.canOpenURL(mailtoUrl);
+      if (supported) {
+        await Linking.openURL(mailtoUrl);
+      } else {
+        // Fallback: copy email to clipboard or show email address
+        Alert.alert(
+          'Contact Support',
+          `Please send an email to:\n${SUPPORT_EMAIL}\n\nSubject: ${SUPPORT_SUBJECT}`,
+          [{ text: 'OK' }]
+        );
+      }
+    } catch (error) {
+      console.error('Error opening email:', error);
+      Alert.alert(
+        'Contact Support',
+        `Please send an email to:\n${SUPPORT_EMAIL}\n\nSubject: ${SUPPORT_SUBJECT}`
+      );
     }
   };
 
