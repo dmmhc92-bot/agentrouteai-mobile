@@ -5576,11 +5576,12 @@ async def get_privacy_policy_html():
         .last-updated { color: #64748B; font-size: 14px; margin-bottom: 30px; }
         .contact { margin-top: 40px; padding: 20px; background: #1E293B; border-radius: 12px; }
         .contact a { color: #3B82F6; }
+        .highlight { background: #1E293B; padding: 15px; border-radius: 8px; margin: 15px 0; }
     </style>
 </head>
 <body>
     <h1>AgentRoute AI Privacy Policy</h1>
-    <p class="last-updated">Last Updated: January 1, 2024</p>
+    <p class="last-updated">Last Updated: March 15, 2026</p>
     
     <h2>Information We Collect</h2>
     <ul>
@@ -5588,6 +5589,41 @@ async def get_privacy_policy_html():
         <li>Lead and customer data you enter into the app</li>
         <li>Location data (for route optimization, with your permission)</li>
         <li>Usage analytics to improve our services</li>
+        <li>Account mode preferences (Solo or Team membership)</li>
+        <li>Organization and hierarchy information when connected to a team</li>
+    </ul>
+    
+    <h2>Account Modes</h2>
+    <p>AgentRoute AI supports two account modes:</p>
+    <div class="highlight">
+        <p><strong>Solo Mode:</strong> You operate independently. All your data is private and only accessible to you.</p>
+        <p><strong>Team/Hierarchy Mode:</strong> When connected to an organization, certain data may be visible to your Admin, Manager, or Upline according to their role permissions.</p>
+    </div>
+    
+    <h2>Team/Hierarchy Data Visibility</h2>
+    <p>When you join a team or organization:</p>
+    <ul>
+        <li>Admins can view all team member activity, leads, and performance</li>
+        <li>Managers can view data for agents directly under their supervision</li>
+        <li>Agents can only view their own records unless explicit sharing is enabled</li>
+        <li>Your personal profile information remains private</li>
+    </ul>
+    
+    <h2>Data Ownership & Portability</h2>
+    <ul>
+        <li>Records you create as an agent are owned by you</li>
+        <li>If you leave a team, your agent-owned records remain with you</li>
+        <li>Your former team loses access to your records immediately upon separation</li>
+        <li>Only records explicitly marked as team-owned remain with the organization</li>
+    </ul>
+    
+    <h2>Invitation Tokens</h2>
+    <p>When joining a team via invitation:</p>
+    <ul>
+        <li>Invitation tokens are system-generated and unique</li>
+        <li>Tokens contain encrypted organization and role information</li>
+        <li>Tokens expire after 7 days</li>
+        <li>Used or revoked tokens cannot be reused</li>
     </ul>
     
     <h2>How We Use Your Data</h2>
@@ -5596,6 +5632,7 @@ async def get_privacy_policy_html():
         <li>Power AI-driven features and recommendations</li>
         <li>Send notifications, reminders, and important updates</li>
         <li>Analyze usage patterns to enhance user experience</li>
+        <li>Facilitate team collaboration when in hierarchy mode</li>
     </ul>
     
     <h2>Data Storage & Security</h2>
@@ -5604,6 +5641,7 @@ async def get_privacy_policy_html():
         <li>Passwords are securely hashed (never stored in plain text)</li>
         <li>We use industry-standard security protocols</li>
         <li>We never sell your personal data to third parties</li>
+        <li>Role-based access control protects team data boundaries</li>
     </ul>
     
     <h2>Your Rights</h2>
@@ -5612,6 +5650,8 @@ async def get_privacy_policy_html():
         <li>Request deletion of your account and all associated data</li>
         <li>Opt out of marketing communications</li>
         <li>Update or correct your personal information</li>
+        <li>Switch between Solo and Team modes at any time</li>
+        <li>Leave a team without deleting your account</li>
     </ul>
     
     <h2>Account Deletion</h2>
@@ -5620,6 +5660,7 @@ async def get_privacy_policy_html():
         <li>Your personal information will be permanently removed</li>
         <li>Your leads, appointments, and documents will be deleted</li>
         <li>This action cannot be undone</li>
+        <li>Note: Leaving a team does NOT delete your account</li>
     </ul>
     
     <h2>Third-Party Services</h2>
