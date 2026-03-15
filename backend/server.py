@@ -2069,24 +2069,6 @@ async def generate_stamped_pdf(scope_id: str, current_user: dict = Depends(get_c
         except Exception as e:
             logger.error(f"[PDF Gen] PAGE 2: SIG '{field_name}' FAILED - {e}")
             return False
-                width=160,
-                height=40,
-                mask='auto'
-            )
-            
-            # Timestamp below signature
-            server_timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
-            c2.setFont("Helvetica", 5)
-            c2.setFillColorRGB(0.5, 0.5, 0.5)
-            c2.drawString(sig_x, sig_y - 12, f"Signed electronically on {server_timestamp} via mobile application")
-            
-            stamped_items.append(f"PAGE 2: SIG '{field_name}' @ ({sig_x}, {sig_y})")
-            logger.info(f"[PDF Gen] PAGE 2: STAMPED SIG '{field_name}' @ ({sig_x}, {sig_y})")
-            return True
-            
-        except Exception as e:
-            logger.error(f"[PDF Gen] PAGE 2: SIG '{field_name}' FAILED - {e}")
-            return False
     
     # Stamp all text fields on page 2
     stamp_text_p2('beneficiary_name', beneficiary_name)
