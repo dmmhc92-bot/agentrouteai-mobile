@@ -10,7 +10,7 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.agentroute.ai",
+      "bundleIdentifier": "com.agentrouteai.app",
       "buildNumber": "1",
       "infoPlist": {
         "NSCameraUsageDescription": "Scan business cards to quickly add new leads",
@@ -32,7 +32,7 @@
         "backgroundColor": "#0F172A"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.agentroute.ai",
+      "package": "com.agentrouteai.app",
       "versionCode": 1,
       "permissions": [
         "CAMERA",
