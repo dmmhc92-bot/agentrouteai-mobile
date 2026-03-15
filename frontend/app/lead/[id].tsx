@@ -59,15 +59,20 @@ const STAGE_CONFIG: Record<string, { label: string; color: string; icon: string 
 
 const ALL_STAGES = [
   'new_lead',
-  'appointment_scheduled',
-  'application_submitted',
+  'contacted',
+  'follow_up',
+  'appointment_set',
+  'soa_completed',
+  'policy_submitted',
   'underwriting_review',
   'additional_requirements',
   'approved',
+  'closed_won',
   'policy_issued',
   'policy_placed',
   'commission_pending',
   'commission_paid',
+  'closed_lost',
 ];
 
 interface Appointment {
