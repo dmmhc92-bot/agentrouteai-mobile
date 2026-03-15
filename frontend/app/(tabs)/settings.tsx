@@ -18,7 +18,7 @@ import { api } from '../../src/services/api';
 import { format } from 'date-fns';
 
 // Constants
-const PRIVACY_POLICY_URL = 'https://agentroute-ai.preview.emergentagent.com/privacy-policy';
+const PRIVACY_POLICY_URL = 'https://agentroute-ai.preview.emergentagent.com/api/privacy-policy';
 const SUPPORT_EMAIL = 'agentrouteai@gmail.com';
 const SUPPORT_SUBJECT = 'AgentRoute Support Request';
 
