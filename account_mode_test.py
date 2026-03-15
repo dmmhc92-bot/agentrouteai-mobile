@@ -369,7 +369,7 @@ class AccountModeTestRunner:
             
         # Test GET /leads with hierarchy filtering
         success, response_data, status_code = self.make_request(
-            "GET", "/leads", token=self.tokens["admin"]
+            "GET", "/leads", token=admin_token
         )
         if success and isinstance(response_data, list):
             lead_count = len(response_data)
