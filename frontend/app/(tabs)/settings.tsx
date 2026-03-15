@@ -74,6 +74,61 @@ export default function SettingsScreen() {
     ]);
   };
 
+  // Account Mode handlers
+  const handleValidateInvite = async () => {
+    if (!inviteToken.trim()) {
+      Alert.alert('Error', 'Please enter an invitation token');
+      return;
+    }
+    
+    setIsValidating(true);
+    try {
+      const validation = await api.validateInviteForJoin(inviteToken.trim());
+      setInviteValidation(validation);
+    } catch (error: any) {
+      const message = error.response?.data?.detail || 'Invalid or expired invitation';
+      Alert.alert('Invalid Token', message);
+      setInviteValidation(null);
+    } finally {
+      setIsValidating(false);
+    }
+  };
+
+  const handleJoinTeam = async () => {
+    if (!inviteToken.trim()) {
+      Alert.alert('Error', 'Please enter an invitation token');
+      return;
+    }
+    
+    setIsJoining(true);
+    try {
+      await joinTeam(inviteToken.trim());
+      setShowJoinModal(false);
+      setInviteToken('');
+      setInviteValidation(null);
+      Alert.alert('Success', 'You have successfully joined the team!');
+    } catch (error: any) {
+      const message = error.response?.data?.detail || 'Failed to join team';
+      Alert.alert('Error', message);
+    } finally {
+      setIsJoining(false);
+    }
+  };
+
+  const handleLeaveTeam = async () => {
+    setIsLeaving(true);
+    try {
+      await leaveTeam();
+      setShowLeaveModal(false);
+      Alert.alert('Success', 'You have returned to solo mode. All your personal records remain with you.');
+    } catch (error: any) {
+      const message = error.response?.data?.detail || 'Failed to leave team';
+      Alert.alert('Error', message);
+    } finally {
+      setIsLeaving(false);
+    }
+  };
+
   const handleSubscribe = async () => {
     try {
       await api.subscribe();
