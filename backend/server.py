@@ -1948,10 +1948,12 @@ async def generate_stamped_pdf(scope_id: str, current_user: dict = Depends(get_c
     
     def stamp_sig_p2(sig_data, field_name):
         """
-        Stamp signature with full transparency preserved end-to-end.
-        SVG → transparent PNG → RGBA → stamp with mask='auto'
+        Stamp signature with white background removed.
+        1. For SVG: remove white background elements before conversion
+        2. After PNG: convert white/near-white pixels to transparent
         """
         import cairosvg
+        import re
         from datetime import datetime
         
         if not sig_data or not isinstance(sig_data, str) or len(sig_data.strip()) < 20:
@@ -1967,12 +1969,26 @@ async def generate_stamped_pdf(scope_id: str, current_user: dict = Depends(get_c
             sig_data = sig_data.strip()
             logger.info(f"[PDF Gen] PAGE 2: SIG '{field_name}' - payload length={len(sig_data)}")
             
-            # ==================== 1. DECODE TO PNG BYTES ====================
+            # ==================== 1. DECODE AND SANITIZE ====================
+            is_svg = False
             if sig_data.startswith('data:image/svg+xml;base64,'):
+                is_svg = True
                 sig_b64 = sig_data.split(',', 1)[1]
-                sig_bytes = base64.b64decode(sig_b64)
-                # CairoSVG: convert SVG to transparent PNG
-                sig_bytes = cairosvg.svg2png(bytestring=sig_bytes, output_width=300, output_height=80)
+                svg_bytes = base64.b64decode(sig_b64)
+                svg_str = svg_bytes.decode('utf-8', errors='ignore')
+                
+                # Remove white background elements from SVG
+                # Remove fill="white", fill="#fff", fill="#ffffff", fill="rgb(255,255,255)"
+                svg_str = re.sub(r'fill\s*=\s*["\'](?:white|#fff(?:fff)?|rgb\s*\(\s*255\s*,\s*255\s*,\s*255\s*\))["\']', '', svg_str, flags=re.IGNORECASE)
+                # Remove background rects with white fill
+                svg_str = re.sub(r'<rect[^>]*(?:fill\s*=\s*["\'](?:white|#fff(?:fff)?)["\'])[^>]*/?\s*>', '', svg_str, flags=re.IGNORECASE)
+                # Remove style="background:white" or similar
+                svg_str = re.sub(r'style\s*=\s*["\'][^"\']*background[^"\']*white[^"\']*["\']', '', svg_str, flags=re.IGNORECASE)
+                
+                logger.info(f"[PDF Gen] PAGE 2: SIG '{field_name}' - sanitized SVG")
+                
+                # Convert sanitized SVG to PNG
+                sig_bytes = cairosvg.svg2png(bytestring=svg_str.encode('utf-8'), output_width=300, output_height=80)
                 logger.info(f"[PDF Gen] PAGE 2: SIG '{field_name}' - SVG→PNG ({len(sig_bytes)} bytes)")
                 
             elif sig_data.startswith('data:image/png;base64,'):
@@ -1986,31 +2002,48 @@ async def generate_stamped_pdf(scope_id: str, current_user: dict = Depends(get_c
                     logger.error(f"[PDF Gen] PAGE 2: SIG '{field_name}' FAILED - malformed data URI")
                     return False
                 if 'svg+xml' in sig_data:
-                    sig_bytes = base64.b64decode(parts[1])
-                    sig_bytes = cairosvg.svg2png(bytestring=sig_bytes, output_width=300, output_height=80)
+                    is_svg = True
+                    svg_bytes = base64.b64decode(parts[1])
+                    svg_str = svg_bytes.decode('utf-8', errors='ignore')
+                    svg_str = re.sub(r'fill\s*=\s*["\'](?:white|#fff(?:fff)?|rgb\s*\(\s*255\s*,\s*255\s*,\s*255\s*\))["\']', '', svg_str, flags=re.IGNORECASE)
+                    svg_str = re.sub(r'<rect[^>]*(?:fill\s*=\s*["\'](?:white|#fff(?:fff)?)["\'])[^>]*/?\s*>', '', svg_str, flags=re.IGNORECASE)
+                    sig_bytes = cairosvg.svg2png(bytestring=svg_str.encode('utf-8'), output_width=300, output_height=80)
                 else:
                     sig_bytes = base64.b64decode(parts[1])
             else:
                 sig_bytes = base64.b64decode(sig_data)
             
-            # ==================== 2. LOAD AS RGBA (preserve alpha) ====================
+            # ==================== 2. LOAD AS RGBA ====================
             img = Image.open(BytesIO(sig_bytes))
             img = img.convert('RGBA')
-            logger.info(f"[PDF Gen] PAGE 2: SIG '{field_name}' - RGBA size: {img.size}, mode: {img.mode}")
+            logger.info(f"[PDF Gen] PAGE 2: SIG '{field_name}' - RGBA size: {img.size}")
             
-            # ==================== 3. CROP TO INK BOUNDS (optional) ====================
+            # ==================== 3. CONVERT WHITE PIXELS TO TRANSPARENT ====================
+            data = img.getdata()
+            new_data = []
+            white_threshold = 250  # pixels with R,G,B all >= 250 are considered white
+            for item in data:
+                # If pixel is white or near-white, make it fully transparent
+                if item[0] >= white_threshold and item[1] >= white_threshold and item[2] >= white_threshold:
+                    new_data.append((255, 255, 255, 0))  # Transparent
+                else:
+                    new_data.append(item)  # Keep original
+            img.putdata(new_data)
+            logger.info(f"[PDF Gen] PAGE 2: SIG '{field_name}' - white pixels converted to transparent")
+            
+            # ==================== 4. CROP TO INK BOUNDS ====================
             alpha = img.split()[-1]
             bbox = alpha.getbbox()
             if bbox:
                 img = img.crop(bbox)
                 logger.info(f"[PDF Gen] PAGE 2: SIG '{field_name}' - cropped: {img.size}")
             
-            # ==================== 4. SAVE AS RGBA PNG TO BUFFER ====================
+            # ==================== 5. SAVE AS RGBA PNG TO BUFFER ====================
             buffer = BytesIO()
             img.save(buffer, format='PNG')
             buffer.seek(0)
             
-            # ==================== 5. STAMP WITH REPORTLAB ====================
+            # ==================== 6. STAMP WITH REPORTLAB ====================
             sig_x = coords['x']
             sig_y = coords['y']
             
@@ -2018,6 +2051,24 @@ async def generate_stamped_pdf(scope_id: str, current_user: dict = Depends(get_c
                 ImageReader(buffer),
                 sig_x,
                 sig_y,
+                width=160,
+                height=40,
+                mask='auto'
+            )
+            
+            # Timestamp below signature
+            server_timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+            c2.setFont("Helvetica", 5)
+            c2.setFillColorRGB(0.5, 0.5, 0.5)
+            c2.drawString(sig_x, sig_y - 12, f"Signed electronically on {server_timestamp} via mobile application")
+            
+            stamped_items.append(f"PAGE 2: SIG '{field_name}' @ ({sig_x}, {sig_y})")
+            logger.info(f"[PDF Gen] PAGE 2: STAMPED SIG '{field_name}' @ ({sig_x}, {sig_y})")
+            return True
+            
+        except Exception as e:
+            logger.error(f"[PDF Gen] PAGE 2: SIG '{field_name}' FAILED - {e}")
+            return False
                 width=160,
                 height=40,
                 mask='auto'
