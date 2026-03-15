@@ -9,6 +9,8 @@ import {
   ActivityIndicator,
   Linking,
   Platform,
+  Modal,
+  TextInput,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
