@@ -499,6 +499,22 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  deleteAccountButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#1E293B',
+    borderRadius: 16,
+    paddingVertical: 16,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: '#EF4444',
+  },
+  deleteAccountText: {
+    color: '#EF4444',
+    fontSize: 16,
+    fontWeight: '600',
+  },
   version: {
     color: '#64748B',
     fontSize: 12,
