@@ -388,7 +388,7 @@ class AccountModeTestRunner:
                 "appointment_type": "in_person"
             }
             success, response_data, status_code = self.make_request(
-                "POST", "/appointments", appointment_data, token=self.tokens["admin"]
+                "POST", "/appointments", appointment_data, token=admin_token
             )
             if success and isinstance(response_data, dict):
                 appointment_id = response_data.get("id")
