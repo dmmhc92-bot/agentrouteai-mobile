@@ -117,8 +117,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return response.user;
   };
 
-  const signUp = async (name: string, email: string, password: string, role?: string, managerId?: string) => {
-    const response = await api.register(name, email, password, role, managerId);
+  const signUp = async (name: string, email: string, password: string, inviteToken?: string) => {
+    const response = await api.register(name, email, password, inviteToken);
     await storage.setItem('auth_token', response.access_token);
     setToken(response.access_token);
     api.setAuthToken(response.access_token);
@@ -155,6 +155,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isManager = user?.role === 'manager';
   const isAgent = user?.role === 'agent';
   const canViewDownline = isAdmin || isManager;
+  const canInviteUsers = isAdmin || isManager;
+  const canManageUsers = isAdmin;
 
   return (
     <AuthContext.Provider
@@ -166,6 +168,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isManager,
         isAgent,
         canViewDownline,
+        canInviteUsers,
+        canManageUsers,
         signIn,
         signUp,
         signOut,
