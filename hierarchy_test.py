@@ -54,10 +54,13 @@ def make_request(method, endpoint, headers=None, json_data=None, params=None):
     """Make HTTP request with error handling"""
     try:
         url = f"{BACKEND_URL}{endpoint}"
-        response = requests.request(method, url, headers=headers, json=json_data, params=params, timeout=30)
+        response = requests.request(method, url, headers=headers, json=json_data, params=params, timeout=10)
         return response
+    except requests.exceptions.Timeout:
+        print(f"Timeout error for {method} {endpoint}")
+        return None
     except requests.exceptions.RequestException as e:
-        print(f"Request error: {e}")
+        print(f"Request error for {method} {endpoint}: {e}")
         return None
 
 def login_user(email, password):
