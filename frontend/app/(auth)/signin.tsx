@@ -146,6 +146,13 @@ export default function SignInScreen() {
               <Text style={styles.signUpLink}>Sign Up</Text>
             </TouchableOpacity>
           </View>
+
+          <View style={styles.inviteContainer}>
+            <Text style={styles.signUpText}>Have an invitation? </Text>
+            <TouchableOpacity onPress={() => router.push('/invite/accept')}>
+              <Text style={styles.signUpLink}>Accept Invite</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
