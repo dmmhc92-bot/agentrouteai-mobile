@@ -1639,7 +1639,7 @@ async def _generate_pdf_internal(scope: dict) -> dict:
         'contact_method': {'x': 381, 'y': 446, 'size': 9, 'max': 20},
         'plans_to_represent': {'x': 282, 'y': 387, 'size': 9, 'max': 35},
         'appointment_date': {'x': 480, 'y': 387, 'size': 9},
-        'agent_signature': {'x': 80, 'y': 410, 'w': 200, 'h': 40},
+        'agent_signature': {'x': 80, 'y': 390, 'w': 200, 'h': 40},
     }
     
     stamped_items = []
