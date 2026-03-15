@@ -186,54 +186,70 @@ def test_role_based_hierarchy_system():
     # 4. USER ROLE UPDATES (as Admin)
     print("\n4️⃣ USER ROLE UPDATES (Admin)")
     
-    if agent_user:
+    if agent_user and admin_user:
         agent_user_id = agent_user.get("id")
+        admin_user_id = admin_user.get("id")
         
-        # PUT /api/users/{agent_user_id}/role - Promote agent to manager
-        role_update = {"role": "manager"}
-        response = make_request("PUT", f"/users/{agent_user_id}/role", 
-                              headers=get_auth_headers(admin_token), json_data=role_update)
-        if response and response.status_code == 200:
-            results.add_result("Promote Agent to Manager", True, "Successfully promoted agent to manager")
+        # Don't try to update admin's own role - use agent user instead
+        if agent_user_id != admin_user_id:
+            # PUT /api/users/{agent_user_id}/role - Promote agent to manager
+            role_update = {"role": "manager"}
+            response = make_request("PUT", f"/users/{agent_user_id}/role", 
+                                  headers=get_auth_headers(admin_token), json_data=role_update)
+            if response and response.status_code == 200:
+                results.add_result("Promote Agent to Manager", True, "Successfully promoted agent to manager")
+            else:
+                error_msg = response.text if response else 'No response'
+                results.add_result("Promote Agent to Manager", False, 
+                                 f"Failed: {response.status_code if response else 'No response'} - {error_msg}")
+            
+            # PUT /api/users/{agent_user_id}/role - Demote back to agent
+            role_update = {"role": "agent"}
+            response = make_request("PUT", f"/users/{agent_user_id}/role", 
+                                  headers=get_auth_headers(admin_token), json_data=role_update)
+            if response and response.status_code == 200:
+                results.add_result("Demote Manager to Agent", True, "Successfully demoted manager back to agent")
+            else:
+                error_msg = response.text if response else 'No response'
+                results.add_result("Demote Manager to Agent", False, 
+                                 f"Failed: {response.status_code if response else 'No response'} - {error_msg}")
         else:
-            results.add_result("Promote Agent to Manager", False, 
-                             f"Failed: {response.status_code if response else 'No response'}")
-        
-        # PUT /api/users/{agent_user_id}/role - Demote back to agent
-        role_update = {"role": "agent"}
-        response = make_request("PUT", f"/users/{agent_user_id}/role", 
-                              headers=get_auth_headers(admin_token), json_data=role_update)
-        if response and response.status_code == 200:
-            results.add_result("Demote Manager to Agent", True, "Successfully demoted manager back to agent")
-        else:
-            results.add_result("Demote Manager to Agent", False, 
-                             f"Failed: {response.status_code if response else 'No response'}")
+            results.add_result("Promote Agent to Manager", False, "Cannot test - agent and admin are same user")
+            results.add_result("Demote Manager to Agent", False, "Cannot test - agent and admin are same user")
     
     # 5. USER STATUS UPDATES (as Admin)
     print("\n5️⃣ USER STATUS UPDATES (Admin)")
     
-    if agent_user:
+    if agent_user and admin_user:
         agent_user_id = agent_user.get("id")
+        admin_user_id = admin_user.get("id")
         
-        # PUT /api/users/{agent_user_id}/status - Deactivate user
-        status_update = {"is_active": False}
-        response = make_request("PUT", f"/users/{agent_user_id}/status", 
-                              headers=get_auth_headers(admin_token), json_data=status_update)
-        if response and response.status_code == 200:
-            results.add_result("Deactivate User", True, "Successfully deactivated user")
+        # Don't try to update admin's own status - use agent user instead
+        if agent_user_id != admin_user_id:
+            # PUT /api/users/{agent_user_id}/status - Deactivate user
+            status_update = {"is_active": False}
+            response = make_request("PUT", f"/users/{agent_user_id}/status", 
+                                  headers=get_auth_headers(admin_token), json_data=status_update)
+            if response and response.status_code == 200:
+                results.add_result("Deactivate User", True, "Successfully deactivated user")
+            else:
+                error_msg = response.text if response else 'No response'
+                results.add_result("Deactivate User", False, 
+                                 f"Failed: {response.status_code if response else 'No response'} - {error_msg}")
+            
+            # PUT /api/users/{agent_user_id}/status - Reactivate user
+            status_update = {"is_active": True}
+            response = make_request("PUT", f"/users/{agent_user_id}/status", 
+                                  headers=get_auth_headers(admin_token), json_data=status_update)
+            if response and response.status_code == 200:
+                results.add_result("Reactivate User", True, "Successfully reactivated user")
+            else:
+                error_msg = response.text if response else 'No response'
+                results.add_result("Reactivate User", False, 
+                                 f"Failed: {response.status_code if response else 'No response'} - {error_msg}")
         else:
-            results.add_result("Deactivate User", False, 
-                             f"Failed: {response.status_code if response else 'No response'}")
-        
-        # PUT /api/users/{agent_user_id}/status - Reactivate user
-        status_update = {"is_active": True}
-        response = make_request("PUT", f"/users/{agent_user_id}/status", 
-                              headers=get_auth_headers(admin_token), json_data=status_update)
-        if response and response.status_code == 200:
-            results.add_result("Reactivate User", True, "Successfully reactivated user")
-        else:
-            results.add_result("Reactivate User", False, 
-                             f"Failed: {response.status_code if response else 'No response'}")
+            results.add_result("Deactivate User", False, "Cannot test - agent and admin are same user")
+            results.add_result("Reactivate User", False, "Cannot test - agent and admin are same user")
     
     # 6. PERMISSION ENFORCEMENT
     print("\n6️⃣ PERMISSION ENFORCEMENT")
