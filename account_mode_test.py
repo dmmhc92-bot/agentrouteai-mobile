@@ -230,7 +230,7 @@ class AccountModeTestRunner:
             
         # Test GET /invitations
         success, response_data, status_code = self.make_request(
-            "GET", "/invitations", token=self.tokens["admin"]
+            "GET", "/invitations", token=admin_token
         )
         if success and isinstance(response_data, list):
             invite_count = len(response_data)
