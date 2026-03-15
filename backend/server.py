@@ -979,6 +979,484 @@ async def delete_account(current_user: dict = Depends(get_current_user)):
     await log_activity(current_user["id"], "account_deleted", "Account deletion requested")
     return {"message": "Account scheduled for deletion"}
 
+# ==================== INVITATION ROUTES ====================
+
+@api_router.post("/invitations", response_model=InvitationResponse)
+async def create_invitation(invite_data: InvitationCreate, current_user: dict = Depends(get_current_user)):
+    """
+    Create an invitation for a new user.
+    
+    Hierarchy Rules:
+    - Admin can invite Managers and Agents
+    - Manager can only invite Agents (under themselves)
+    - Agent cannot invite anyone
+    """
+    current_role = current_user.get("role", "agent")
+    target_role = invite_data.role.lower()
+    
+    # Validate target role
+    if target_role not in ["manager", "agent"]:
+        raise HTTPException(status_code=400, detail="Can only invite 'manager' or 'agent' roles")
+    
+    # Validate permission
+    if not await validate_hierarchy_permission(current_user, target_role, "invite"):
+        raise HTTPException(status_code=403, detail=f"You do not have permission to invite a {target_role}")
+    
+    # Check if email already exists
+    existing_user = await db.users.find_one({"email": invite_data.email.lower()})
+    if existing_user:
+        raise HTTPException(status_code=400, detail="This email is already registered")
+    
+    # Check for existing pending invitation
+    existing_invite = await db.invitations.find_one({
+        "email": invite_data.email.lower(),
+        "status": "pending"
+    })
+    if existing_invite:
+        raise HTTPException(status_code=400, detail="A pending invitation already exists for this email")
+    
+    # Determine hierarchy context
+    if current_role == "admin":
+        admin_id = current_user["id"]
+        organization_id = current_user.get("organization_id") or await get_or_create_organization(current_user)
+        manager_id = None if target_role == "manager" else current_user["id"]  # Agents invited by admin report to admin
+    else:  # manager
+        admin_id = current_user.get("admin_id")
+        organization_id = current_user.get("organization_id")
+        manager_id = current_user["id"]  # Agents report to the inviting manager
+    
+    now = datetime.utcnow()
+    invite_id = str(uuid.uuid4())
+    token = generate_invite_token()
+    
+    invitation_doc = {
+        "id": invite_id,
+        "email": invite_data.email.lower(),
+        "name": invite_data.name,
+        "role": target_role,
+        "token": token,
+        "status": "pending",
+        "admin_id": admin_id,
+        "manager_id": manager_id,
+        "organization_id": organization_id,
+        "invited_by_user_id": current_user["id"],
+        "created_at": now,
+        "expires_at": now + timedelta(days=7),  # 7 day expiration
+        "accepted_at": None,
+        "accepted_by_user_id": None
+    }
+    
+    await db.invitations.insert_one(invitation_doc)
+    await log_activity(current_user["id"], "invitation_created", f"Invited {invite_data.email} as {target_role}")
+    
+    logger.info(f"Invitation created: {invite_data.email} as {target_role}, token: {token}")
+    
+    return InvitationResponse(
+        id=invite_id,
+        email=invite_data.email.lower(),
+        role=target_role,
+        name=invite_data.name,
+        status="pending",
+        admin_id=admin_id,
+        manager_id=manager_id,
+        organization_id=organization_id,
+        invited_by_user_id=current_user["id"],
+        invited_by_name=current_user.get("name", "Unknown"),
+        created_at=now,
+        expires_at=invitation_doc["expires_at"]
+    )
+
+@api_router.get("/invitations")
+async def get_invitations(current_user: dict = Depends(require_manager_or_admin)):
+    """Get all invitations for the current user's organization"""
+    current_role = current_user.get("role", "agent")
+    
+    if current_role == "admin":
+        # Admin sees all invitations in their organization
+        org_id = current_user.get("organization_id")
+        if org_id:
+            invitations = await db.invitations.find({"organization_id": org_id}).sort("created_at", -1).to_list(1000)
+        else:
+            invitations = await db.invitations.find({"admin_id": current_user["id"]}).sort("created_at", -1).to_list(1000)
+    else:
+        # Manager sees only invitations they created
+        invitations = await db.invitations.find({"invited_by_user_id": current_user["id"]}).sort("created_at", -1).to_list(1000)
+    
+    # Enrich with invited_by_name
+    result = []
+    for inv in invitations:
+        inviter = await db.users.find_one({"id": inv.get("invited_by_user_id")}, {"name": 1})
+        result.append({
+            "id": inv["id"],
+            "email": inv["email"],
+            "name": inv.get("name"),
+            "role": inv["role"],
+            "status": inv["status"],
+            "admin_id": inv.get("admin_id"),
+            "manager_id": inv.get("manager_id"),
+            "organization_id": inv.get("organization_id"),
+            "invited_by_user_id": inv.get("invited_by_user_id"),
+            "invited_by_name": inviter.get("name") if inviter else "Unknown",
+            "created_at": inv["created_at"],
+            "expires_at": inv["expires_at"],
+            "token": inv.get("token")  # Include token for admin to share
+        })
+    
+    return result
+
+@api_router.get("/invitations/{invite_id}")
+async def get_invitation(invite_id: str, current_user: dict = Depends(require_manager_or_admin)):
+    """Get a specific invitation"""
+    invitation = await db.invitations.find_one({"id": invite_id})
+    if not invitation:
+        raise HTTPException(status_code=404, detail="Invitation not found")
+    
+    # Check permission
+    current_role = current_user.get("role")
+    if current_role != "admin" and invitation.get("invited_by_user_id") != current_user["id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    inviter = await db.users.find_one({"id": invitation.get("invited_by_user_id")}, {"name": 1})
+    
+    return {
+        "id": invitation["id"],
+        "email": invitation["email"],
+        "name": invitation.get("name"),
+        "role": invitation["role"],
+        "status": invitation["status"],
+        "token": invitation.get("token"),
+        "admin_id": invitation.get("admin_id"),
+        "manager_id": invitation.get("manager_id"),
+        "organization_id": invitation.get("organization_id"),
+        "invited_by_user_id": invitation.get("invited_by_user_id"),
+        "invited_by_name": inviter.get("name") if inviter else "Unknown",
+        "created_at": invitation["created_at"],
+        "expires_at": invitation["expires_at"]
+    }
+
+@api_router.get("/invitations/validate/{token}")
+async def validate_invitation(token: str):
+    """Validate an invitation token (public endpoint for signup flow)"""
+    invitation = await db.invitations.find_one({
+        "token": token,
+        "status": "pending",
+        "expires_at": {"$gt": datetime.utcnow()}
+    })
+    
+    if not invitation:
+        raise HTTPException(status_code=404, detail="Invalid or expired invitation")
+    
+    inviter = await db.users.find_one({"id": invitation.get("invited_by_user_id")}, {"name": 1})
+    
+    return {
+        "valid": True,
+        "email": invitation["email"],
+        "name": invitation.get("name"),
+        "role": invitation["role"],
+        "invited_by_name": inviter.get("name") if inviter else "Unknown",
+        "expires_at": invitation["expires_at"]
+    }
+
+@api_router.post("/invitations/{invite_id}/resend")
+async def resend_invitation(invite_id: str, current_user: dict = Depends(require_manager_or_admin)):
+    """Resend an invitation (extend expiration)"""
+    invitation = await db.invitations.find_one({"id": invite_id})
+    if not invitation:
+        raise HTTPException(status_code=404, detail="Invitation not found")
+    
+    # Check permission
+    current_role = current_user.get("role")
+    if current_role != "admin" and invitation.get("invited_by_user_id") != current_user["id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    if invitation.get("status") != "pending":
+        raise HTTPException(status_code=400, detail="Can only resend pending invitations")
+    
+    # Generate new token and extend expiration
+    new_token = generate_invite_token()
+    new_expiry = datetime.utcnow() + timedelta(days=7)
+    
+    await db.invitations.update_one(
+        {"id": invite_id},
+        {"$set": {"token": new_token, "expires_at": new_expiry}}
+    )
+    
+    logger.info(f"Invitation resent: {invitation['email']}, new token: {new_token}")
+    
+    return {"message": "Invitation resent", "token": new_token, "expires_at": new_expiry}
+
+@api_router.delete("/invitations/{invite_id}")
+async def cancel_invitation(invite_id: str, current_user: dict = Depends(require_manager_or_admin)):
+    """Cancel a pending invitation"""
+    invitation = await db.invitations.find_one({"id": invite_id})
+    if not invitation:
+        raise HTTPException(status_code=404, detail="Invitation not found")
+    
+    # Check permission
+    current_role = current_user.get("role")
+    if current_role != "admin" and invitation.get("invited_by_user_id") != current_user["id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    if invitation.get("status") != "pending":
+        raise HTTPException(status_code=400, detail="Can only cancel pending invitations")
+    
+    await db.invitations.update_one(
+        {"id": invite_id},
+        {"$set": {"status": "cancelled"}}
+    )
+    
+    await log_activity(current_user["id"], "invitation_cancelled", f"Cancelled invitation for {invitation['email']}")
+    
+    return {"message": "Invitation cancelled"}
+
+# ==================== USER MANAGEMENT ROUTES ====================
+
+@api_router.get("/users")
+async def get_users(current_user: dict = Depends(require_manager_or_admin)):
+    """
+    Get users based on role hierarchy.
+    - Admin sees all users in organization
+    - Manager sees only their agents
+    """
+    current_role = current_user.get("role")
+    
+    if current_role == "admin":
+        org_id = current_user.get("organization_id")
+        if org_id:
+            query = {"organization_id": org_id, "deleted_at": None}
+        else:
+            # Fallback for admin without org_id
+            query = {"deleted_at": None}
+    else:
+        # Manager sees agents under them
+        query = {"manager_id": current_user["id"], "deleted_at": None}
+    
+    users = await db.users.find(query).to_list(1000)
+    
+    result = []
+    for user in users:
+        # Get manager name if applicable
+        manager_name = None
+        if user.get("manager_id"):
+            manager = await db.users.find_one({"id": user["manager_id"]}, {"name": 1})
+            manager_name = manager.get("name") if manager else None
+        
+        result.append({
+            "id": user["id"],
+            "name": user["name"],
+            "email": user["email"],
+            "role": user.get("role", "agent"),
+            "manager_id": user.get("manager_id"),
+            "manager_name": manager_name,
+            "admin_id": user.get("admin_id"),
+            "organization_id": user.get("organization_id"),
+            "phone": user.get("phone"),
+            "territory": user.get("territory"),
+            "is_active": user.get("is_active", True),
+            "approval_status": user.get("approval_status", "approved"),
+            "created_at": user["created_at"],
+            "last_login": user.get("last_login")
+        })
+    
+    return result
+
+@api_router.put("/users/{user_id}/role")
+async def update_user_role(user_id: str, role_data: UserRoleUpdate, current_user: dict = Depends(require_admin)):
+    """
+    Promote/demote a user between Manager and Agent (Admin only).
+    Cannot change to/from Admin role.
+    """
+    target_role = role_data.role.lower()
+    
+    if target_role not in ["manager", "agent"]:
+        raise HTTPException(status_code=400, detail="Can only set role to 'manager' or 'agent'")
+    
+    target_user = await db.users.find_one({"id": user_id, "deleted_at": None})
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Prevent changing admin role
+    if target_user.get("role") == "admin":
+        raise HTTPException(status_code=403, detail="Cannot change admin role")
+    
+    # Check same organization
+    if target_user.get("organization_id") != current_user.get("organization_id"):
+        raise HTTPException(status_code=403, detail="User is not in your organization")
+    
+    old_role = target_user.get("role", "agent")
+    
+    # If demoting from manager to agent, clear any agents' manager_id pointing to this user
+    if old_role == "manager" and target_role == "agent":
+        await db.users.update_many(
+            {"manager_id": user_id},
+            {"$set": {"manager_id": None}}
+        )
+    
+    await db.users.update_one(
+        {"id": user_id},
+        {"$set": {"role": target_role, "updated_at": datetime.utcnow()}}
+    )
+    
+    await log_activity(current_user["id"], "user_role_changed", f"Changed {target_user['name']} from {old_role} to {target_role}")
+    
+    return {"message": f"User role changed to {target_role}", "old_role": old_role, "new_role": target_role}
+
+@api_router.put("/users/{user_id}/status")
+async def update_user_status(user_id: str, status_data: UserStatusUpdate, current_user: dict = Depends(require_admin)):
+    """Activate or deactivate a user (Admin only)"""
+    target_user = await db.users.find_one({"id": user_id, "deleted_at": None})
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Cannot deactivate yourself
+    if user_id == current_user["id"]:
+        raise HTTPException(status_code=400, detail="Cannot change your own status")
+    
+    # Check same organization
+    if target_user.get("organization_id") != current_user.get("organization_id"):
+        raise HTTPException(status_code=403, detail="User is not in your organization")
+    
+    await db.users.update_one(
+        {"id": user_id},
+        {"$set": {"is_active": status_data.is_active, "updated_at": datetime.utcnow()}}
+    )
+    
+    action = "activated" if status_data.is_active else "deactivated"
+    await log_activity(current_user["id"], f"user_{action}", f"{action.capitalize()} user {target_user['name']}")
+    
+    return {"message": f"User {action}", "is_active": status_data.is_active}
+
+@api_router.put("/users/{user_id}/reassign")
+async def reassign_user(user_id: str, reassign_data: UserReassign, current_user: dict = Depends(require_admin)):
+    """Reassign an agent to a different manager (Admin only)"""
+    target_user = await db.users.find_one({"id": user_id, "deleted_at": None})
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    if target_user.get("role") != "agent":
+        raise HTTPException(status_code=400, detail="Can only reassign agents")
+    
+    # Validate new manager
+    new_manager = await db.users.find_one({"id": reassign_data.new_manager_id, "deleted_at": None})
+    if not new_manager:
+        raise HTTPException(status_code=404, detail="New manager not found")
+    
+    if new_manager.get("role") not in ["manager", "admin"]:
+        raise HTTPException(status_code=400, detail="Target must be a manager or admin")
+    
+    # Check same organization
+    if new_manager.get("organization_id") != current_user.get("organization_id"):
+        raise HTTPException(status_code=403, detail="New manager is not in your organization")
+    
+    old_manager_id = target_user.get("manager_id")
+    old_manager = await db.users.find_one({"id": old_manager_id}, {"name": 1}) if old_manager_id else None
+    
+    await db.users.update_one(
+        {"id": user_id},
+        {"$set": {"manager_id": reassign_data.new_manager_id, "updated_at": datetime.utcnow()}}
+    )
+    
+    await log_activity(
+        current_user["id"], 
+        "user_reassigned", 
+        f"Reassigned {target_user['name']} from {old_manager.get('name') if old_manager else 'None'} to {new_manager['name']}"
+    )
+    
+    return {
+        "message": "Agent reassigned",
+        "old_manager_id": old_manager_id,
+        "new_manager_id": reassign_data.new_manager_id,
+        "new_manager_name": new_manager["name"]
+    }
+
+@api_router.put("/users/{user_id}/approve")
+async def approve_user(user_id: str, current_user: dict = Depends(require_admin)):
+    """Approve a pending user (Admin only)"""
+    target_user = await db.users.find_one({"id": user_id, "deleted_at": None})
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    if target_user.get("approval_status") != "pending":
+        raise HTTPException(status_code=400, detail="User is not pending approval")
+    
+    # Assign to admin's organization
+    await db.users.update_one(
+        {"id": user_id},
+        {"$set": {
+            "approval_status": "approved",
+            "admin_id": current_user["id"],
+            "organization_id": current_user.get("organization_id"),
+            "updated_at": datetime.utcnow()
+        }}
+    )
+    
+    await log_activity(current_user["id"], "user_approved", f"Approved user {target_user['name']}")
+    
+    return {"message": "User approved"}
+
+@api_router.get("/users/pending-approval")
+async def get_pending_users(current_user: dict = Depends(require_admin)):
+    """Get users pending approval (Admin only)"""
+    users = await db.users.find({
+        "approval_status": "pending",
+        "deleted_at": None
+    }).to_list(100)
+    
+    return [{
+        "id": user["id"],
+        "name": user["name"],
+        "email": user["email"],
+        "phone": user.get("phone"),
+        "created_at": user["created_at"]
+    } for user in users]
+
+# ==================== DATA MIGRATION HELPER ====================
+
+@api_router.post("/admin/migrate-hierarchy")
+async def migrate_existing_users(current_user: dict = Depends(require_admin)):
+    """
+    Migrate existing users to the new hierarchy system.
+    - First user (by created_at) becomes Admin
+    - All other users become Agents under that Admin
+    """
+    # Get the first admin (current user should be admin)
+    admin = current_user
+    org_id = admin.get("organization_id")
+    
+    if not org_id:
+        org_id = await get_or_create_organization(admin)
+    
+    # Update admin's own record
+    await db.users.update_one(
+        {"id": admin["id"]},
+        {"$set": {
+            "admin_id": admin["id"],
+            "organization_id": org_id,
+            "approval_status": "approved",
+            "updated_at": datetime.utcnow()
+        }}
+    )
+    
+    # Update all other users without organization_id
+    result = await db.users.update_many(
+        {"organization_id": None, "deleted_at": None, "id": {"$ne": admin["id"]}},
+        {"$set": {
+            "admin_id": admin["id"],
+            "organization_id": org_id,
+            "role": "agent",  # Default to agent for existing users
+            "approval_status": "approved",
+            "updated_at": datetime.utcnow()
+        }}
+    )
+    
+    await log_activity(admin["id"], "hierarchy_migration", f"Migrated {result.modified_count} users to organization {org_id}")
+    
+    return {
+        "message": "Migration complete",
+        "organization_id": org_id,
+        "users_migrated": result.modified_count
+    }
+
 # ==================== LEADS ROUTES ====================
 
 @api_router.get("/leads", response_model=List[LeadResponse])
