@@ -122,9 +122,38 @@ export default function SignUpScreen() {
           <View style={styles.iconCircle}>
             <Ionicons name="person-add" size={40} color="#FFFFFF" />
           </View>
-          <Text style={styles.title}>Create Account</Text>
-          <Text style={styles.subtitle}>Start your free trial today</Text>
+          <Text style={styles.title}>
+            {inviteInfo ? 'Accept Invitation' : 'Create Account'}
+          </Text>
+          <Text style={styles.subtitle}>
+            {inviteInfo 
+              ? `You've been invited by ${inviteInfo.invited_by_name}`
+              : 'Start your free trial today'}
+          </Text>
         </View>
+
+        {/* Invitation Info Banner */}
+        {inviteInfo && (
+          <View style={styles.inviteBanner}>
+            <Ionicons name="checkmark-circle" size={24} color="#22C55E" />
+            <View style={styles.inviteBannerText}>
+              <Text style={styles.inviteBannerTitle}>
+                You're joining as {inviteInfo.role.charAt(0).toUpperCase() + inviteInfo.role.slice(1)}
+              </Text>
+              <Text style={styles.inviteBannerSubtitle}>
+                Invited by {inviteInfo.invited_by_name}
+              </Text>
+            </View>
+          </View>
+        )}
+
+        {/* Loading state for invite validation */}
+        {isValidatingInvite && (
+          <View style={styles.validatingContainer}>
+            <ActivityIndicator color="#3B82F6" />
+            <Text style={styles.validatingText}>Validating invitation...</Text>
+          </View>
+        )}
 
         <View style={styles.form}>
           <View style={styles.inputContainer}>
@@ -142,14 +171,15 @@ export default function SignUpScreen() {
           <View style={styles.inputContainer}>
             <Ionicons name="mail-outline" size={20} color="#64748B" style={styles.inputIcon} />
             <TextInput
-              style={styles.input}
+              style={[styles.input, inviteInfo && styles.inputDisabled]}
               placeholder="Email"
               placeholderTextColor="#64748B"
               value={email}
-              onChangeText={setEmail}
+              onChangeText={inviteInfo ? undefined : setEmail}
               keyboardType="email-address"
               autoCapitalize="none"
               autoCorrect={false}
+              editable={!inviteInfo}
             />
           </View>
 
