@@ -216,7 +216,7 @@ class AccountModeTestRunner:
         # Test email-specific invite
         email_invite_data = {"email": "test@test.com", "role": "agent"}
         success, response_data, status_code = self.make_request(
-            "POST", "/invitations", email_invite_data, token=self.tokens["admin"]
+            "POST", "/invitations", email_invite_data, token=admin_token
         )
         if success and isinstance(response_data, dict):
             token = response_data.get("token")
