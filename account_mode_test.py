@@ -342,8 +342,10 @@ class AccountModeTestRunner:
         """Test 7: Existing Features (Must Not Break)"""
         print("\n=== TEST 7: EXISTING FEATURES (MUST NOT BREAK) ===")
         
-        if "admin" not in self.tokens:
-            self.log_test("Existing Features", False, "Admin token required")
+        # Use manager token if admin not available (manager has admin privileges)
+        admin_token = self.tokens.get("admin") or self.tokens.get("manager")
+        if not admin_token:
+            self.log_test("Existing Features", False, "Admin or Manager token required")
             return
             
         # Test lead creation
