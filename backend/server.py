@@ -901,20 +901,8 @@ async def login(credentials: dict):
     email = credentials.get("email", "").lower()
     password = credentials.get("password", "")
     
-    logger.info(f"Login attempt for email: {email}")
-    
     user = await db.users.find_one({"email": email, "deleted_at": None})
-    
-    if not user:
-        logger.info(f"User not found for email: {email}")
-        raise HTTPException(status_code=401, detail="Invalid email or password")
-    
-    logger.info(f"User found: {user.get('email')}, hash length: {len(user.get('password_hash', ''))}")
-    
-    password_valid = verify_password(password, user["password_hash"])
-    logger.info(f"Password verification result: {password_valid}")
-    
-    if not password_valid:
+    if not user or not verify_password(password, user["password_hash"]):
         raise HTTPException(status_code=401, detail="Invalid email or password")
     
     # Check if user is active
