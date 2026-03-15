@@ -1,6 +1,9 @@
 import axios from 'axios';
 
-const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL || 'https://agentroute-ai.preview.emergentagent.com';
+const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
+if (!BACKEND_URL) {
+  console.error('EXPO_PUBLIC_BACKEND_URL environment variable is not set');
+}
 
 const apiClient = axios.create({
   baseURL: `${BACKEND_URL}/api`,
