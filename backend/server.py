@@ -1461,7 +1461,7 @@ async def migrate_existing_users(current_user: dict = Depends(require_admin)):
 
 @api_router.get("/leads", response_model=List[LeadResponse])
 async def get_leads(current_user: dict = Depends(get_current_user)):
-    user_ids = await get_user_accessible_ids(current_user["id"], current_user.get("role", "agent"))
+    user_ids = await get_user_hierarchy_ids(current_user)
     leads = await db.leads.find({"$or": [{"created_by_user": {"$in": user_ids}}, {"assigned_to_user": {"$in": user_ids}}]}).to_list(10000)
     
     result = []
@@ -1499,6 +1499,11 @@ async def create_lead(lead_data: LeadCreate, current_user: dict = Depends(get_cu
         "referred_by_lead_id": lead_data.referred_by_lead_id,
         "created_by_user": current_user["id"],
         "assigned_to_user": current_user["id"],
+        # Hierarchy ownership fields
+        "owner_agent_id": current_user["id"],
+        "manager_id": current_user.get("manager_id"),
+        "admin_id": current_user.get("admin_id"),
+        "organization_id": current_user.get("organization_id"),
         "created_date": datetime.utcnow(),
         "last_contact_date": None,
         "next_follow_up": None,
@@ -1515,7 +1520,7 @@ async def create_lead(lead_data: LeadCreate, current_user: dict = Depends(get_cu
 
 @api_router.get("/leads/{lead_id}", response_model=LeadResponse)
 async def get_lead(lead_id: str, current_user: dict = Depends(get_current_user)):
-    user_ids = await get_user_accessible_ids(current_user["id"], current_user.get("role", "agent"))
+    user_ids = await get_user_hierarchy_ids(current_user)
     lead = await db.leads.find_one({"id": lead_id, "$or": [{"created_by_user": {"$in": user_ids}}, {"assigned_to_user": {"$in": user_ids}}]})
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
