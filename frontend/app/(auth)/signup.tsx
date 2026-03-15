@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,13 +11,22 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../src/contexts/AuthContext';
+import { api } from '../../src/services/api';
+
+interface InviteInfo {
+  email: string;
+  name?: string;
+  role: string;
+  invited_by_name: string;
+}
 
 export default function SignUpScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams();
   const insets = useSafeAreaInsets();
   const { signUp } = useAuth();
 
@@ -27,6 +36,43 @@ export default function SignUpScreen() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  
+  // Invitation-related state
+  const [inviteToken, setInviteToken] = useState<string | null>(null);
+  const [inviteInfo, setInviteInfo] = useState<InviteInfo | null>(null);
+  const [isValidatingInvite, setIsValidatingInvite] = useState(false);
+
+  // Check for invite token in URL params
+  useEffect(() => {
+    const token = params.invite as string;
+    if (token) {
+      validateInvite(token);
+    }
+  }, [params.invite]);
+
+  const validateInvite = async (token: string) => {
+    setIsValidatingInvite(true);
+    try {
+      const data = await api.validateInvitation(token);
+      if (data.valid) {
+        setInviteToken(token);
+        setInviteInfo({
+          email: data.email,
+          name: data.name,
+          role: data.role,
+          invited_by_name: data.invited_by_name,
+        });
+        // Pre-fill email and name from invitation
+        setEmail(data.email);
+        if (data.name) setName(data.name);
+      }
+    } catch (error) {
+      Alert.alert('Invalid Invitation', 'This invitation link is invalid or has expired.');
+      setInviteToken(null);
+    } finally {
+      setIsValidatingInvite(false);
+    }
+  };
 
   const handleSignUp = async () => {
     if (!name || !email || !password) {
@@ -46,7 +92,7 @@ export default function SignUpScreen() {
 
     setIsLoading(true);
     try {
-      await signUp(name, email, password);
+      await signUp(name, email, password, inviteToken || undefined);
       router.replace('/(tabs)/dashboard');
     } catch (error: any) {
       const message = error.response?.data?.detail || 'Registration failed';
