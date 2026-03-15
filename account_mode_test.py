@@ -492,13 +492,20 @@ class AccountModeTestRunner:
         """Clean up test data created during testing"""
         print("\n=== CLEANUP ===")
         
-        # Cancel test invitations
+        # Clean up test invitations
         if "admin" in self.tokens:
+            admin_token = self.tokens["admin"]
+        elif "manager" in self.tokens:
+            admin_token = self.tokens["manager"]
+        else:
+            admin_token = None
+            
+        if admin_token:
             for invite_key in ["open_invite_id", "email_invite_id"]:
                 if invite_key in self.test_data:
                     invite_id = self.test_data[invite_key]
                     success, response_data, status_code = self.make_request(
-                        "DELETE", f"/invitations/{invite_id}", token=self.tokens["admin"]
+                        "DELETE", f"/invitations/{invite_id}", token=admin_token
                     )
                     if success:
                         self.log_test(f"Cleanup invitation {invite_id}", True, "Cancelled")
