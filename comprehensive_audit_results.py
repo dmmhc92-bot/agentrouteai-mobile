@@ -10,7 +10,7 @@ import sys
 from datetime import datetime
 
 # Configuration
-BACKEND_URL = "https://agentroute-ai.preview.emergentagent.com/api"
+BACKEND_URL = "https://agentrouteai-1.preview.emergentagent.com/api"
 
 # Test credentials
 TEST_CREDENTIALS = {
