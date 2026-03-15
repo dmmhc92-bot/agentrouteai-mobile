@@ -766,43 +766,120 @@ async def geocode_address(lead_id: str, address: str) -> Optional[dict]:
 
 @api_router.post("/auth/register", response_model=TokenResponse)
 async def register(user_data: UserCreate):
+    """
+    Register a new user.
+    
+    Hierarchy Rules:
+    - If invite_token provided: User gets role/hierarchy from invitation
+    - If first user in system: Becomes Admin with new organization
+    - Otherwise: Public signup defaults to Agent only (no self-role selection)
+    """
     existing = await db.users.find_one({"email": user_data.email.lower()})
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
     
     user_id = str(uuid.uuid4())
+    now = datetime.utcnow()
+    
+    # Initialize hierarchy fields
+    role = "agent"  # Default role for public signup
+    admin_id = None
+    manager_id = None
+    organization_id = None
+    invited_by_user_id = None
+    approval_status = "approved"
+    
+    # Check if this is an invited user
+    if user_data.invite_token:
+        invitation = await db.invitations.find_one({
+            "token": user_data.invite_token,
+            "status": "pending",
+            "expires_at": {"$gt": now}
+        })
+        
+        if not invitation:
+            raise HTTPException(status_code=400, detail="Invalid or expired invitation token")
+        
+        if invitation.get("email", "").lower() != user_data.email.lower():
+            raise HTTPException(status_code=400, detail="Email does not match invitation")
+        
+        # Accept invitation - set role and hierarchy from invite
+        role = invitation.get("role", "agent")
+        admin_id = invitation.get("admin_id")
+        manager_id = invitation.get("manager_id")
+        organization_id = invitation.get("organization_id")
+        invited_by_user_id = invitation.get("invited_by_user_id")
+        
+        # Mark invitation as accepted
+        await db.invitations.update_one(
+            {"id": invitation["id"]},
+            {"$set": {"status": "accepted", "accepted_at": now, "accepted_by_user_id": user_id}}
+        )
+        
+        logger.info(f"User {user_data.email} accepted invitation for role {role}")
+    else:
+        # Check if this is the first user (becomes Admin)
+        user_count = await db.users.count_documents({"deleted_at": None})
+        
+        if user_count == 0:
+            # First user becomes Admin with their own organization
+            role = "admin"
+            organization_id = f"org_{user_id[:8]}"
+            admin_id = user_id
+            logger.info(f"First user {user_data.email} registered as Admin with org {organization_id}")
+        else:
+            # Public signup: Always agent, no self-role selection allowed
+            # Ignore any role passed in user_data for security
+            role = "agent"
+            approval_status = "pending"  # Require approval for self-signup agents
+            logger.info(f"Public signup {user_data.email} registered as Agent (pending approval)")
+    
     user_doc = {
         "id": user_id,
         "name": user_data.name,
         "email": user_data.email.lower(),
         "password_hash": get_password_hash(user_data.password),
-        "role": user_data.role if user_data.role in ["admin", "manager", "agent"] else "agent",
-        "manager_id": user_data.manager_id,
+        "role": role,
+        "admin_id": admin_id,
+        "manager_id": manager_id,
+        "organization_id": organization_id,
+        "invited_by_user_id": invited_by_user_id,
+        "approval_status": approval_status,
         "phone": user_data.phone,
         "territory": user_data.territory,
         "subscription_status": "trial",
         "commission_rate": 0.6,
-        "created_at": datetime.utcnow(),
-        "last_login": datetime.utcnow(),
+        "created_at": now,
+        "updated_at": now,
+        "last_login": now,
         "is_active": True,
         "deleted_at": None,
         "reset_token": None,
         "reset_token_expiry": None
     }
     await db.users.insert_one(user_doc)
-    await log_activity(user_id, "register", "User registered")
+    await log_activity(user_id, "register", f"User registered as {role}")
     
     access_token = create_access_token(data={"sub": user_id})
     return TokenResponse(
         access_token=access_token,
         token_type="bearer",
         user=UserResponse(
-            id=user_id, name=user_data.name, email=user_data.email.lower(),
-            role=user_doc["role"], manager_id=user_doc["manager_id"],
-            subscription_status="trial", created_at=user_doc["created_at"],
-            last_login=user_doc["last_login"], phone=user_doc["phone"],
-            territory=user_doc["territory"], commission_rate=user_doc["commission_rate"],
-            is_active=True
+            id=user_id, 
+            name=user_data.name, 
+            email=user_data.email.lower(),
+            role=role, 
+            manager_id=manager_id,
+            admin_id=admin_id,
+            organization_id=organization_id,
+            subscription_status="trial", 
+            created_at=user_doc["created_at"],
+            last_login=user_doc["last_login"], 
+            phone=user_doc["phone"],
+            territory=user_doc["territory"], 
+            commission_rate=user_doc["commission_rate"],
+            is_active=True,
+            approval_status=approval_status
         )
     )
 
@@ -815,6 +892,10 @@ async def login(credentials: dict):
     if not user or not verify_password(password, user["password_hash"]):
         raise HTTPException(status_code=401, detail="Invalid email or password")
     
+    # Check if user is active
+    if not user.get("is_active", True):
+        raise HTTPException(status_code=403, detail="Account is deactivated. Contact your administrator.")
+    
     await db.users.update_one({"id": user["id"]}, {"$set": {"last_login": datetime.utcnow()}})
     await log_activity(user["id"], "login", "User logged in")
     
@@ -823,13 +904,21 @@ async def login(credentials: dict):
         access_token=access_token,
         token_type="bearer",
         user=UserResponse(
-            id=user["id"], name=user["name"], email=user["email"],
-            role=user.get("role", "agent"), manager_id=user.get("manager_id"),
+            id=user["id"], 
+            name=user["name"], 
+            email=user["email"],
+            role=user.get("role", "agent"), 
+            manager_id=user.get("manager_id"),
+            admin_id=user.get("admin_id"),
+            organization_id=user.get("organization_id"),
             subscription_status=user.get("subscription_status", "trial"),
-            created_at=user["created_at"], last_login=datetime.utcnow(),
-            phone=user.get("phone"), territory=user.get("territory"),
+            created_at=user["created_at"], 
+            last_login=datetime.utcnow(),
+            phone=user.get("phone"), 
+            territory=user.get("territory"),
             commission_rate=user.get("commission_rate", 0.6),
-            is_active=user.get("is_active", True)
+            is_active=user.get("is_active", True),
+            approval_status=user.get("approval_status", "approved")
         )
     )
 
