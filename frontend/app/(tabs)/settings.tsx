@@ -270,21 +270,40 @@ export default function SettingsScreen() {
           <Text style={styles.sectionTitle}>Support</Text>
           <View style={styles.menuCard}>
             <MenuItem
+              icon="mail-outline"
+              title="Contact Support"
+              onPress={handleContactSupport}
+            />
+            <MenuItem
+              icon="document-text-outline"
+              title="Privacy Policy"
+              onPress={handlePrivacyPolicy}
+            />
+            <MenuItem
               icon="help-circle-outline"
               title="Help Center"
               onPress={() => Alert.alert('Coming Soon', 'Help center coming soon')}
             />
-            <MenuItem
-              icon="chatbox-outline"
-              title="Contact Support"
-              onPress={() => Alert.alert('Coming Soon', 'Contact support coming soon')}
-            />
-            <MenuItem
-              icon="document-text-outline"
-              title="Terms of Service"
-              onPress={() => Alert.alert('Coming Soon', 'Terms of service coming soon')}
-            />
           </View>
+        </View>
+
+        {/* Delete Account */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Danger Zone</Text>
+          <TouchableOpacity 
+            style={styles.deleteAccountButton} 
+            onPress={handleDeleteAccount}
+            disabled={isDeletingAccount}
+          >
+            {isDeletingAccount ? (
+              <ActivityIndicator color="#EF4444" size="small" />
+            ) : (
+              <>
+                <Ionicons name="trash-outline" size={20} color="#EF4444" />
+                <Text style={styles.deleteAccountText}>Delete Account</Text>
+              </>
+            )}
+          </TouchableOpacity>
         </View>
 
         {/* Logout */}
