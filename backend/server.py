@@ -328,6 +328,17 @@ class CommissionStatus(str, Enum):
     APPROVED = "approved"
     PAID = "paid"
 
+class ApprovalStatus(str, Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+class InviteStatus(str, Enum):
+    PENDING = "pending"
+    ACCEPTED = "accepted"
+    EXPIRED = "expired"
+    CANCELLED = "cancelled"
+
 # Commission Tracking Models
 class CommissionRecordCreate(BaseModel):
     lead_id: Optional[str] = None
