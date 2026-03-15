@@ -349,6 +349,86 @@ export default function SettingsScreen() {
           </View>
         )}
 
+        {/* Account Mode Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Account Mode</Text>
+          <View style={styles.menuCard}>
+            <View style={styles.accountModeStatus}>
+              <View style={styles.accountModeHeader}>
+                <View style={[
+                  styles.modeIndicator,
+                  { backgroundColor: isConnectedMode ? '#22C55E' : '#64748B' }
+                ]}>
+                  <Ionicons 
+                    name={isConnectedMode ? 'people' : 'person'} 
+                    size={16} 
+                    color="#FFFFFF" 
+                  />
+                </View>
+                <View style={styles.modeInfo}>
+                  <Text style={styles.modeLabel}>Current Mode</Text>
+                  <Text style={styles.modeValue}>
+                    {isConnectedMode ? 'Connected to Team' : 'Solo Mode'}
+                  </Text>
+                </View>
+              </View>
+              
+              {isConnectedMode && teamInfo && (
+                <View style={styles.teamDetails}>
+                  <View style={styles.teamDetailRow}>
+                    <Ionicons name="business-outline" size={16} color="#64748B" />
+                    <Text style={styles.teamDetailText}>
+                      {teamInfo.organization_name || 'Team'}
+                    </Text>
+                  </View>
+                  {teamInfo.upline_name && (
+                    <View style={styles.teamDetailRow}>
+                      <Ionicons name="arrow-up-outline" size={16} color="#64748B" />
+                      <Text style={styles.teamDetailText}>
+                        Upline: {teamInfo.upline_name}
+                      </Text>
+                    </View>
+                  )}
+                  <View style={styles.teamDetailRow}>
+                    <Ionicons name="shield-checkmark-outline" size={16} color="#64748B" />
+                    <Text style={styles.teamDetailText}>
+                      Role: {(user?.role || 'agent').charAt(0).toUpperCase() + (user?.role || 'agent').slice(1)}
+                    </Text>
+                  </View>
+                </View>
+              )}
+              
+              {!isConnectedMode && (
+                <Text style={styles.modeDescription}>
+                  You're working independently. Join a team to collaborate with other agents.
+                </Text>
+              )}
+            </View>
+            
+            {/* Show appropriate button based on mode */}
+            {isSoloMode ? (
+              <TouchableOpacity 
+                style={styles.joinTeamButton}
+                onPress={() => setShowJoinModal(true)}
+              >
+                <Ionicons name="enter-outline" size={20} color="#FFFFFF" />
+                <Text style={styles.joinTeamButtonText}>Join Team / Connect to Upline</Text>
+              </TouchableOpacity>
+            ) : (
+              // Only show leave button if not admin of own org
+              !(isAdmin && user?.admin_id === user?.id) && (
+                <TouchableOpacity 
+                  style={styles.leaveTeamButton}
+                  onPress={() => setShowLeaveModal(true)}
+                >
+                  <Ionicons name="exit-outline" size={20} color="#EF4444" />
+                  <Text style={styles.leaveTeamButtonText}>Leave Team / Return to Solo</Text>
+                </TouchableOpacity>
+              )
+            )}
+          </View>
+        </View>
+
         {/* Menu Items */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Legal & Support</Text>
