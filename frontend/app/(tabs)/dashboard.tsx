@@ -152,6 +152,28 @@ export default function DashboardScreen() {
           <View>
             <Text style={styles.greeting}>Welcome back,</Text>
             <Text style={styles.userName}>{user?.name || 'Agent'}</Text>
+            <View style={styles.roleModeBadges}>
+              <View style={[styles.roleBadge, { backgroundColor: getRoleBadgeColor() }]}>
+                <Ionicons 
+                  name={isAdmin ? 'shield' : isManager ? 'people' : 'person'} 
+                  size={12} 
+                  color="#FFFFFF" 
+                />
+                <Text style={styles.roleBadgeText}>
+                  {(user?.role || 'agent').charAt(0).toUpperCase() + (user?.role || 'agent').slice(1)}
+                </Text>
+              </View>
+              <View style={[styles.modeBadge, { backgroundColor: isConnectedMode ? '#22C55E20' : '#64748B20' }]}>
+                <Ionicons 
+                  name={isConnectedMode ? 'link' : 'person-circle'} 
+                  size={12} 
+                  color={isConnectedMode ? '#22C55E' : '#64748B'} 
+                />
+                <Text style={[styles.modeBadgeText, { color: isConnectedMode ? '#22C55E' : '#64748B' }]}>
+                  {isConnectedMode ? 'Team' : 'Solo'}
+                </Text>
+              </View>
+            </View>
           </View>
           <View style={styles.headerRight}>
             <TouchableOpacity
@@ -162,6 +184,27 @@ export default function DashboardScreen() {
             </TouchableOpacity>
           </View>
         </View>
+
+        {/* Role-based Dashboard Banner */}
+        {isAdminOrManager && (
+          <TouchableOpacity 
+            style={styles.adminBanner}
+            onPress={() => router.push('/agency-command-center')}
+          >
+            <View style={styles.adminBannerLeft}>
+              <View style={[styles.adminBannerIcon, { backgroundColor: isAdmin ? '#8B5CF6' : '#3B82F6' }]}>
+                <Ionicons name={isAdmin ? 'shield-checkmark' : 'people-circle'} size={20} color="#FFFFFF" />
+              </View>
+              <View>
+                <Text style={styles.adminBannerTitle}>{getDashboardTitle()}</Text>
+                <Text style={styles.adminBannerSubtitle}>
+                  {isAdmin ? 'Full organization oversight' : 'Team management & reports'}
+                </Text>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#64748B" />
+          </TouchableOpacity>
+        )}
 
         {/* Stats */}
         <View style={styles.statsContainer}>
