@@ -10,11 +10,15 @@ interface User {
   email: string;
   role: 'admin' | 'manager' | 'agent';
   manager_id?: string;
+  admin_id?: string;
+  organization_id?: string;
   subscription_status: string;
   created_at: string;
   last_login?: string;
   phone?: string;
   profile_image?: string;
+  is_active?: boolean;
+  approval_status?: string;
 }
 
 interface AuthContextType {
@@ -25,8 +29,10 @@ interface AuthContextType {
   isManager: boolean;
   isAgent: boolean;
   canViewDownline: boolean;
+  canInviteUsers: boolean;
+  canManageUsers: boolean;
   signIn: (email: string, password: string) => Promise<User>;
-  signUp: (name: string, email: string, password: string, role?: string, managerId?: string) => Promise<void>;
+  signUp: (name: string, email: string, password: string, inviteToken?: string) => Promise<void>;
   signOut: () => Promise<void>;
   forgotPassword: (email: string) => Promise<{ dev_token?: string }>;
   resetPassword: (token: string, newPassword: string) => Promise<void>;
