@@ -16,10 +16,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { api } from '../../src/services/api';
 import { format } from 'date-fns';
+import Constants from 'expo-constants';
 
-// Constants
-const PRIVACY_POLICY_URL = 'https://agentrouteai-1.preview.emergentagent.com/api/privacy-policy';
-const TERMS_OF_SERVICE_URL = 'https://agentrouteai-1.preview.emergentagent.com/api/terms-of-service';
+// Constants - Use environment variable for base URL
+const BASE_URL = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL || 
+                 process.env.EXPO_PUBLIC_BACKEND_URL || 
+                 'https://agentrouteai-1.preview.emergentagent.com';
+const PRIVACY_POLICY_URL = `${BASE_URL}/api/privacy`;
+const TERMS_OF_SERVICE_URL = `${BASE_URL}/api/terms`;
 const SUPPORT_EMAIL = 'agentrouteai@gmail.com';
 const SUPPORT_SUBJECT = 'AgentRoute Support Request';
 
