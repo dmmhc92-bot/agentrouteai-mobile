@@ -113,10 +113,11 @@ class UserCreate(BaseModel):
     name: str
     email: EmailStr
     password: str
-    role: Optional[str] = "agent"
+    role: Optional[str] = "agent"  # Will be enforced to agent for public signup
     manager_id: Optional[str] = None
     phone: Optional[str] = None
     territory: Optional[str] = None
+    invite_token: Optional[str] = None  # For accepting invitations
 
 class UserResponse(BaseModel):
     id: str
@@ -124,6 +125,8 @@ class UserResponse(BaseModel):
     email: str
     role: str
     manager_id: Optional[str]
+    admin_id: Optional[str] = None
+    organization_id: Optional[str] = None
     subscription_status: str
     created_at: datetime
     last_login: Optional[datetime]
@@ -131,11 +134,48 @@ class UserResponse(BaseModel):
     territory: Optional[str]
     commission_rate: Optional[float]
     is_active: bool
+    approval_status: Optional[str] = "approved"
 
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str
     user: UserResponse
+
+# Invitation Models
+class InvitationCreate(BaseModel):
+    email: EmailStr
+    role: str  # 'manager' or 'agent'
+    name: Optional[str] = None
+
+class InvitationResponse(BaseModel):
+    id: str
+    email: str
+    role: str
+    name: Optional[str]
+    status: str
+    admin_id: str
+    manager_id: Optional[str]
+    organization_id: str
+    invited_by_user_id: str
+    invited_by_name: str
+    created_at: datetime
+    expires_at: datetime
+
+class InvitationAccept(BaseModel):
+    token: str
+    name: str
+    password: str
+    phone: Optional[str] = None
+
+# User Management Models
+class UserRoleUpdate(BaseModel):
+    role: str  # 'manager' or 'agent'
+
+class UserStatusUpdate(BaseModel):
+    is_active: bool
+
+class UserReassign(BaseModel):
+    new_manager_id: str
 
 # Lead Models
 class LeadCreate(BaseModel):
