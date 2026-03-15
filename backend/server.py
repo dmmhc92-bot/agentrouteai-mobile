@@ -5524,6 +5524,17 @@ async def get_terms_of_service_html():
     """
     return HTMLResponse(content=html_content)
 
+# Short URL aliases for legal pages
+@api_router.get("/privacy", response_class=HTMLResponse)
+async def get_privacy_short():
+    """Short URL alias for Privacy Policy"""
+    return await get_privacy_policy_html()
+
+@api_router.get("/terms", response_class=HTMLResponse)
+async def get_terms_short():
+    """Short URL alias for Terms of Service"""
+    return await get_terms_of_service_html()
+
 # ==================== AGENCY COMMAND CENTER ====================
 
 class AgencyCommandCenterSummary(BaseModel):
