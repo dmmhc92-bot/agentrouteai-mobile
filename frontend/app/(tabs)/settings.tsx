@@ -501,9 +501,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
+  menuItemTextContainer: {
+    flex: 1,
+  },
   menuItemText: {
     color: '#E2E8F0',
     fontSize: 16,
+  },
+  menuItemSubtitle: {
+    color: '#64748B',
+    fontSize: 12,
+    marginTop: 2,
   },
   logoutButton: {
     flexDirection: 'row',
