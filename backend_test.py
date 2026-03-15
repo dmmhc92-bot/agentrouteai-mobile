@@ -1,21 +1,20 @@
 #!/usr/bin/env python3
 """
-Comprehensive Backend Testing for Role-Based User Hierarchy System
+Comprehensive Backend Testing for Account Mode Switching System
 AgentRoute AI - Insurance Agency Platform
 
 This test suite validates ALL backend functionality with focus on:
-1. Existing Auth Verification (Must still work)
-2. Password Reset (Must still work) 
-3. Lead Creation (Must still work)
-4. Appointment Creation (Must still work)
-5. Invitation System Tests
-6. Permission Enforcement Tests
-7. User Management Tests (Admin Only)
-8. Hierarchy Migration Test
-9. SOA Workflow Verification (Must still work)
-10. Data Filtering Verification
+1. Existing Auth (Must Not Break)
+2. Account Mode System (NEW)
+3. Invitation System with Token Generation
+4. Join Team Flow Validation
+5. Leave Team Flow
+6. Permission Enforcement
+7. Existing Features (Must Not Break)
+8. Legal Pages
+9. Data Filtering After Mode Switch
 
-ALL TESTS MUST PASS (100% required)
+Target: 100% pass rate on all flows as per review request.
 """
 
 import requests
