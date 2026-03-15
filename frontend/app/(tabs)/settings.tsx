@@ -296,6 +296,11 @@ export default function SettingsScreen() {
               onPress={handlePrivacyPolicy}
             />
             <MenuItem
+              icon="reader-outline"
+              title="Terms of Service"
+              onPress={handleTermsOfService}
+            />
+            <MenuItem
               icon="help-circle-outline"
               title="Help Center"
               onPress={() => Alert.alert('Coming Soon', 'Help center coming soon')}
