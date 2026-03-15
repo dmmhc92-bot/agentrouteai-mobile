@@ -26,7 +26,7 @@ const SUPPORT_SUBJECT = 'AgentRoute Support Request';
 export default function SettingsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { user, signOut } = useAuth();
+  const { user, signOut, isAdmin, isManager, canInviteUsers } = useAuth();
 
   const [subscription, setSubscription] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
