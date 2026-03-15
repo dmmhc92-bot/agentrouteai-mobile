@@ -95,6 +95,21 @@ export default function SettingsScreen() {
     }
   };
 
+  // Terms of Service - Opens in browser/WebView
+  const handleTermsOfService = async () => {
+    try {
+      const supported = await Linking.canOpenURL(TERMS_OF_SERVICE_URL);
+      if (supported) {
+        await Linking.openURL(TERMS_OF_SERVICE_URL);
+      } else {
+        Alert.alert('Error', 'Unable to open Terms of Service. Please visit our website.');
+      }
+    } catch (error) {
+      console.error('Error opening Terms of Service:', error);
+      Alert.alert('Error', 'Failed to open Terms of Service');
+    }
+  };
+
   // Delete Account - Real deletion with confirmation
   const handleDeleteAccount = () => {
     Alert.alert(
