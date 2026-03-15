@@ -201,7 +201,7 @@ class AccountModeTestRunner:
         # Test open invite (no email)
         open_invite_data = {"role": "agent"}
         success, response_data, status_code = self.make_request(
-            "POST", "/invitations", open_invite_data, token=self.tokens["admin"]
+            "POST", "/invitations", open_invite_data, token=admin_token
         )
         if success and isinstance(response_data, dict):
             token = response_data.get("token")
