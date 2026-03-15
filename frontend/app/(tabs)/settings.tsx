@@ -30,11 +30,20 @@ const SUPPORT_SUBJECT = 'AgentRoute Support Request';
 export default function SettingsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { user, signOut, isAdmin, isManager, canInviteUsers } = useAuth();
+  const { user, signOut, isAdmin, isManager, canInviteUsers, isSoloMode, isConnectedMode, teamInfo, joinTeam, leaveTeam, refreshUser } = useAuth();
 
   const [subscription, setSubscription] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  
+  // Account Mode state
+  const [showJoinModal, setShowJoinModal] = useState(false);
+  const [showLeaveModal, setShowLeaveModal] = useState(false);
+  const [inviteToken, setInviteToken] = useState('');
+  const [isJoining, setIsJoining] = useState(false);
+  const [isLeaving, setIsLeaving] = useState(false);
+  const [inviteValidation, setInviteValidation] = useState<any>(null);
+  const [isValidating, setIsValidating] = useState(false);
 
   useEffect(() => {
     loadSubscription();
