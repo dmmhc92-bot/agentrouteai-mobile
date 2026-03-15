@@ -480,6 +480,160 @@ export default function SettingsScreen() {
 
         <Text style={styles.version}>Version 1.0.0</Text>
       </ScrollView>
+
+      {/* Join Team Modal */}
+      <Modal
+        visible={showJoinModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => {
+          setShowJoinModal(false);
+          setInviteToken('');
+          setInviteValidation(null);
+        }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Join Team</Text>
+              <TouchableOpacity onPress={() => {
+                setShowJoinModal(false);
+                setInviteToken('');
+                setInviteValidation(null);
+              }}>
+                <Ionicons name="close" size={24} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.modalDescription}>
+              Enter the invitation token provided by your team admin or manager to join their organization.
+            </Text>
+
+            <View style={styles.inputContainer}>
+              <Ionicons name="key-outline" size={20} color="#64748B" />
+              <TextInput
+                style={styles.input}
+                placeholder="Enter invitation token"
+                placeholderTextColor="#64748B"
+                value={inviteToken}
+                onChangeText={(text) => {
+                  setInviteToken(text);
+                  setInviteValidation(null);
+                }}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              {inviteToken.length > 0 && (
+                <TouchableOpacity onPress={handleValidateInvite} disabled={isValidating}>
+                  {isValidating ? (
+                    <ActivityIndicator size="small" color="#3B82F6" />
+                  ) : (
+                    <Ionicons name="checkmark-circle" size={24} color="#3B82F6" />
+                  )}
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {inviteValidation && (
+              <View style={styles.validationSuccess}>
+                <Ionicons name="checkmark-circle" size={20} color="#22C55E" />
+                <View style={styles.validationInfo}>
+                  <Text style={styles.validationTitle}>
+                    Valid Invitation
+                  </Text>
+                  <Text style={styles.validationText}>
+                    Join as {inviteValidation.role} in {inviteValidation.organization_name}
+                  </Text>
+                  <Text style={styles.validationSubtext}>
+                    Invited by {inviteValidation.invited_by_name}
+                  </Text>
+                </View>
+              </View>
+            )}
+
+            <TouchableOpacity
+              style={[styles.joinButton, (!inviteValidation || isJoining) && styles.buttonDisabled]}
+              onPress={handleJoinTeam}
+              disabled={!inviteValidation || isJoining}
+            >
+              {isJoining ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text style={styles.joinButtonText}>Join Team</Text>
+              )}
+            </TouchableOpacity>
+
+            <Text style={styles.modalNote}>
+              You can change your team affiliation later from this settings screen.
+            </Text>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Leave Team Modal */}
+      <Modal
+        visible={showLeaveModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowLeaveModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Leave Team</Text>
+              <TouchableOpacity onPress={() => setShowLeaveModal(false)}>
+                <Ionicons name="close" size={24} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.warningBanner}>
+              <Ionicons name="alert-circle" size={24} color="#F59E0B" />
+              <Text style={styles.warningText}>
+                Are you sure you want to leave this team?
+              </Text>
+            </View>
+
+            <View style={styles.leaveInfo}>
+              <View style={styles.leaveInfoItem}>
+                <Ionicons name="checkmark-circle" size={18} color="#22C55E" />
+                <Text style={styles.leaveInfoText}>Your account will remain active</Text>
+              </View>
+              <View style={styles.leaveInfoItem}>
+                <Ionicons name="checkmark-circle" size={18} color="#22C55E" />
+                <Text style={styles.leaveInfoText}>Your personal leads and records stay with you</Text>
+              </View>
+              <View style={styles.leaveInfoItem}>
+                <Ionicons name="checkmark-circle" size={18} color="#22C55E" />
+                <Text style={styles.leaveInfoText}>You'll switch to Solo Mode</Text>
+              </View>
+              <View style={styles.leaveInfoItem}>
+                <Ionicons name="close-circle" size={18} color="#EF4444" />
+                <Text style={styles.leaveInfoText}>Your team will lose access to your records</Text>
+              </View>
+            </View>
+
+            <View style={styles.leaveButtons}>
+              <TouchableOpacity
+                style={styles.cancelButton}
+                onPress={() => setShowLeaveModal(false)}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.leaveConfirmButton, isLeaving && styles.buttonDisabled]}
+                onPress={handleLeaveTeam}
+                disabled={isLeaving}
+              >
+                {isLeaving ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.leaveConfirmButtonText}>Leave Team</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
