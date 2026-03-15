@@ -358,7 +358,7 @@ class AccountModeTestRunner:
             "source": "manual"
         }
         success, response_data, status_code = self.make_request(
-            "POST", "/leads", lead_data, token=self.tokens["admin"]
+            "POST", "/leads", lead_data, token=admin_token
         )
         if success and isinstance(response_data, dict):
             lead_id = response_data.get("id")
