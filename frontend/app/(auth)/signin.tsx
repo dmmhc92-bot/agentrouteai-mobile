@@ -243,6 +243,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginTop: 24,
   },
+  inviteContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginTop: 12,
+  },
   signUpText: {
     color: '#94A3B8',
     fontSize: 14,
