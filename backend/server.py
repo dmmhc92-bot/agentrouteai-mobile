@@ -1611,7 +1611,7 @@ async def get_lead_timeline(lead_id: str, current_user: dict = Depends(get_curre
 
 @api_router.get("/appointments")
 async def get_appointments(current_user: dict = Depends(get_current_user)):
-    user_ids = await get_user_accessible_ids(current_user["id"], current_user.get("role", "agent"))
+    user_ids = await get_user_hierarchy_ids(current_user)
     appointments = await db.appointments.find({"created_by_user": {"$in": user_ids}}).to_list(10000)
     return [AppointmentResponse(
         id=apt["id"], lead_id=apt["lead_id"], appointment_date=apt["appointment_date"],
@@ -1635,7 +1635,12 @@ async def create_appointment(apt_data: AppointmentCreate, current_user: dict = D
         "created_by_user": current_user["id"],
         "created_date": datetime.utcnow(),
         "outcome": None,
-        "follow_up_notes": None
+        "follow_up_notes": None,
+        # Hierarchy ownership fields
+        "owner_agent_id": current_user["id"],
+        "manager_id": current_user.get("manager_id"),
+        "admin_id": current_user.get("admin_id"),
+        "organization_id": current_user.get("organization_id")
     }
     await db.appointments.insert_one(apt_doc)
     await db.leads.update_one({"id": apt_data.lead_id}, {"$set": {"stage": "appointment_scheduled"}})
@@ -1645,7 +1650,7 @@ async def create_appointment(apt_data: AppointmentCreate, current_user: dict = D
 @api_router.get("/appointments/{apt_id}")
 async def get_appointment(apt_id: str, current_user: dict = Depends(get_current_user)):
     """Get a single appointment by ID"""
-    user_ids = await get_user_accessible_ids(current_user["id"], current_user.get("role", "agent"))
+    user_ids = await get_user_hierarchy_ids(current_user)
     
     apt = await db.appointments.find_one({"id": apt_id, "created_by_user": {"$in": user_ids}})
     if not apt:
