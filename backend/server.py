@@ -956,13 +956,21 @@ async def reset_password(request: dict):
 @api_router.get("/auth/me", response_model=UserResponse)
 async def get_me(current_user: dict = Depends(get_current_user)):
     return UserResponse(
-        id=current_user["id"], name=current_user["name"], email=current_user["email"],
-        role=current_user.get("role", "agent"), manager_id=current_user.get("manager_id"),
+        id=current_user["id"], 
+        name=current_user["name"], 
+        email=current_user["email"],
+        role=current_user.get("role", "agent"), 
+        manager_id=current_user.get("manager_id"),
+        admin_id=current_user.get("admin_id"),
+        organization_id=current_user.get("organization_id"),
         subscription_status=current_user.get("subscription_status", "trial"),
-        created_at=current_user["created_at"], last_login=current_user.get("last_login"),
-        phone=current_user.get("phone"), territory=current_user.get("territory"),
+        created_at=current_user["created_at"], 
+        last_login=current_user.get("last_login"),
+        phone=current_user.get("phone"), 
+        territory=current_user.get("territory"),
         commission_rate=current_user.get("commission_rate", 0.6),
-        is_active=current_user.get("is_active", True)
+        is_active=current_user.get("is_active", True),
+        approval_status=current_user.get("approval_status", "approved")
     )
 
 @api_router.delete("/auth/account")
