@@ -45,11 +45,12 @@ class ApiService {
   }
 
   // Auth
-  async register(name: string, email: string, password: string, role?: string, managerId?: string) {
+  async register(name: string, email: string, password: string, inviteToken?: string) {
     const response = await apiClient.post('/auth/register', { 
-      name, email, password, 
-      role: role || 'agent',
-      manager_id: managerId 
+      name, 
+      email, 
+      password,
+      invite_token: inviteToken
     });
     return response.data;
   }
@@ -81,6 +82,75 @@ class ApiService {
 
   async deleteAccount() {
     const response = await apiClient.delete('/auth/account');
+    return response.data;
+  }
+
+  // ==================== INVITATION MANAGEMENT ====================
+
+  async createInvitation(data: { email: string; role: string; name?: string }) {
+    const response = await apiClient.post('/invitations', data);
+    return response.data;
+  }
+
+  async getInvitations() {
+    const response = await apiClient.get('/invitations');
+    return response.data;
+  }
+
+  async getInvitation(inviteId: string) {
+    const response = await apiClient.get(`/invitations/${inviteId}`);
+    return response.data;
+  }
+
+  async validateInvitation(token: string) {
+    const response = await apiClient.get(`/invitations/validate/${token}`);
+    return response.data;
+  }
+
+  async resendInvitation(inviteId: string) {
+    const response = await apiClient.post(`/invitations/${inviteId}/resend`);
+    return response.data;
+  }
+
+  async cancelInvitation(inviteId: string) {
+    const response = await apiClient.delete(`/invitations/${inviteId}`);
+    return response.data;
+  }
+
+  // ==================== USER MANAGEMENT ====================
+
+  async getUsers() {
+    const response = await apiClient.get('/users');
+    return response.data;
+  }
+
+  async updateUserRole(userId: string, role: string) {
+    const response = await apiClient.put(`/users/${userId}/role`, { role });
+    return response.data;
+  }
+
+  async updateUserStatus(userId: string, isActive: boolean) {
+    const response = await apiClient.put(`/users/${userId}/status`, { is_active: isActive });
+    return response.data;
+  }
+
+  async reassignUser(userId: string, newManagerId: string) {
+    const response = await apiClient.put(`/users/${userId}/reassign`, { new_manager_id: newManagerId });
+    return response.data;
+  }
+
+  async approveUser(userId: string) {
+    const response = await apiClient.put(`/users/${userId}/approve`);
+    return response.data;
+  }
+
+  async getPendingUsers() {
+    const response = await apiClient.get('/users/pending-approval');
+    return response.data;
+  }
+
+  async migrateHierarchy() {
+    const response = await apiClient.post('/admin/migrate-hierarchy');
     return response.data;
   }
 
