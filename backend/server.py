@@ -135,6 +135,10 @@ class UserResponse(BaseModel):
     commission_rate: Optional[float]
     is_active: bool
     approval_status: Optional[str] = "approved"
+    account_mode: Optional[str] = "solo"  # 'solo' or 'connected'
+    organization_name: Optional[str] = None
+    upline_name: Optional[str] = None
+    joined_team_at: Optional[datetime] = None
 
 class TokenResponse(BaseModel):
     access_token: str
@@ -143,13 +147,13 @@ class TokenResponse(BaseModel):
 
 # Invitation Models
 class InvitationCreate(BaseModel):
-    email: EmailStr
+    email: Optional[EmailStr] = None  # Optional - can create open invite without email
     role: str  # 'manager' or 'agent'
     name: Optional[str] = None
 
 class InvitationResponse(BaseModel):
     id: str
-    email: str
+    email: Optional[str]
     role: str
     name: Optional[str]
     status: str
@@ -160,12 +164,21 @@ class InvitationResponse(BaseModel):
     invited_by_name: str
     created_at: datetime
     expires_at: datetime
+    token: Optional[str] = None  # Include token for sharing
+    invite_link: Optional[str] = None
 
 class InvitationAccept(BaseModel):
     token: str
     name: str
     password: str
     phone: Optional[str] = None
+
+# Account Mode Models
+class JoinTeamRequest(BaseModel):
+    token: str
+
+class LeaveTeamRequest(BaseModel):
+    confirm: bool = False
 
 # User Management Models
 class UserRoleUpdate(BaseModel):
