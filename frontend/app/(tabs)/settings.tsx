@@ -262,28 +262,7 @@ export default function SettingsScreen() {
 
         {/* Menu Items */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Account</Text>
-          <View style={styles.menuCard}>
-            <MenuItem
-              icon="person-outline"
-              title="Edit Profile"
-              onPress={() => Alert.alert('Coming Soon', 'Profile editing coming soon')}
-            />
-            <MenuItem
-              icon="notifications-outline"
-              title="Notifications"
-              onPress={() => Alert.alert('Coming Soon', 'Notification settings coming soon')}
-            />
-            <MenuItem
-              icon="shield-outline"
-              title="Privacy & Security"
-              onPress={() => Alert.alert('Coming Soon', 'Privacy settings coming soon')}
-            />
-          </View>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Support</Text>
+          <Text style={styles.sectionTitle}>Legal & Support</Text>
           <View style={styles.menuCard}>
             <MenuItem
               icon="mail-outline"
@@ -299,11 +278,6 @@ export default function SettingsScreen() {
               icon="reader-outline"
               title="Terms of Service"
               onPress={handleTermsOfService}
-            />
-            <MenuItem
-              icon="help-circle-outline"
-              title="Help Center"
-              onPress={() => Alert.alert('Coming Soon', 'Help center coming soon')}
             />
           </View>
         </View>
