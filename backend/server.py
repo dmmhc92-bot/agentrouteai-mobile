@@ -636,16 +636,71 @@ async def require_manager_or_admin(current_user: dict = Depends(get_current_user
         raise HTTPException(status_code=403, detail="Manager or Admin access required")
     return current_user
 
-async def get_user_accessible_ids(user_id: str, role: str) -> List[str]:
-    """Get all user IDs that this user can access based on role"""
+async def get_user_accessible_ids(user_id: str, role: str, admin_id: str = None, organization_id: str = None) -> List[str]:
+    """Get all user IDs that this user can access based on role and organization hierarchy"""
     if role == "admin":
-        users = await db.users.find({"deleted_at": None}, {"id": 1}).to_list(10000)
+        # Admin sees all users in their organization
+        if organization_id:
+            users = await db.users.find({"organization_id": organization_id, "deleted_at": None}, {"id": 1}).to_list(10000)
+        else:
+            # Fallback for existing admins without organization_id
+            users = await db.users.find({"deleted_at": None}, {"id": 1}).to_list(10000)
         return [u["id"] for u in users]
     elif role == "manager":
+        # Manager sees themselves and their direct agents
         downline = await db.users.find({"manager_id": user_id, "deleted_at": None}, {"id": 1}).to_list(1000)
         return [user_id] + [u["id"] for u in downline]
     else:
+        # Agent sees only themselves
         return [user_id]
+
+async def get_user_hierarchy_ids(current_user: dict) -> List[str]:
+    """Enhanced helper to get accessible user IDs with full hierarchy context"""
+    user_id = current_user["id"]
+    role = current_user.get("role", "agent")
+    admin_id = current_user.get("admin_id")
+    organization_id = current_user.get("organization_id")
+    return await get_user_accessible_ids(user_id, role, admin_id, organization_id)
+
+async def get_or_create_organization(admin_user: dict) -> str:
+    """Get or create an organization ID for an admin user"""
+    if admin_user.get("organization_id"):
+        return admin_user["organization_id"]
+    
+    # Create new organization ID based on admin's ID
+    org_id = f"org_{admin_user['id'][:8]}"
+    await db.users.update_one(
+        {"id": admin_user["id"]},
+        {"$set": {"organization_id": org_id, "admin_id": admin_user["id"]}}
+    )
+    return org_id
+
+def generate_invite_token() -> str:
+    """Generate a secure invitation token"""
+    return secrets.token_urlsafe(32)
+
+async def validate_hierarchy_permission(current_user: dict, target_role: str, action: str) -> bool:
+    """
+    Validate that the current user can perform the action on the target role.
+    - Admin can create/manage Managers and Agents
+    - Manager can only create/manage Agents under themselves
+    - Agent cannot create anyone
+    """
+    current_role = current_user.get("role", "agent")
+    
+    if current_role == "admin":
+        # Admin can manage managers and agents
+        if target_role in ["manager", "agent"]:
+            return True
+        return False  # Cannot create another admin
+    elif current_role == "manager":
+        # Manager can only manage agents
+        if target_role == "agent" and action in ["invite", "view", "manage"]:
+            return True
+        return False
+    else:
+        # Agent cannot manage anyone
+        return False
 
 async def log_activity(user_id: str, activity_type: str, description: str, lead_id: str = None, metadata: dict = None):
     activity = {
