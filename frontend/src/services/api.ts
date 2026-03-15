@@ -154,6 +154,28 @@ class ApiService {
     return response.data;
   }
 
+  // ==================== ACCOUNT MODE ====================
+
+  async getAccountMode() {
+    const response = await apiClient.get('/account/mode');
+    return response.data;
+  }
+
+  async joinTeam(token: string) {
+    const response = await apiClient.post('/account/join-team', { token });
+    return response.data;
+  }
+
+  async leaveTeam() {
+    const response = await apiClient.post('/account/leave-team', { confirm: true });
+    return response.data;
+  }
+
+  async validateInviteForJoin(token: string) {
+    const response = await apiClient.get(`/account/validate-invite/${token}`);
+    return response.data;
+  }
+
   // Team/Hierarchy
   async getDownline() {
     const response = await apiClient.get('/team/downline');
