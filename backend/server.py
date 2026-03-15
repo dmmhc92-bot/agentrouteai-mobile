@@ -4710,6 +4710,129 @@ This app is a productivity tool and does not provide insurance advice.
 Contact: support@agentroute.ai"""
     }
 
+# HTML Terms of Service page for in-app viewing
+@api_router.get("/terms-of-service", response_class=HTMLResponse)
+async def get_terms_of_service_html():
+    html_content = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Terms of Service - AgentRoute AI</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: #0F172A;
+            color: #E2E8F0;
+            padding: 20px;
+            max-width: 800px;
+            margin: 0 auto;
+            line-height: 1.6;
+        }
+        h1 { color: #3B82F6; font-size: 24px; margin-bottom: 10px; }
+        h2 { color: #94A3B8; font-size: 18px; margin-top: 30px; margin-bottom: 15px; border-bottom: 1px solid #334155; padding-bottom: 8px; }
+        h3 { color: #94A3B8; font-size: 16px; margin-top: 20px; margin-bottom: 10px; }
+        p, li { color: #CBD5E1; margin-bottom: 10px; }
+        ul { padding-left: 20px; }
+        .last-updated { color: #64748B; font-size: 14px; margin-bottom: 30px; }
+        .contact { margin-top: 40px; padding: 20px; background: #1E293B; border-radius: 12px; }
+        .contact a { color: #3B82F6; }
+        .highlight { background: #1E293B; padding: 15px; border-radius: 8px; margin: 15px 0; }
+    </style>
+</head>
+<body>
+    <h1>AgentRoute AI Terms of Service</h1>
+    <p class="last-updated">Last Updated: January 1, 2024</p>
+    
+    <p>Welcome to AgentRoute AI. By accessing or using our mobile application and services, you agree to be bound by these Terms of Service.</p>
+    
+    <h2>1. Acceptance of Terms</h2>
+    <p>By downloading, installing, or using AgentRoute AI, you acknowledge that you have read, understood, and agree to be bound by these Terms. If you do not agree to these Terms, do not use the Service.</p>
+    
+    <h2>2. Description of Service</h2>
+    <p>AgentRoute AI is a mobile application designed to help insurance sales agents:</p>
+    <ul>
+        <li>Manage leads and customer relationships</li>
+        <li>Schedule and track appointments</li>
+        <li>Generate and manage Scope of Appointment documents</li>
+        <li>Optimize sales routes and planning</li>
+        <li>Access AI-powered sales coaching and assistance</li>
+        <li>Track commissions and sales performance</li>
+    </ul>
+    
+    <h2>3. User Accounts</h2>
+    <h3>3.1 Registration</h3>
+    <p>To use certain features of the Service, you must create an account. You agree to provide accurate, current, and complete information during registration.</p>
+    
+    <h3>3.2 Account Security</h3>
+    <p>You are responsible for:</p>
+    <ul>
+        <li>Maintaining the confidentiality of your account credentials</li>
+        <li>All activities that occur under your account</li>
+        <li>Notifying us immediately of any unauthorized access</li>
+    </ul>
+    
+    <h2>4. Subscription and Payment</h2>
+    <div class="highlight">
+        <p><strong>Free Trial:</strong> New users receive a 30-day free trial with full access to all features.</p>
+        <p><strong>Subscription:</strong> After the trial period, continued access requires a paid subscription at $30/month.</p>
+        <p><strong>Cancellation:</strong> You may cancel your subscription at any time. Access will continue until the end of the current billing period.</p>
+    </div>
+    
+    <h2>5. User Responsibilities</h2>
+    <p>As a user of AgentRoute AI, you agree to:</p>
+    <ul>
+        <li>Comply with all applicable insurance laws and regulations</li>
+        <li>Provide accurate and truthful information to clients</li>
+        <li>Maintain proper licensing for insurance sales activities</li>
+        <li>Use the Service only for lawful purposes</li>
+        <li>Not share your account with others</li>
+        <li>Respect the privacy of your clients and leads</li>
+    </ul>
+    
+    <h2>6. Intellectual Property</h2>
+    <p>The Service, including its content, features, and functionality, is owned by AgentRoute AI and is protected by copyright, trademark, and other intellectual property laws.</p>
+    
+    <h2>7. Data and Privacy</h2>
+    <p>Your use of the Service is also governed by our Privacy Policy. By using the Service, you consent to the collection and use of your information as described in our Privacy Policy.</p>
+    
+    <h2>8. Disclaimers</h2>
+    <ul>
+        <li>AgentRoute AI is a productivity tool and does not provide insurance, legal, or financial advice</li>
+        <li>The Service is provided "as is" without warranties of any kind</li>
+        <li>We do not guarantee that the Service will be uninterrupted or error-free</li>
+        <li>AI-generated content is for assistance only and should be reviewed before use</li>
+    </ul>
+    
+    <h2>9. Limitation of Liability</h2>
+    <p>To the maximum extent permitted by law, AgentRoute AI shall not be liable for any indirect, incidental, special, consequential, or punitive damages arising from your use of the Service.</p>
+    
+    <h2>10. Account Termination</h2>
+    <p>We reserve the right to suspend or terminate your account if you:</p>
+    <ul>
+        <li>Violate these Terms of Service</li>
+        <li>Engage in fraudulent or illegal activities</li>
+        <li>Fail to pay subscription fees when due</li>
+    </ul>
+    <p>You may also delete your account at any time through the app's Settings.</p>
+    
+    <h2>11. Changes to Terms</h2>
+    <p>We may update these Terms from time to time. We will notify you of any material changes by posting the new Terms in the app or sending you an email.</p>
+    
+    <h2>12. Governing Law</h2>
+    <p>These Terms shall be governed by and construed in accordance with the laws of the United States, without regard to its conflict of law provisions.</p>
+    
+    <div class="contact">
+        <h2 style="margin-top: 0;">Contact Us</h2>
+        <p>If you have any questions about these Terms, please contact us:</p>
+        <p>Email: <a href="mailto:agentrouteai@gmail.com">agentrouteai@gmail.com</a></p>
+    </div>
+</body>
+</html>
+    """
+    return HTMLResponse(content=html_content)
+
 # ==================== AGENCY COMMAND CENTER ====================
 
 class AgencyCommandCenterSummary(BaseModel):
