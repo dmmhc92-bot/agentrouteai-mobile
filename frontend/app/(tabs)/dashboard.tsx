@@ -43,7 +43,7 @@ interface ComplianceCards {
 export default function DashboardScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { user } = useAuth();
+  const { user, isSoloMode, isConnectedMode, teamInfo } = useAuth();
 
   const [leads, setLeads] = useState<Lead[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -51,7 +51,24 @@ export default function DashboardScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const isAdminOrManager = user?.role === 'admin' || user?.role === 'manager';
+  const isAdmin = user?.role === 'admin';
+  const isManager = user?.role === 'manager';
+  const isAdminOrManager = isAdmin || isManager;
+
+  // Role-based dashboard title
+  const getDashboardTitle = () => {
+    if (isAdmin) return 'Admin Dashboard';
+    if (isManager) return 'Manager Dashboard';
+    if (isConnectedMode) return 'Team Dashboard';
+    return 'Solo Dashboard';
+  };
+
+  // Role badge color
+  const getRoleBadgeColor = () => {
+    if (isAdmin) return '#8B5CF6';
+    if (isManager) return '#3B82F6';
+    return '#22C55E';
+  };
 
   const loadData = async () => {
     try {
