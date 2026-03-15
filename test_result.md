@@ -259,7 +259,41 @@ backend:
           comment: "Commission Tracking API fully tested and working correctly. All 11 commission-specific tests passed (100% success rate). ✅ POST /api/commissions (200) - Creates commission records with correct 60/20/20% split calculations (Agent: $360/$240/$150, Manager: $120/$80/$50, Agency: $120/$80/$50). ✅ GET /api/commissions (200) - Lists all commissions with proper role-based access control. ✅ GET /api/commissions?status={status} (200) - Status filtering working for estimated/pending/approved/paid statuses. ✅ GET /api/commissions/{id} (200) - Single commission retrieval with all required fields. ✅ PUT /api/commissions/{id} (200) - Status updates working (approved→paid with paid_amount and payment_date). ✅ GET /api/commissions/summary/totals (200) - Summary endpoint returns proper totals by status/carrier/policy_type. ✅ GET /api/commissions/agent/{agent_id} (200) - Agent-specific view returns summary data with commissions array. ✅ Team view parameter (?team_view=true) working correctly. Commission calculations verified: Medicare Advantage ($600→$360/$120/$120), Medicare Supplement ($400→$240/$80/$80), Prescription Drug Plan ($250→$150/$50/$50). All CRUD operations, status transitions, filtering, and role-based access working as specified."
 
 frontend:
-  # No frontend testing performed as per instructions
+  - task: "Settings Screen - Privacy Policy Button"
+    implemented: true
+    working: "NA"
+    file: "app/(tabs)/settings.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        - working: "NA"
+          agent: "testing"
+          comment: "Need to test Privacy Policy button functionality - should open https://agentroute-ai.preview.emergentagent.com/api/privacy-policy in browser/webview"
+
+  - task: "Settings Screen - Contact Support Button"
+    implemented: true
+    working: "NA"
+    file: "app/(tabs)/settings.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        - working: "NA"
+          agent: "testing"
+          comment: "Need to test Contact Support button functionality - should open email composer to agentrouteai@gmail.com with subject 'AgentRoute Support Request'"
+
+  - task: "Settings Screen - Delete Account Button"
+    implemented: true
+    working: "NA"
+    file: "app/(tabs)/settings.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        - working: "NA"
+          agent: "testing"
+          comment: "Need to test Delete Account button functionality - should show confirmation dialog in Danger Zone section"
 
 metadata:
   created_by: "testing_agent"
