@@ -311,10 +311,7 @@ metadata:
   run_ui: false
 
 test_plan:
-  current_focus:
-    - "Settings Screen - Privacy Policy Button"
-    - "Settings Screen - Contact Support Button"
-    - "Settings Screen - Delete Account Button"
+  current_focus: []
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
