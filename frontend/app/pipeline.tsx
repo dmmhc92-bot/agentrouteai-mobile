@@ -53,31 +53,44 @@ interface PipelineData {
   is_team_view: boolean;
 }
 
-// Stage colors and icons
-const STAGE_CONFIG: Record<string, { color: string; icon: string; bgColor: string }> = {
-  new_lead: { color: '#6B7280', icon: 'person-add', bgColor: '#F3F4F6' },
-  appointment_scheduled: { color: '#3B82F6', icon: 'calendar', bgColor: '#EFF6FF' },
-  application_submitted: { color: '#8B5CF6', icon: 'document-text', bgColor: '#F5F3FF' },
-  underwriting_review: { color: '#F59E0B', icon: 'hourglass', bgColor: '#FFFBEB' },
-  additional_requirements: { color: '#EF4444', icon: 'alert-circle', bgColor: '#FEF2F2' },
-  approved: { color: '#10B981', icon: 'checkmark-circle', bgColor: '#ECFDF5' },
-  policy_issued: { color: '#06B6D4', icon: 'document', bgColor: '#ECFEFF' },
-  policy_placed: { color: '#14B8A6', icon: 'checkmark-done', bgColor: '#F0FDFA' },
-  commission_pending: { color: '#F97316', icon: 'cash', bgColor: '#FFF7ED' },
-  commission_paid: { color: '#22C55E', icon: 'wallet', bgColor: '#F0FDF4' },
+// Stage colors, icons, and display labels
+const STAGE_CONFIG: Record<string, { color: string; icon: string; bgColor: string; label: string }> = {
+  new_lead: { color: '#6B7280', icon: 'person-add', bgColor: '#F3F4F6', label: 'New' },
+  new: { color: '#6B7280', icon: 'person-add', bgColor: '#F3F4F6', label: 'New' },
+  contacted: { color: '#3B82F6', icon: 'chatbubble', bgColor: '#EFF6FF', label: 'Contacted' },
+  follow_up: { color: '#F59E0B', icon: 'time', bgColor: '#FFFBEB', label: 'Follow Up' },
+  appointment_set: { color: '#3B82F6', icon: 'calendar', bgColor: '#EFF6FF', label: 'Appointment Set' },
+  appointment_scheduled: { color: '#3B82F6', icon: 'calendar', bgColor: '#EFF6FF', label: 'Appointment Set' },
+  soa_completed: { color: '#8B5CF6', icon: 'document-text', bgColor: '#F5F3FF', label: 'SOA Completed' },
+  policy_submitted: { color: '#8B5CF6', icon: 'document-text', bgColor: '#F5F3FF', label: 'Policy Submitted' },
+  application_submitted: { color: '#8B5CF6', icon: 'document-text', bgColor: '#F5F3FF', label: 'Policy Submitted' },
+  underwriting_review: { color: '#F59E0B', icon: 'hourglass', bgColor: '#FFFBEB', label: 'Underwriting Review' },
+  additional_requirements: { color: '#EF4444', icon: 'alert-circle', bgColor: '#FEF2F2', label: 'Additional Requirements' },
+  approved: { color: '#10B981', icon: 'checkmark-circle', bgColor: '#ECFDF5', label: 'Approved' },
+  closed_won: { color: '#22C55E', icon: 'trophy', bgColor: '#F0FDF4', label: 'Closed Won' },
+  policy_issued: { color: '#06B6D4', icon: 'document', bgColor: '#ECFEFF', label: 'Policy Issued' },
+  policy_placed: { color: '#14B8A6', icon: 'checkmark-done', bgColor: '#F0FDFA', label: 'Policy Placed' },
+  commission_pending: { color: '#F97316', icon: 'cash', bgColor: '#FFF7ED', label: 'Commission Pending' },
+  commission_paid: { color: '#22C55E', icon: 'wallet', bgColor: '#F0FDF4', label: 'Commission Paid' },
+  closed_lost: { color: '#EF4444', icon: 'close-circle', bgColor: '#FEF2F2', label: 'Closed Lost' },
 };
 
 const ALL_STAGES = [
   'new_lead',
-  'appointment_scheduled',
-  'application_submitted',
+  'contacted',
+  'follow_up',
+  'appointment_set',
+  'soa_completed',
+  'policy_submitted',
   'underwriting_review',
   'additional_requirements',
   'approved',
+  'closed_won',
   'policy_issued',
   'policy_placed',
   'commission_pending',
   'commission_paid',
+  'closed_lost',
 ];
 
 export default function PipelineScreen() {
