@@ -16,18 +16,26 @@ import { api } from '../../src/services/api';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { format, formatDistanceToNow } from 'date-fns';
 
-// Stage configuration
+// Stage configuration with professional display labels
 const STAGE_CONFIG: Record<string, { label: string; color: string }> = {
-  new_lead: { label: 'Lead', color: '#6B7280' },
-  appointment_scheduled: { label: 'Apt Scheduled', color: '#3B82F6' },
-  application_submitted: { label: 'App Submitted', color: '#8B5CF6' },
+  new_lead: { label: 'New', color: '#6B7280' },
+  new: { label: 'New', color: '#6B7280' },
+  contacted: { label: 'Contacted', color: '#3B82F6' },
+  follow_up: { label: 'Follow Up', color: '#F59E0B' },
+  appointment_set: { label: 'Appointment Set', color: '#3B82F6' },
+  appointment_scheduled: { label: 'Appointment Set', color: '#3B82F6' },
+  soa_completed: { label: 'SOA Completed', color: '#8B5CF6' },
+  policy_submitted: { label: 'Policy Submitted', color: '#8B5CF6' },
+  application_submitted: { label: 'Policy Submitted', color: '#8B5CF6' },
   underwriting_review: { label: 'Underwriting', color: '#F59E0B' },
   additional_requirements: { label: 'Add. Requirements', color: '#EF4444' },
   approved: { label: 'Approved', color: '#10B981' },
+  closed_won: { label: 'Closed Won', color: '#22C55E' },
   policy_issued: { label: 'Policy Issued', color: '#06B6D4' },
   policy_placed: { label: 'Policy Placed', color: '#14B8A6' },
   commission_pending: { label: 'Comm Pending', color: '#F97316' },
   commission_paid: { label: 'Comm Paid', color: '#22C55E' },
+  closed_lost: { label: 'Closed Lost', color: '#EF4444' },
 };
 
 interface AgentDetails {
