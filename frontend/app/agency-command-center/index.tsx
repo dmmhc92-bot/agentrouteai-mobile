@@ -128,16 +128,24 @@ type DrilldownType =
   | null;
 
 const STAGE_LABELS: Record<string, string> = {
-  new_lead: 'New Lead',
+  new_lead: 'New',
+  new: 'New',
+  contacted: 'Contacted',
+  follow_up: 'Follow Up',
+  appointment_set: 'Appointment Set',
   appointment_scheduled: 'Appointment Set',
-  application_submitted: 'Application Submitted',
+  soa_completed: 'SOA Completed',
+  policy_submitted: 'Policy Submitted',
+  application_submitted: 'Policy Submitted',
   underwriting_review: 'Underwriting Review',
   additional_requirements: 'Additional Requirements',
   approved: 'Approved',
+  closed_won: 'Closed Won',
   policy_issued: 'Policy Issued',
   policy_placed: 'Policy Placed',
   commission_pending: 'Commission Pending',
   commission_paid: 'Commission Paid',
+  closed_lost: 'Closed Lost',
 };
 
 export default function AgencyCommandCenterScreen() {
