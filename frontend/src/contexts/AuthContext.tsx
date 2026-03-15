@@ -19,6 +19,22 @@ interface User {
   profile_image?: string;
   is_active?: boolean;
   approval_status?: string;
+  account_mode?: 'solo' | 'connected';
+  organization_name?: string;
+  upline_name?: string;
+  joined_team_at?: string;
+}
+
+interface TeamInfo {
+  organization_id: string;
+  organization_name: string;
+  admin_id?: string;
+  admin_name?: string;
+  manager_id?: string;
+  manager_name?: string;
+  upline_name?: string;
+  joined_at?: string;
+  role: string;
 }
 
 interface AuthContextType {
@@ -31,6 +47,9 @@ interface AuthContextType {
   canViewDownline: boolean;
   canInviteUsers: boolean;
   canManageUsers: boolean;
+  isSoloMode: boolean;
+  isConnectedMode: boolean;
+  teamInfo: TeamInfo | null;
   signIn: (email: string, password: string) => Promise<User>;
   signUp: (name: string, email: string, password: string, inviteToken?: string) => Promise<void>;
   signOut: () => Promise<void>;
@@ -39,6 +58,8 @@ interface AuthContextType {
   updateProfile: (data: { name?: string; phone?: string; profile_image?: string }) => Promise<void>;
   deleteAccount: () => Promise<void>;
   refreshUser: () => Promise<void>;
+  joinTeam: (token: string) => Promise<void>;
+  leaveTeam: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
