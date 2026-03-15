@@ -1003,6 +1003,10 @@ async def create_invitation(invite_data: InvitationCreate, current_user: dict = 
     - Admin can invite Managers and Agents
     - Manager can only invite Agents (under themselves)
     - Agent cannot invite anyone
+    
+    Supports:
+    - Email-specific invites (sent to a specific person)
+    - Open invites (shareable token without specific email)
     """
     current_role = current_user.get("role", "agent")
     target_role = invite_data.role.lower()
@@ -1015,28 +1019,32 @@ async def create_invitation(invite_data: InvitationCreate, current_user: dict = 
     if not await validate_hierarchy_permission(current_user, target_role, "invite"):
         raise HTTPException(status_code=403, detail=f"You do not have permission to invite a {target_role}")
     
-    # Check if email already exists
-    existing_user = await db.users.find_one({"email": invite_data.email.lower()})
-    if existing_user:
-        raise HTTPException(status_code=400, detail="This email is already registered")
-    
-    # Check for existing pending invitation
-    existing_invite = await db.invitations.find_one({
-        "email": invite_data.email.lower(),
-        "status": "pending"
-    })
-    if existing_invite:
-        raise HTTPException(status_code=400, detail="A pending invitation already exists for this email")
+    # If email is provided, check if already registered or has pending invite
+    if invite_data.email:
+        existing_user = await db.users.find_one({"email": invite_data.email.lower()})
+        if existing_user:
+            raise HTTPException(status_code=400, detail="This email is already registered")
+        
+        existing_invite = await db.invitations.find_one({
+            "email": invite_data.email.lower(),
+            "status": "pending"
+        })
+        if existing_invite:
+            raise HTTPException(status_code=400, detail="A pending invitation already exists for this email")
     
     # Determine hierarchy context
     if current_role == "admin":
         admin_id = current_user["id"]
         organization_id = current_user.get("organization_id") or await get_or_create_organization(current_user)
-        manager_id = None if target_role == "manager" else current_user["id"]  # Agents invited by admin report to admin
+        manager_id = None if target_role == "manager" else current_user["id"]
     else:  # manager
         admin_id = current_user.get("admin_id")
         organization_id = current_user.get("organization_id")
-        manager_id = current_user["id"]  # Agents report to the inviting manager
+        manager_id = current_user["id"]
+    
+    # Get organization name for display
+    admin_user = await db.users.find_one({"id": admin_id}, {"name": 1})
+    organization_name = f"{admin_user.get('name', 'Unknown')}'s Team" if admin_user else "Team"
     
     now = datetime.utcnow()
     invite_id = str(uuid.uuid4())
@@ -1044,7 +1052,7 @@ async def create_invitation(invite_data: InvitationCreate, current_user: dict = 
     
     invitation_doc = {
         "id": invite_id,
-        "email": invite_data.email.lower(),
+        "email": invite_data.email.lower() if invite_data.email else None,
         "name": invite_data.name,
         "role": target_role,
         "token": token,
@@ -1052,21 +1060,24 @@ async def create_invitation(invite_data: InvitationCreate, current_user: dict = 
         "admin_id": admin_id,
         "manager_id": manager_id,
         "organization_id": organization_id,
+        "organization_name": organization_name,
         "invited_by_user_id": current_user["id"],
+        "is_open_invite": invite_data.email is None,  # Track if this is a shareable link
         "created_at": now,
-        "expires_at": now + timedelta(days=7),  # 7 day expiration
+        "expires_at": now + timedelta(days=7),
         "accepted_at": None,
         "accepted_by_user_id": None
     }
     
     await db.invitations.insert_one(invitation_doc)
-    await log_activity(current_user["id"], "invitation_created", f"Invited {invite_data.email} as {target_role}")
     
-    logger.info(f"Invitation created: {invite_data.email} as {target_role}, token: {token}")
+    email_display = invite_data.email if invite_data.email else "(open invite)"
+    await log_activity(current_user["id"], "invitation_created", f"Created invite for {email_display} as {target_role}")
+    logger.info(f"Invitation created: {email_display} as {target_role}, token: {token}")
     
     return InvitationResponse(
         id=invite_id,
-        email=invite_data.email.lower(),
+        email=invite_data.email.lower() if invite_data.email else None,
         role=target_role,
         name=invite_data.name,
         status="pending",
@@ -1076,7 +1087,9 @@ async def create_invitation(invite_data: InvitationCreate, current_user: dict = 
         invited_by_user_id=current_user["id"],
         invited_by_name=current_user.get("name", "Unknown"),
         created_at=now,
-        expires_at=invitation_doc["expires_at"]
+        expires_at=invitation_doc["expires_at"],
+        token=token,
+        invite_link=f"/invite/{token}"
     )
 
 @api_router.get("/invitations")
