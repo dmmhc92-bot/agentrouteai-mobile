@@ -192,8 +192,10 @@ class AccountModeTestRunner:
         """Test 3: Invitation System with Token Generation"""
         print("\n=== TEST 3: INVITATION SYSTEM WITH TOKEN GENERATION ===")
         
-        if "admin" not in self.tokens:
-            self.log_test("Invitation System", False, "Admin token required")
+        # Use manager token if admin not available (manager has admin privileges)
+        admin_token = self.tokens.get("admin") or self.tokens.get("manager")
+        if not admin_token:
+            self.log_test("Invitation System", False, "Admin or Manager token required")
             return
             
         # Test open invite (no email)
