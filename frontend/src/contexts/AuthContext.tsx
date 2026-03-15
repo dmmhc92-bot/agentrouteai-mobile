@@ -92,6 +92,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [teamInfo, setTeamInfo] = useState<TeamInfo | null>(null);
 
   useEffect(() => {
     loadStoredAuth();
@@ -105,6 +106,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         api.setAuthToken(storedToken);
         const userData = await api.getMe();
         setUser(userData);
+        
+        // Load account mode info
+        try {
+          const modeData = await api.getAccountMode();
+          if (modeData.team_info) {
+            setTeamInfo(modeData.team_info);
+          }
+        } catch (e) {
+          // Account mode endpoint may not exist for older backends
+        }
       }
     } catch (error) {
       console.log('Auth load error:', error);
@@ -123,6 +134,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const userData = await api.getMe();
         setUser(userData);
+        
+        // Refresh team info
+        try {
+          const modeData = await api.getAccountMode();
+          setTeamInfo(modeData.team_info || null);
+        } catch (e) {
+          // Ignore
+        }
       } catch (error) {
         console.log('Refresh user error:', error);
       }
@@ -135,6 +154,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(response.access_token);
     api.setAuthToken(response.access_token);
     setUser(response.user);
+    
+    // Load team info
+    try {
+      const modeData = await api.getAccountMode();
+      setTeamInfo(modeData.team_info || null);
+    } catch (e) {
+      // Ignore
+    }
+    
     return response.user;
   };
 
@@ -144,12 +172,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(response.access_token);
     api.setAuthToken(response.access_token);
     setUser(response.user);
+    
+    // Load team info
+    try {
+      const modeData = await api.getAccountMode();
+      setTeamInfo(modeData.team_info || null);
+    } catch (e) {
+      // Ignore
+    }
   };
 
   const signOut = async () => {
     await storage.removeItem('auth_token');
     setToken(null);
     setUser(null);
+    setTeamInfo(null);
     api.setAuthToken(null);
   };
 
@@ -171,6 +208,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await signOut();
   };
 
+  const joinTeam = async (inviteToken: string) => {
+    const result = await api.joinTeam(inviteToken);
+    // Refresh user data to get updated role/organization
+    await refreshUser();
+    return result;
+  };
+
+  const leaveTeam = async () => {
+    const result = await api.leaveTeam();
+    // Refresh user data
+    await refreshUser();
+    return result;
+  };
+
   // Role-based access helpers
   const isAdmin = user?.role === 'admin';
   const isManager = user?.role === 'manager';
@@ -178,6 +229,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const canViewDownline = isAdmin || isManager;
   const canInviteUsers = isAdmin || isManager;
   const canManageUsers = isAdmin;
+  
+  // Account mode helpers
+  const isSoloMode = !user?.organization_id;
+  const isConnectedMode = !!user?.organization_id;
 
   return (
     <AuthContext.Provider
@@ -191,6 +246,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         canViewDownline,
         canInviteUsers,
         canManageUsers,
+        isSoloMode,
+        isConnectedMode,
+        teamInfo,
         signIn,
         signUp,
         signOut,
@@ -199,6 +257,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         updateProfile,
         deleteAccount,
         refreshUser,
+        joinTeam,
+        leaveTeam,
       }}
     >
       {children}
