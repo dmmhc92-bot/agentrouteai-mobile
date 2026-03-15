@@ -1483,6 +1483,247 @@ async def migrate_existing_users(current_user: dict = Depends(require_admin)):
         "users_migrated": result.modified_count
     }
 
+# ==================== ACCOUNT MODE ROUTES ====================
+
+@api_router.get("/account/mode")
+async def get_account_mode(current_user: dict = Depends(get_current_user)):
+    """Get the current account mode and team information"""
+    is_connected = bool(current_user.get("organization_id"))
+    
+    team_info = None
+    if is_connected:
+        # Get organization/team info
+        admin_id = current_user.get("admin_id")
+        manager_id = current_user.get("manager_id")
+        
+        admin = await db.users.find_one({"id": admin_id}, {"name": 1}) if admin_id else None
+        manager = await db.users.find_one({"id": manager_id}, {"name": 1}) if manager_id and manager_id != admin_id else None
+        
+        team_info = {
+            "organization_id": current_user.get("organization_id"),
+            "organization_name": f"{admin.get('name', 'Unknown')}'s Team" if admin else "Team",
+            "admin_id": admin_id,
+            "admin_name": admin.get("name") if admin else None,
+            "manager_id": manager_id,
+            "manager_name": manager.get("name") if manager else None,
+            "upline_name": manager.get("name") if manager else (admin.get("name") if admin else None),
+            "joined_at": current_user.get("joined_team_at"),
+            "role": current_user.get("role", "agent")
+        }
+    
+    return {
+        "account_mode": "connected" if is_connected else "solo",
+        "is_connected": is_connected,
+        "team_info": team_info
+    }
+
+@api_router.post("/account/join-team")
+async def join_team(join_data: JoinTeamRequest, current_user: dict = Depends(get_current_user)):
+    """
+    Join a team using an invitation token.
+    Allows existing solo users to connect to a hierarchy.
+    """
+    # Check if already connected to a team
+    if current_user.get("organization_id"):
+        raise HTTPException(
+            status_code=400, 
+            detail="You are already connected to a team. Leave your current team first to join a new one."
+        )
+    
+    now = datetime.utcnow()
+    
+    # Validate invitation token
+    invitation = await db.invitations.find_one({
+        "token": join_data.token,
+        "status": "pending",
+        "expires_at": {"$gt": now}
+    })
+    
+    if not invitation:
+        raise HTTPException(status_code=400, detail="Invalid or expired invitation token")
+    
+    # If invitation has a specific email, verify it matches
+    if invitation.get("email") and invitation["email"].lower() != current_user["email"].lower():
+        raise HTTPException(status_code=400, detail="This invitation is for a different email address")
+    
+    # Get role and hierarchy from invitation
+    role = invitation.get("role", "agent")
+    admin_id = invitation.get("admin_id")
+    manager_id = invitation.get("manager_id")
+    organization_id = invitation.get("organization_id")
+    
+    # Update user with team connection
+    await db.users.update_one(
+        {"id": current_user["id"]},
+        {"$set": {
+            "role": role,
+            "admin_id": admin_id,
+            "manager_id": manager_id,
+            "organization_id": organization_id,
+            "invited_by_user_id": invitation.get("invited_by_user_id"),
+            "account_mode": "connected",
+            "joined_team_at": now,
+            "approval_status": "approved",
+            "updated_at": now
+        }}
+    )
+    
+    # Mark invitation as accepted
+    await db.invitations.update_one(
+        {"id": invitation["id"]},
+        {"$set": {
+            "status": "accepted",
+            "accepted_at": now,
+            "accepted_by_user_id": current_user["id"]
+        }}
+    )
+    
+    # Get team info for response
+    admin = await db.users.find_one({"id": admin_id}, {"name": 1}) if admin_id else None
+    manager = await db.users.find_one({"id": manager_id}, {"name": 1}) if manager_id and manager_id != admin_id else None
+    
+    await log_activity(current_user["id"], "joined_team", f"Joined team as {role}")
+    
+    return {
+        "message": f"Successfully joined team as {role}",
+        "account_mode": "connected",
+        "role": role,
+        "organization_id": organization_id,
+        "organization_name": f"{admin.get('name', 'Unknown')}'s Team" if admin else "Team",
+        "upline_name": manager.get("name") if manager else (admin.get("name") if admin else None)
+    }
+
+@api_router.post("/account/leave-team")
+async def leave_team(leave_data: LeaveTeamRequest, current_user: dict = Depends(get_current_user)):
+    """
+    Leave the current team and return to solo mode.
+    All personal/agent-owned records move with the user.
+    """
+    if not leave_data.confirm:
+        raise HTTPException(status_code=400, detail="Please confirm your intent to leave the team")
+    
+    # Check if actually connected
+    if not current_user.get("organization_id"):
+        raise HTTPException(status_code=400, detail="You are not currently connected to a team")
+    
+    # Admins cannot leave their own organization
+    if current_user.get("role") == "admin" and current_user.get("admin_id") == current_user["id"]:
+        raise HTTPException(
+            status_code=400, 
+            detail="As the team admin, you cannot leave. Transfer ownership or delete the organization instead."
+        )
+    
+    now = datetime.utcnow()
+    old_org_id = current_user.get("organization_id")
+    old_manager_id = current_user.get("manager_id")
+    
+    # Update user to solo mode - clear all team references
+    await db.users.update_one(
+        {"id": current_user["id"]},
+        {"$set": {
+            "role": "agent",  # Reset to agent role in solo mode
+            "admin_id": None,
+            "manager_id": None,
+            "organization_id": None,
+            "invited_by_user_id": None,
+            "account_mode": "solo",
+            "left_team_at": now,
+            "updated_at": now
+        },
+        "$unset": {
+            "joined_team_at": ""
+        }}
+    )
+    
+    # Update all user-owned records to solo visibility
+    # Leads
+    await db.leads.update_many(
+        {"owner_agent_id": current_user["id"]},
+        {"$set": {
+            "organization_id": None,
+            "manager_id": None,
+            "admin_id": None,
+            "visibility_scope": "solo"
+        }}
+    )
+    
+    # Appointments
+    await db.appointments.update_many(
+        {"owner_agent_id": current_user["id"]},
+        {"$set": {
+            "organization_id": None,
+            "manager_id": None,
+            "admin_id": None,
+            "visibility_scope": "solo"
+        }}
+    )
+    
+    # Scopes
+    await db.scopes.update_many(
+        {"created_by_user": current_user["id"]},
+        {"$set": {
+            "organization_id": None,
+            "manager_id": None,
+            "admin_id": None,
+            "visibility_scope": "solo"
+        }}
+    )
+    
+    # If user was a manager, clear manager_id from their former agents
+    if current_user.get("role") == "manager":
+        await db.users.update_many(
+            {"manager_id": current_user["id"], "organization_id": old_org_id},
+            {"$set": {"manager_id": old_manager_id}}  # Reassign to the former manager's manager
+        )
+    
+    await log_activity(current_user["id"], "left_team", f"Left team {old_org_id}")
+    
+    return {
+        "message": "Successfully left the team and returned to solo mode",
+        "account_mode": "solo",
+        "records_updated": True
+    }
+
+@api_router.get("/account/validate-invite/{token}")
+async def validate_invite_for_join(token: str, current_user: dict = Depends(get_current_user)):
+    """
+    Validate an invitation token for an existing user wanting to join a team.
+    Different from signup validation - this is for users who already have an account.
+    """
+    now = datetime.utcnow()
+    
+    invitation = await db.invitations.find_one({
+        "token": token,
+        "status": "pending",
+        "expires_at": {"$gt": now}
+    })
+    
+    if not invitation:
+        raise HTTPException(status_code=404, detail="Invalid or expired invitation token")
+    
+    # Check email match if invitation is email-specific
+    if invitation.get("email") and invitation["email"].lower() != current_user["email"].lower():
+        raise HTTPException(status_code=400, detail="This invitation is for a different email address")
+    
+    # Check if already connected
+    if current_user.get("organization_id"):
+        raise HTTPException(
+            status_code=400, 
+            detail="You are already connected to a team. Leave your current team first."
+        )
+    
+    # Get inviter and organization info
+    inviter = await db.users.find_one({"id": invitation.get("invited_by_user_id")}, {"name": 1})
+    admin = await db.users.find_one({"id": invitation.get("admin_id")}, {"name": 1})
+    
+    return {
+        "valid": True,
+        "role": invitation["role"],
+        "organization_name": invitation.get("organization_name") or (f"{admin.get('name', 'Unknown')}'s Team" if admin else "Team"),
+        "invited_by_name": inviter.get("name") if inviter else "Unknown",
+        "expires_at": invitation["expires_at"]
+    }
+
 # ==================== LEADS ROUTES ====================
 
 @api_router.get("/leads", response_model=List[LeadResponse])
