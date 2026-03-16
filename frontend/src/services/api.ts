@@ -55,6 +55,29 @@ class ApiService {
     return response.data;
   }
 
+  // Create Organization - becomes Admin/Owner
+  async createOrganization(organizationName: string, name: string, email: string, password: string, phone?: string) {
+    const response = await apiClient.post('/auth/create-organization', {
+      organization_name: organizationName,
+      name,
+      email,
+      password,
+      phone
+    });
+    return response.data;
+  }
+
+  // Register as Solo Agent - works independently
+  async registerSolo(name: string, email: string, password: string, phone?: string) {
+    const response = await apiClient.post('/auth/register-solo', {
+      name,
+      email,
+      password,
+      phone
+    });
+    return response.data;
+  }
+
   async login(email: string, password: string) {
     const response = await apiClient.post('/auth/login', { email, password });
     return response.data;
