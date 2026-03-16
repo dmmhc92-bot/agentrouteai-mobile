@@ -410,6 +410,8 @@ test_plan:
   test_priority: "high_first"
 
 agent_communication:
+    - agent: "main"
+      message: "PRIORITY: Testing the invite-link system end-to-end. Need to verify: 1) POST /invitations creates invite with token, 2) GET /invitations lists invites, 3) GET /invitations/validate/{token} validates token, 4) POST /invitations/accept handles both new and existing users, 5) POST /invitations/{id}/revoke works, 6) POST /invitations/{id}/resend generates new token. Test with admin@agentroute.com/Admin123! and manager@agentroute.com/Manager123!. Verify: Admin can invite manager and agent, Manager can only invite agent (not manager - should get 403)."
     - agent: "testing"
       message: "Comprehensive backend API testing completed successfully. All 29 test cases passed (100% success rate). Tested authentication flow, CRUD operations for leads and appointments, scope of appointment with PDF generation, route planning with AI geocoding, AI coach chat functionality, subscription management, and security. All endpoints working correctly with proper status codes, data persistence, and error handling. Backend is production-ready."
     - agent: "testing"
