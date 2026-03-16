@@ -833,6 +833,25 @@ class ApiService {
     const response = await apiClient.post('/notifications/test');
     return response.data;
   }
+
+  // ==================== ROUTE VISIBILITY ====================
+
+  async getRouteVisibility() {
+    const response = await apiClient.get('/routes/visibility');
+    return response.data;
+  }
+
+  async updateRouteVisibility(visibilityLevel: 'private' | 'summary' | 'shared') {
+    const response = await apiClient.put('/routes/visibility', {
+      visibility_level: visibilityLevel
+    });
+    return response.data;
+  }
+
+  async getAgentRoute(agentId: string, date: string) {
+    const response = await apiClient.get(`/routes/agent/${agentId}?date=${date}`);
+    return response.data;
+  }
 }
 
 export const api = new ApiService();
