@@ -1,457 +1,490 @@
 #!/usr/bin/env python3
 """
-AgentRoute AI Backend Production Hardening Test Suite
-Tests all critical flows for iOS app production deployment as specified in review request
+AgentRoute AI Backend API Testing - INVITE-LINK SYSTEM
+Comprehensive testing of the invitation system functionality
 """
 
 import requests
 import json
-import uuid
-import time
+import sys
 from datetime import datetime
-from typing import Dict, Any, Optional
+import time
 
 # Configuration
-BASE_URL = "https://agentroute-sales.preview.emergentagent.com/api"
-TIMEOUT = 30
+API_BASE_URL = "https://agentroute-sales.preview.emergentagent.com/api"
 
-class BackendTester:
+# Test credentials
+TEST_CREDENTIALS = {
+    "admin": {"email": "admin@agentroute.com", "password": "Admin123!"},
+    "manager": {"email": "manager@agentroute.com", "password": "Manager123!"},
+    "agent": {"email": "agent@agentroute.com", "password": "Agent123!"}
+}
+
+class InviteSystemTester:
     def __init__(self):
         self.session = requests.Session()
-        self.session.timeout = TIMEOUT
+        self.tokens = {}
         self.test_results = []
-        self.tokens = {}  # Store tokens for different users
+        self.created_invitations = []
         
-    def log_test(self, test_name: str, success: bool, details: str = "", response_data: Any = None):
+    def log_test(self, test_name, success, details="", response_data=None):
         """Log test results"""
-        result = {
+        status = "✅ PASS" if success else "❌ FAIL"
+        print(f"{status} {test_name}")
+        if details:
+            print(f"    {details}")
+        if response_data and not success:
+            print(f"    Response: {response_data}")
+        
+        self.test_results.append({
             "test": test_name,
             "success": success,
             "details": details,
-            "timestamp": datetime.now().isoformat(),
-            "response_data": response_data
-        }
-        self.test_results.append(result)
-        status = "✅ PASS" if success else "❌ FAIL"
-        print(f"{status}: {test_name}")
-        if details:
-            print(f"   Details: {details}")
-        if not success and response_data:
-            print(f"   Response: {response_data}")
-        print()
-
-    def make_request(self, method: str, endpoint: str, data: Dict = None, headers: Dict = None, token: str = None) -> tuple:
-        """Make HTTP request with error handling"""
-        url = f"{BASE_URL}{endpoint}"
+            "timestamp": datetime.now().isoformat()
+        })
         
-        # Set up headers
-        req_headers = {"Content-Type": "application/json"}
-        if headers:
-            req_headers.update(headers)
-        if token:
-            req_headers["Authorization"] = f"Bearer {token}"
+    def login_user(self, role):
+        """Login and get access token for a user role"""
+        try:
+            creds = TEST_CREDENTIALS[role]
+            response = self.session.post(f"{API_BASE_URL}/auth/login", json=creds)
+            
+            if response.status_code == 200:
+                data = response.json()
+                token = data.get("access_token")
+                self.tokens[role] = token
+                self.log_test(f"Login as {role}", True, f"Token obtained: {token[:20]}...")
+                return token
+            else:
+                self.log_test(f"Login as {role}", False, f"Status: {response.status_code}", response.text)
+                return None
+                
+        except Exception as e:
+            self.log_test(f"Login as {role}", False, f"Exception: {str(e)}")
+            return None
+    
+    def make_authenticated_request(self, method, endpoint, role, data=None, params=None):
+        """Make an authenticated API request"""
+        if role not in self.tokens:
+            self.log_test(f"Auth check for {role}", False, "No token available")
+            return None
+            
+        headers = {"Authorization": f"Bearer {self.tokens[role]}"}
+        url = f"{API_BASE_URL}{endpoint}"
         
         try:
             if method.upper() == "GET":
-                response = self.session.get(url, headers=req_headers)
+                response = self.session.get(url, headers=headers, params=params)
             elif method.upper() == "POST":
-                response = self.session.post(url, json=data, headers=req_headers)
+                response = self.session.post(url, headers=headers, json=data)
             elif method.upper() == "PUT":
-                response = self.session.put(url, json=data, headers=req_headers)
+                response = self.session.put(url, headers=headers, json=data)
             elif method.upper() == "DELETE":
-                response = self.session.delete(url, headers=req_headers)
+                response = self.session.delete(url, headers=headers)
             else:
-                return False, f"Unsupported method: {method}", None
-            
-            # Try to parse JSON, but fall back to text for HTML responses
-            try:
-                response_data = response.json() if response.content else {}
-            except json.JSONDecodeError:
-                response_data = response.text if response.content else ""
-            
-            return True, response.status_code, response_data
-        except requests.exceptions.Timeout:
-            return False, "Request timeout", None
-        except requests.exceptions.ConnectionError:
-            return False, "Connection error", None
+                raise ValueError(f"Unsupported method: {method}")
+                
+            return response
         except Exception as e:
-            return False, f"Request error: {str(e)}", None
-
-    def test_create_organization(self):
-        """Test PRIORITY 1: Create Organization Endpoint (NEW)"""
-        print("🎯 TESTING PRIORITY 1: Core Onboarding Endpoints")
-        print("=" * 60)
+            self.log_test(f"Request {method} {endpoint}", False, f"Exception: {str(e)}")
+            return None
+    
+    def test_create_invitation_admin(self):
+        """Test admin creating manager and agent invitations"""
+        print("\n=== Testing Admin Create Invitations ===")
         
-        # Generate unique email to avoid conflicts
-        unique_id = str(uuid.uuid4())[:8]
-        test_data = {
-            "organization_name": "Test Insurance Agency",
-            "name": "John Admin",
-            "email": f"newadmin{unique_id}@testorg.com",
-            "password": "TestPass123!",
-            "phone": "555-123-4567"
+        # Test admin creates manager invite
+        manager_invite_data = {
+            "email": "newtestmanager@test.com",
+            "role": "manager",
+            "name": "New Test Manager"
         }
         
-        success, status_code, response = self.make_request("POST", "/auth/create-organization", test_data)
-        
-        if success and status_code == 200:
-            # Verify response structure
-            required_fields = ["access_token", "token_type", "user"]
-            if all(field in response for field in required_fields):
-                user = response["user"]
-                
-                # Verify user properties (organization_owner field may not be in response model)
-                checks = [
-                    user.get("role") == "admin",
-                    user.get("organization_id") is not None,
-                    user.get("account_mode") == "connected"
-                ]
-                
-                if all(checks):
-                    # Store token for later tests
-                    self.tokens["org_admin"] = response["access_token"]
-                    self.tokens["org_admin_user_id"] = user["id"]
-                    
-                    self.log_test(
-                        "Create Organization Endpoint", 
-                        True, 
-                        f"Organization created successfully. Admin user: {user['email']}, Role: {user['role']}, Org ID: {user['organization_id']}"
-                    )
+        response = self.make_authenticated_request("POST", "/invitations", "admin", manager_invite_data)
+        if response and response.status_code == 200:
+            data = response.json()
+            required_fields = ["id", "token", "role", "status", "expires_at"]
+            if all(field in data for field in required_fields):
+                if data["role"] == "manager" and data["status"] == "pending":
+                    self.created_invitations.append(data)
+                    self.log_test("Admin creates MANAGER invite", True, 
+                                f"ID: {data['id']}, Token: {data['token'][:20]}..., Role: {data['role']}")
                 else:
-                    self.log_test(
-                        "Create Organization Endpoint", 
-                        False, 
-                        f"User properties validation failed. Role: {user.get('role')}, Org ID: {user.get('organization_id')}, Account mode: {user.get('account_mode')}"
-                    )
+                    self.log_test("Admin creates MANAGER invite", False, 
+                                f"Invalid role/status: {data['role']}/{data['status']}")
             else:
-                self.log_test(
-                    "Create Organization Endpoint", 
-                    False, 
-                    f"Missing required fields in response. Got: {list(response.keys())}"
-                )
+                missing = [f for f in required_fields if f not in data]
+                self.log_test("Admin creates MANAGER invite", False, f"Missing fields: {missing}")
         else:
-            self.log_test(
-                "Create Organization Endpoint", 
-                False, 
-                f"Request failed with status {status_code}",
-                response
-            )
-
-    def test_register_solo_agent(self):
-        """Test PRIORITY 1: Register Solo Agent Endpoint (NEW)"""
-        # Generate unique email to avoid conflicts
-        unique_id = str(uuid.uuid4())[:8]
-        test_data = {
-            "name": "Solo Smith",
-            "email": f"solo{unique_id}@testagent.com",
-            "password": "SoloPass123!",
-            "phone": "555-987-6543"
+            status = response.status_code if response else "No response"
+            self.log_test("Admin creates MANAGER invite", False, f"Status: {status}")
+        
+        # Test admin creates agent invite
+        agent_invite_data = {
+            "email": "newtestagent@test.com", 
+            "role": "agent",
+            "name": "New Test Agent"
         }
         
-        success, status_code, response = self.make_request("POST", "/auth/register-solo", test_data)
-        
-        if success and status_code == 200:
-            # Verify response structure
-            required_fields = ["access_token", "token_type", "user"]
-            if all(field in response for field in required_fields):
-                user = response["user"]
-                
-                # Verify user properties for solo agent
-                checks = [
-                    user.get("role") == "agent",
-                    user.get("organization_id") is None,
-                    user.get("account_mode") == "solo"
-                ]
-                
-                if all(checks):
-                    # Store token for later tests
-                    self.tokens["solo_agent"] = response["access_token"]
-                    
-                    self.log_test(
-                        "Register Solo Agent Endpoint", 
-                        True, 
-                        f"Solo agent registered successfully. User: {user['email']}, Role: {user['role']}, Account mode: {user['account_mode']}"
-                    )
+        response = self.make_authenticated_request("POST", "/invitations", "admin", agent_invite_data)
+        if response and response.status_code == 200:
+            data = response.json()
+            required_fields = ["id", "token", "role", "status", "expires_at"]
+            if all(field in data for field in required_fields):
+                if data["role"] == "agent" and data["status"] == "pending":
+                    self.created_invitations.append(data)
+                    self.log_test("Admin creates AGENT invite", True,
+                                f"ID: {data['id']}, Token: {data['token'][:20]}..., Role: {data['role']}")
                 else:
-                    self.log_test(
-                        "Register Solo Agent Endpoint", 
-                        False, 
-                        f"User properties validation failed. Role: {user.get('role')}, Org ID: {user.get('organization_id')}, Account mode: {user.get('account_mode')}"
-                    )
+                    self.log_test("Admin creates AGENT invite", False,
+                                f"Invalid role/status: {data['role']}/{data['status']}")
             else:
-                self.log_test(
-                    "Register Solo Agent Endpoint", 
-                    False, 
-                    f"Missing required fields in response. Got: {list(response.keys())}"
-                )
+                missing = [f for f in required_fields if f not in data]
+                self.log_test("Admin creates AGENT invite", False, f"Missing fields: {missing}")
         else:
-            self.log_test(
-                "Register Solo Agent Endpoint", 
-                False, 
-                f"Request failed with status {status_code}",
-                response
-            )
-
-    def test_notification_system(self):
-        """Test PRIORITY 2: Notification System Endpoints (ALL NEW)"""
-        print("🔔 TESTING PRIORITY 2: Notification System Endpoints")
-        print("=" * 60)
+            status = response.status_code if response else "No response"
+            self.log_test("Admin creates AGENT invite", False, f"Status: {status}")
+    
+    def test_create_invitation_manager(self):
+        """Test manager creating invitations with permission enforcement"""
+        print("\n=== Testing Manager Create Invitations ===")
         
-        # Use org admin token from previous test
-        admin_token = self.tokens.get("org_admin")
-        if not admin_token:
-            self.log_test("Notification System Setup", False, "No admin token available from create-organization test")
+        # Test manager creates agent invite (should succeed)
+        agent_invite_data = {
+            "email": "managertestagent@test.com",
+            "role": "agent", 
+            "name": "Manager Test Agent"
+        }
+        
+        response = self.make_authenticated_request("POST", "/invitations", "manager", agent_invite_data)
+        if response and response.status_code == 200:
+            data = response.json()
+            if data.get("role") == "agent" and data.get("status") == "pending":
+                self.created_invitations.append(data)
+                self.log_test("Manager creates AGENT invite", True,
+                            f"ID: {data['id']}, Role: {data['role']}")
+            else:
+                self.log_test("Manager creates AGENT invite", False,
+                            f"Invalid response: {data}")
+        else:
+            status = response.status_code if response else "No response"
+            self.log_test("Manager creates AGENT invite", False, f"Status: {status}")
+        
+        # Test manager tries to create manager invite (should FAIL with 403)
+        manager_invite_data = {
+            "email": "badmanager@test.com",
+            "role": "manager",
+            "name": "Bad Manager"
+        }
+        
+        response = self.make_authenticated_request("POST", "/invitations", "manager", manager_invite_data)
+        if response and response.status_code == 403:
+            self.log_test("Manager tries to create MANAGER invite (should FAIL)", True,
+                        "Correctly blocked with 403 Forbidden")
+        else:
+            status = response.status_code if response else "No response"
+            self.log_test("Manager tries to create MANAGER invite (should FAIL)", False,
+                        f"Expected 403, got: {status}")
+    
+    def test_create_invitation_agent(self):
+        """Test agent trying to create invitations (should fail)"""
+        print("\n=== Testing Agent Create Invitations (Should Fail) ===")
+        
+        agent_invite_data = {
+            "email": "agenttest@test.com",
+            "role": "agent",
+            "name": "Agent Test"
+        }
+        
+        response = self.make_authenticated_request("POST", "/invitations", "agent", agent_invite_data)
+        if response and response.status_code == 403:
+            self.log_test("Agent tries to create invite (should FAIL)", True,
+                        "Correctly blocked with 403 Forbidden")
+        else:
+            status = response.status_code if response else "No response"
+            self.log_test("Agent tries to create invite (should FAIL)", False,
+                        f"Expected 403, got: {status}")
+    
+    def test_list_invitations(self):
+        """Test listing invitations"""
+        print("\n=== Testing List Invitations ===")
+        
+        # Test admin gets all invitations
+        response = self.make_authenticated_request("GET", "/invitations", "admin")
+        if response and response.status_code == 200:
+            data = response.json()
+            if isinstance(data, list):
+                self.log_test("Admin gets all invitations", True,
+                            f"Retrieved {len(data)} invitations")
+            else:
+                self.log_test("Admin gets all invitations", False,
+                            f"Expected list, got: {type(data)}")
+        else:
+            status = response.status_code if response else "No response"
+            self.log_test("Admin gets all invitations", False, f"Status: {status}")
+        
+        # Test manager gets their invitations
+        response = self.make_authenticated_request("GET", "/invitations", "manager")
+        if response and response.status_code == 200:
+            data = response.json()
+            if isinstance(data, list):
+                self.log_test("Manager gets their invitations", True,
+                            f"Retrieved {len(data)} invitations")
+            else:
+                self.log_test("Manager gets their invitations", False,
+                            f"Expected list, got: {type(data)}")
+        else:
+            status = response.status_code if response else "No response"
+            self.log_test("Manager gets their invitations", False, f"Status: {status}")
+    
+    def test_validate_invitation_token(self):
+        """Test validating invitation tokens"""
+        print("\n=== Testing Validate Invitation Token ===")
+        
+        if not self.created_invitations:
+            self.log_test("Validate invitation token", False, "No invitations created to test")
             return
         
-        # Test 3: Register Push Token
-        push_data = {
-            "push_token": "ExponentPushToken[test123abc456]",
-            "device_type": "ios"
+        # Test with valid token
+        valid_token = self.created_invitations[0]["token"]
+        response = self.session.get(f"{API_BASE_URL}/invitations/validate/{valid_token}")
+        
+        if response.status_code == 200:
+            data = response.json()
+            required_fields = ["valid", "status", "role", "organization_name"]
+            if all(field in data for field in required_fields):
+                if data["valid"] == True and data["status"] == "pending":
+                    self.log_test("Validate invitation token", True,
+                                f"Valid: {data['valid']}, Status: {data['status']}, Role: {data['role']}")
+                else:
+                    self.log_test("Validate invitation token", False,
+                                f"Invalid response: valid={data['valid']}, status={data['status']}")
+            else:
+                missing = [f for f in required_fields if f not in data]
+                self.log_test("Validate invitation token", False, f"Missing fields: {missing}")
+        else:
+            self.log_test("Validate invitation token", False, f"Status: {response.status_code}")
+    
+    def test_accept_invitation_new_user(self):
+        """Test accepting invitation as new user"""
+        print("\n=== Testing Accept Invitation - New User Flow ===")
+        
+        if not self.created_invitations:
+            self.log_test("Accept invitation - new user", False, "No invitations created to test")
+            return
+        
+        # Use the first created invitation
+        invitation = self.created_invitations[0]
+        token = invitation["token"]
+        
+        accept_data = {
+            "token": token,
+            "email": "newtestuser@test.com",
+            "password": "Test123!",
+            "name": "New Test User",
+            "is_existing_user": False
         }
         
-        success, status_code, response = self.make_request("POST", "/notifications/register-push-token", push_data, token=admin_token)
+        response = self.session.post(f"{API_BASE_URL}/invitations/accept", json=accept_data)
         
-        if success and status_code == 200:
-            expected_response = {"status": "success", "message": "Push token registered"}
-            if response.get("status") == "success":
-                self.log_test("Register Push Token", True, "Push token registered successfully")
-            else:
-                self.log_test("Register Push Token", False, f"Unexpected response: {response}")
-        else:
-            self.log_test("Register Push Token", False, f"Request failed with status {status_code}", response)
-        
-        # Test 4: Get Notification Preferences
-        success, status_code, response = self.make_request("GET", "/notifications/preferences", token=admin_token)
-        
-        if success and status_code == 200:
-            # Check if response has preferences field or is the preferences object itself
-            if "preferences" in response:
-                prefs = response["preferences"]
-                expected_fields = ["appointments", "reminders", "follow_ups", "team_alerts", "lead_alerts", "push_enabled"]
-                if all(field in prefs for field in expected_fields):
-                    self.log_test("Get Notification Preferences", True, f"Preferences retrieved: {prefs}")
+        if response.status_code == 200:
+            data = response.json()
+            required_fields = ["access_token", "user"]
+            if all(field in data for field in required_fields):
+                user = data["user"]
+                if user.get("role") == invitation["role"]:
+                    self.log_test("Accept invitation - new user", True,
+                                f"User created with role: {user['role']}, Token: {data['access_token'][:20]}...")
+                    
+                    # Mark this invitation as used
+                    invitation["used"] = True
                 else:
-                    self.log_test("Get Notification Preferences", False, f"Missing preference fields in preferences object. Got: {list(prefs.keys())}")
+                    self.log_test("Accept invitation - new user", False,
+                                f"Role mismatch: expected {invitation['role']}, got {user.get('role')}")
             else:
-                # Response might be the preferences object directly
-                expected_fields = ["appointments", "reminders", "follow_ups", "team_alerts", "lead_alerts", "push_enabled"]
-                if all(field in response for field in expected_fields):
-                    self.log_test("Get Notification Preferences", True, f"Preferences retrieved: {response}")
-                else:
-                    self.log_test("Get Notification Preferences", False, f"Missing preference fields. Got: {list(response.keys())}")
+                missing = [f for f in required_fields if f not in data]
+                self.log_test("Accept invitation - new user", False, f"Missing fields: {missing}")
         else:
-            self.log_test("Get Notification Preferences", False, f"Request failed with status {status_code}", response)
+            self.log_test("Accept invitation - new user", False, 
+                        f"Status: {response.status_code}, Response: {response.text}")
+    
+    def test_token_single_use(self):
+        """Test that tokens are single-use (after accept, token becomes invalid)"""
+        print("\n=== Testing Token Single-Use ===")
         
-        # Test 5: Update Notification Preferences
-        update_prefs = {
-            "appointments": True,
-            "reminders": False,
-            "follow_ups": True,
-            "team_alerts": False,
-            "lead_alerts": True,
-            "push_enabled": True
-        }
+        # Find a used invitation
+        used_invitation = None
+        for inv in self.created_invitations:
+            if inv.get("used"):
+                used_invitation = inv
+                break
         
-        success, status_code, response = self.make_request("PUT", "/notifications/preferences", update_prefs, token=admin_token)
+        if not used_invitation:
+            self.log_test("Token single-use validation", False, "No used invitations to test")
+            return
         
-        if success and status_code == 200:
-            if response.get("status") == "success" and "preferences" in response:
-                self.log_test("Update Notification Preferences", True, "Preferences updated successfully")
+        # Try to validate the same token again
+        token = used_invitation["token"]
+        response = self.session.get(f"{API_BASE_URL}/invitations/validate/{token}")
+        
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("valid") == False and data.get("status") == "accepted":
+                self.log_test("Token single-use validation", True,
+                            f"Token correctly invalidated: valid={data['valid']}, status={data['status']}")
             else:
-                self.log_test("Update Notification Preferences", False, f"Unexpected response: {response}")
+                self.log_test("Token single-use validation", False,
+                            f"Token still valid: valid={data['valid']}, status={data['status']}")
         else:
-            self.log_test("Update Notification Preferences", False, f"Request failed with status {status_code}", response)
+            self.log_test("Token single-use validation", False, f"Status: {response.status_code}")
+    
+    def test_revoke_invitation(self):
+        """Test revoking an invitation"""
+        print("\n=== Testing Revoke Invitation ===")
         
-        # Test 6: Send Test Notification
-        success, status_code, response = self.make_request("POST", "/notifications/test", token=admin_token)
+        # Find an unused invitation to revoke
+        unused_invitation = None
+        for inv in self.created_invitations:
+            if not inv.get("used"):
+                unused_invitation = inv
+                break
         
-        notification_id = None
-        if success and status_code == 200:
-            if response.get("status") == "success" and "notification" in response:
-                notification = response["notification"]
-                required_fields = ["id", "title", "body", "type", "read", "created_at"]
-                if all(field in notification for field in required_fields):
-                    notification_id = notification["id"]
-                    self.log_test("Send Test Notification", True, f"Test notification sent: {notification['title']}")
-                else:
-                    self.log_test("Send Test Notification", False, f"Missing notification fields. Got: {list(notification.keys())}")
-            else:
-                self.log_test("Send Test Notification", False, f"Unexpected response: {response}")
-        else:
-            self.log_test("Send Test Notification", False, f"Request failed with status {status_code}", response)
-        
-        # Test 7: Get Notifications
-        success, status_code, response = self.make_request("GET", "/notifications?limit=10&unread_only=false", token=admin_token)
-        
-        if success and status_code == 200:
-            if "notifications" in response and "unread_count" in response:
-                self.log_test("Get Notifications", True, f"Retrieved {len(response['notifications'])} notifications, {response['unread_count']} unread")
-            else:
-                self.log_test("Get Notifications", False, f"Missing required fields. Got: {list(response.keys())}")
-        else:
-            self.log_test("Get Notifications", False, f"Request failed with status {status_code}", response)
-        
-        # Test 8: Get Unread Count
-        success, status_code, response = self.make_request("GET", "/notifications/unread-count", token=admin_token)
-        
-        if success and status_code == 200:
-            if "unread_count" in response:
-                original_unread = response["unread_count"]
-                self.log_test("Get Unread Count", True, f"Unread count: {original_unread}")
-            else:
-                self.log_test("Get Unread Count", False, f"Missing unread_count field. Got: {response}")
-        else:
-            self.log_test("Get Unread Count", False, f"Request failed with status {status_code}", response)
-        
-        # Test 9: Mark Notification Read (if we have a notification ID)
-        if notification_id:
-            success, status_code, response = self.make_request("PUT", f"/notifications/{notification_id}/read", token=admin_token)
+        if not unused_invitation:
+            # Create a new invitation to revoke
+            revoke_invite_data = {
+                "email": "torevoke@test.com",
+                "role": "agent",
+                "name": "To Revoke"
+            }
             
-            if success and status_code == 200:
-                if response.get("status") == "success":
-                    self.log_test("Mark Notification Read", True, f"Notification marked as read")
-                else:
-                    self.log_test("Mark Notification Read", False, f"Unexpected response: {response}")
+            response = self.make_authenticated_request("POST", "/invitations", "admin", revoke_invite_data)
+            if response and response.status_code == 200:
+                unused_invitation = response.json()
+                self.created_invitations.append(unused_invitation)
             else:
-                self.log_test("Mark Notification Read", False, f"Request failed with status {status_code}", response)
-        else:
-            self.log_test("Mark Notification Read", False, "No notification ID available from test notification")
+                self.log_test("Revoke invitation", False, "Could not create invitation to revoke")
+                return
         
-        # Test 10: Mark All Read
-        success, status_code, response = self.make_request("PUT", "/notifications/mark-all-read", token=admin_token)
+        # Revoke the invitation
+        invite_id = unused_invitation["id"]
+        response = self.make_authenticated_request("POST", f"/invitations/{invite_id}/revoke", "admin")
         
-        if success and status_code == 200:
-            if response.get("status") == "success" and "unread_count" in response:
-                self.log_test("Mark All Read", True, f"All notifications marked as read. Unread count: {response['unread_count']}")
+        if response and response.status_code == 200:
+            data = response.json()
+            if data.get("status") == "revoked":
+                self.log_test("Revoke invitation", True, f"Invitation {invite_id} revoked successfully")
+                
+                # Verify the token is invalidated
+                token = unused_invitation["token"]
+                validate_response = self.session.get(f"{API_BASE_URL}/invitations/validate/{token}")
+                if validate_response.status_code == 200:
+                    validate_data = validate_response.json()
+                    if validate_data.get("valid") == False and validate_data.get("status") == "revoked":
+                        self.log_test("Verify revoked token invalid", True, "Token correctly invalidated")
+                    else:
+                        self.log_test("Verify revoked token invalid", False, 
+                                    f"Token still valid: {validate_data}")
             else:
-                self.log_test("Mark All Read", False, f"Unexpected response: {response}")
+                self.log_test("Revoke invitation", False, f"Unexpected status: {data.get('status')}")
         else:
-            self.log_test("Mark All Read", False, f"Request failed with status {status_code}", response)
-
-    def test_legal_pages(self):
-        """Test PRIORITY 3: Legal Pages (verify still working)"""
-        print("📄 TESTING PRIORITY 3: Legal Pages")
-        print("=" * 60)
+            status = response.status_code if response else "No response"
+            self.log_test("Revoke invitation", False, f"Status: {status}")
+    
+    def test_resend_invitation(self):
+        """Test resending an invitation"""
+        print("\n=== Testing Resend Invitation ===")
         
-        # Test 11: Privacy Policy Page
-        success, status_code, response = self.make_request("GET", "/privacy")
-        
-        if success and status_code == 200:
-            # Check if response contains HTML with Privacy Policy content
-            if isinstance(response, str) and "Privacy Policy" in response:
-                self.log_test("Privacy Policy Page", True, "Privacy Policy page loaded with HTML content")
-            elif isinstance(response, dict) and any("privacy" in str(v).lower() for v in response.values()):
-                self.log_test("Privacy Policy Page", True, "Privacy Policy page loaded with content")
-            else:
-                self.log_test("Privacy Policy Page", False, f"Privacy Policy content not found in response")
-        else:
-            self.log_test("Privacy Policy Page", False, f"Request failed with status {status_code}", response)
-        
-        # Test 12: Terms of Service Page
-        success, status_code, response = self.make_request("GET", "/terms")
-        
-        if success and status_code == 200:
-            # Check if response contains HTML with Terms of Service content
-            if isinstance(response, str) and "Terms of Service" in response:
-                self.log_test("Terms of Service Page", True, "Terms of Service page loaded with HTML content")
-            elif isinstance(response, dict) and any("terms" in str(v).lower() for v in response.values()):
-                self.log_test("Terms of Service Page", True, "Terms of Service page loaded with content")
-            else:
-                self.log_test("Terms of Service Page", False, f"Terms of Service content not found in response")
-        else:
-            self.log_test("Terms of Service Page", False, f"Request failed with status {status_code}", response)
-
-    def test_existing_auth_regression(self):
-        """Test REGRESSION: Existing Auth (verify still working)"""
-        print("🔐 TESTING REGRESSION: Existing Auth")
-        print("=" * 60)
-        
-        # Test 13: Existing Admin Login
-        admin_credentials = {
-            "email": "admin@agentroute.com",
-            "password": "Admin123!"
+        # Create a new invitation to resend
+        resend_invite_data = {
+            "email": "toresend@test.com",
+            "role": "agent", 
+            "name": "To Resend"
         }
         
-        success, status_code, response = self.make_request("POST", "/auth/login", admin_credentials)
+        response = self.make_authenticated_request("POST", "/invitations", "admin", resend_invite_data)
+        if not response or response.status_code != 200:
+            self.log_test("Resend invitation", False, "Could not create invitation to resend")
+            return
         
-        if success and status_code == 200:
-            if "access_token" in response:
-                self.tokens["existing_admin"] = response["access_token"]
-                self.log_test("Existing Admin Login", True, f"Admin login successful")
+        invitation = response.json()
+        original_token = invitation["token"]
+        invite_id = invitation["id"]
+        
+        # Resend the invitation
+        response = self.make_authenticated_request("POST", f"/invitations/{invite_id}/resend", "admin")
+        
+        if response and response.status_code == 200:
+            data = response.json()
+            if "token" in data and data["token"] != original_token:
+                self.log_test("Resend invitation", True,
+                            f"New token generated: {data['token'][:20]}... (different from original)")
             else:
-                self.log_test("Existing Admin Login", False, f"No access token in response: {response}")
+                self.log_test("Resend invitation", False, "New token not generated or same as original")
         else:
-            self.log_test("Existing Admin Login", False, f"Request failed with status {status_code}", response)
-        
-        # Test 14: Existing Agent Login
-        agent_credentials = {
-            "email": "agent@agentroute.com",
-            "password": "Agent123!"
-        }
-        
-        success, status_code, response = self.make_request("POST", "/auth/login", agent_credentials)
-        
-        if success and status_code == 200:
-            if "access_token" in response:
-                self.tokens["existing_agent"] = response["access_token"]
-                self.log_test("Existing Agent Login", True, f"Agent login successful")
-            else:
-                self.log_test("Existing Agent Login", False, f"No access token in response: {response}")
-        else:
-            self.log_test("Existing Agent Login", False, f"Request failed with status {status_code}", response)
-
+            status = response.status_code if response else "No response"
+            self.log_test("Resend invitation", False, f"Status: {status}")
+    
     def run_all_tests(self):
-        """Run all test suites"""
-        print("🚀 STARTING AGENTROUTE AI BACKEND API TESTING")
-        print("=" * 80)
-        print(f"Base URL: {BASE_URL}")
-        print(f"Test started at: {datetime.now().isoformat()}")
-        print("=" * 80)
-        print()
+        """Run all invitation system tests"""
+        print("🎯 STARTING COMPREHENSIVE INVITE-LINK SYSTEM TESTING")
+        print("=" * 60)
         
-        # Run test suites in order
-        self.test_create_organization()
-        self.test_register_solo_agent()
-        self.test_notification_system()
-        self.test_legal_pages()
-        self.test_existing_auth_regression()
+        # Step 1: Login all users
+        print("\n=== Step 1: Authentication Tests ===")
+        for role in ["admin", "manager", "agent"]:
+            self.login_user(role)
         
-        # Print summary
+        # Step 2: Create invitation tests
+        print("\n=== Step 2: Create Invitation Tests ===")
+        self.test_create_invitation_admin()
+        self.test_create_invitation_manager()
+        self.test_create_invitation_agent()
+        
+        # Step 3: List invitations tests
+        self.test_list_invitations()
+        
+        # Step 4: Validate invitation token
+        self.test_validate_invitation_token()
+        
+        # Step 5: Accept invitation - new user flow
+        self.test_accept_invitation_new_user()
+        
+        # Step 6: Verify token is single-use
+        self.test_token_single_use()
+        
+        # Step 7: Revoke invitation
+        self.test_revoke_invitation()
+        
+        # Step 8: Resend invitation
+        self.test_resend_invitation()
+        
+        # Summary
         self.print_summary()
-
+    
     def print_summary(self):
         """Print test summary"""
-        print("=" * 80)
-        print("🎯 TEST SUMMARY")
-        print("=" * 80)
+        print("\n" + "=" * 60)
+        print("🎯 INVITE-LINK SYSTEM TEST SUMMARY")
+        print("=" * 60)
         
         total_tests = len(self.test_results)
         passed_tests = sum(1 for result in self.test_results if result["success"])
         failed_tests = total_tests - passed_tests
         
         print(f"Total Tests: {total_tests}")
-        print(f"Passed: {passed_tests} ✅")
-        print(f"Failed: {failed_tests} ❌")
-        print(f"Success Rate: {(passed_tests/total_tests*100):.1f}%")
-        print()
+        print(f"✅ Passed: {passed_tests}")
+        print(f"❌ Failed: {failed_tests}")
+        print(f"Success Rate: {(passed_tests/total_tests)*100:.1f}%")
         
         if failed_tests > 0:
-            print("❌ FAILED TESTS:")
+            print(f"\n❌ FAILED TESTS:")
             for result in self.test_results:
                 if not result["success"]:
-                    print(f"   • {result['test']}: {result['details']}")
-            print()
+                    print(f"  - {result['test']}: {result['details']}")
         
-        print("✅ PASSED TESTS:")
-        for result in self.test_results:
-            if result["success"]:
-                print(f"   • {result['test']}")
-        
-        print()
-        print("=" * 80)
-        print(f"Test completed at: {datetime.now().isoformat()}")
-        print("=" * 80)
+        print(f"\n🎉 INVITE-LINK SYSTEM TESTING COMPLETED")
+        return passed_tests, failed_tests
 
 if __name__ == "__main__":
-    tester = BackendTester()
+    tester = InviteSystemTester()
     tester.run_all_tests()
