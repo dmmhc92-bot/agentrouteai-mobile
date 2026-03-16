@@ -280,7 +280,8 @@ def test_onboarding_system(results: TestResults):
         else:
             results.add_result("3A. Create Organization Flow", False, f"Role: {user_data.get('role')}, Org ID: {user_data.get('organization_id')}")
     else:
-        results.add_result("3A. Create Organization Flow", False, f"Status: {response.get('status_code')}, Error: {response.get('error', 'Unknown')}")
+        error_detail = response.get("data", {}).get("detail", "Unknown error") if isinstance(response.get("data"), dict) else response.get("data", "Unknown")
+        results.add_result("3A. Create Organization Flow", False, f"Status: {response.get('status_code')}, Error: {error_detail}")
     
     # 3B. Solo Agent Flow
     solo_data = {
@@ -298,7 +299,8 @@ def test_onboarding_system(results: TestResults):
         else:
             results.add_result("3B. Solo Agent Flow", False, f"Role: {user_data.get('role')}, Org ID: {user_data.get('organization_id')}, Mode: {user_data.get('account_mode')}")
     else:
-        results.add_result("3B. Solo Agent Flow", False, f"Status: {response.get('status_code')}, Error: {response.get('error', 'Unknown')}")
+        error_detail = response.get("data", {}).get("detail", "Unknown error") if isinstance(response.get("data"), dict) else response.get("data", "Unknown")
+        results.add_result("3B. Solo Agent Flow", False, f"Status: {response.get('status_code')}, Error: {error_detail}")
 
 def test_invite_token_system(results: TestResults):
     """Test Invite Token System"""
