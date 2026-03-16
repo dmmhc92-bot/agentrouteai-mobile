@@ -5,16 +5,24 @@ import {
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
+  Platform,
+  ScrollView,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { WebView } from 'react-native-webview';
+import * as Linking from 'expo-linking';
 import Constants from 'expo-constants';
+
+// Only import WebView for native platforms
+let WebView: any = null;
+if (Platform.OS !== 'web') {
+  WebView = require('react-native-webview').WebView;
+}
 
 const BASE_URL = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL || 
                  process.env.EXPO_PUBLIC_BACKEND_URL || 
-                 'https://agentroute-ai.preview.emergentagent.com';
+                 'https://sales-team-hub-2.preview.emergentagent.com';
 
 export default function LegalScreen() {
   const router = useRouter();
@@ -44,6 +52,53 @@ export default function LegalScreen() {
   
   const pageInfo = getPageInfo();
 
+  const handleOpenExternal = async () => {
+    try {
+      await Linking.openURL(pageInfo.url);
+    } catch (error) {
+      console.error('Failed to open URL:', error);
+    }
+  };
+
+  // Web platform: Show iframe
+  if (Platform.OS === 'web') {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        {/* Header */}
+        <View style={styles.header}>
+          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+            <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>{pageInfo.title}</Text>
+          <TouchableOpacity style={styles.externalButton} onPress={handleOpenExternal}>
+            <Ionicons name="open-outline" size={20} color="#3B82F6" />
+          </TouchableOpacity>
+        </View>
+
+        {/* Web: Use iframe */}
+        <View style={styles.webViewContainer}>
+          {isLoading && (
+            <View style={styles.loadingOverlay}>
+              <ActivityIndicator size="large" color="#3B82F6" />
+              <Text style={styles.loadingText}>Loading...</Text>
+            </View>
+          )}
+          <iframe
+            src={pageInfo.url}
+            style={{
+              width: '100%',
+              height: '100%',
+              border: 'none',
+              backgroundColor: '#0F172A',
+            }}
+            onLoad={() => setIsLoading(false)}
+          />
+        </View>
+      </View>
+    );
+  }
+
+  // Native platform: Use WebView
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* Header */}
@@ -63,17 +118,19 @@ export default function LegalScreen() {
             <Text style={styles.loadingText}>Loading...</Text>
           </View>
         )}
-        <WebView
-          source={{ uri: pageInfo.url }}
-          style={styles.webView}
-          onLoadStart={() => setIsLoading(true)}
-          onLoadEnd={() => setIsLoading(false)}
-          startInLoadingState={true}
-          javaScriptEnabled={true}
-          domStorageEnabled={true}
-          originWhitelist={['*']}
-          allowsBackForwardNavigationGestures={true}
-        />
+        {WebView && (
+          <WebView
+            source={{ uri: pageInfo.url }}
+            style={styles.webView}
+            onLoadStart={() => setIsLoading(true)}
+            onLoadEnd={() => setIsLoading(false)}
+            startInLoadingState={true}
+            javaScriptEnabled={true}
+            domStorageEnabled={true}
+            originWhitelist={['*']}
+            allowsBackForwardNavigationGestures={true}
+          />
+        )}
       </View>
     </View>
   );
