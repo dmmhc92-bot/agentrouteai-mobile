@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-AgentRoute AI Backend API Testing Suite
-Testing NEW onboarding and notification endpoints as specified in review request
+AgentRoute AI Backend Production Hardening Test Suite
+Tests all critical flows for iOS app production deployment as specified in review request
 """
 
 import requests
