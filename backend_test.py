@@ -63,13 +63,17 @@ class BackendTester:
             else:
                 return False, f"Unsupported method: {method}", None
             
-            return True, response.status_code, response.json() if response.content else {}
+            # Try to parse JSON, but fall back to text for HTML responses
+            try:
+                response_data = response.json() if response.content else {}
+            except json.JSONDecodeError:
+                response_data = response.text if response.content else ""
+            
+            return True, response.status_code, response_data
         except requests.exceptions.Timeout:
             return False, "Request timeout", None
         except requests.exceptions.ConnectionError:
             return False, "Connection error", None
-        except json.JSONDecodeError:
-            return False, f"Invalid JSON response (status: {response.status_code})", response.text if 'response' in locals() else None
         except Exception as e:
             return False, f"Request error: {str(e)}", None
 
