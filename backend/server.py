@@ -2194,9 +2194,14 @@ async def get_leads(current_user: dict = Depends(get_current_user)):
     user_ids = await get_user_hierarchy_ids(current_user)
     leads = await db.leads.find({"$or": [{"created_by_user": {"$in": user_ids}}, {"assigned_to_user": {"$in": user_ids}}]}).to_list(10000)
     
+    # Batch fetch all geocodes to avoid N+1 query problem
+    lead_ids = [lead["id"] for lead in leads]
+    geocodes = await db.lead_geocodes.find({"lead_id": {"$in": lead_ids}}).to_list(len(lead_ids))
+    geocode_map = {g["lead_id"]: g for g in geocodes}
+    
     result = []
     for lead in leads:
-        geocode = await db.lead_geocodes.find_one({"lead_id": lead["id"]})
+        geocode = geocode_map.get(lead["id"])
         result.append(LeadResponse(
             id=lead["id"], name=lead["name"], phone=lead.get("phone", ""),
             email=lead.get("email", ""), address=lead.get("address", ""),
