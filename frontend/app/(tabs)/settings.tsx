@@ -260,6 +260,19 @@ export default function SettingsScreen() {
             <View style={styles.profileInfo}>
               <Text style={styles.profileName}>{user?.name}</Text>
               <Text style={styles.profileEmail}>{user?.email}</Text>
+              <View style={styles.roleContainer}>
+                <View style={[
+                  styles.roleBadge, 
+                  { backgroundColor: isAdmin ? '#3B82F620' : isManager ? '#8B5CF620' : '#22C55E20' }
+                ]}>
+                  <Text style={[
+                    styles.roleText,
+                    { color: isAdmin ? '#3B82F6' : isManager ? '#8B5CF6' : '#22C55E' }
+                  ]}>
+                    {isAdmin ? 'Admin' : isManager ? 'Manager' : isSoloMode ? 'Solo Agent' : 'Team Agent'}
+                  </Text>
+                </View>
+              </View>
             </View>
           </View>
         </View>
