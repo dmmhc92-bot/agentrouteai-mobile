@@ -773,6 +773,66 @@ class ApiService {
     const response = await apiClient.get('/compliance/dashboard-cards');
     return response.data;
   }
+
+  // ==================== NOTIFICATIONS ====================
+
+  async registerPushToken(pushToken: string, deviceType: string = 'ios') {
+    const response = await apiClient.post('/notifications/register-push-token', {
+      push_token: pushToken,
+      device_type: deviceType
+    });
+    return response.data;
+  }
+
+  async getNotificationPreferences() {
+    const response = await apiClient.get('/notifications/preferences');
+    return response.data;
+  }
+
+  async updateNotificationPreferences(preferences: {
+    appointments?: boolean;
+    reminders?: boolean;
+    follow_ups?: boolean;
+    team_alerts?: boolean;
+    lead_alerts?: boolean;
+    push_enabled?: boolean;
+  }) {
+    const response = await apiClient.put('/notifications/preferences', preferences);
+    return response.data;
+  }
+
+  async getNotifications(limit: number = 50, unreadOnly: boolean = false) {
+    const params = new URLSearchParams();
+    params.append('limit', limit.toString());
+    if (unreadOnly) params.append('unread_only', 'true');
+    const response = await apiClient.get(`/notifications?${params.toString()}`);
+    return response.data;
+  }
+
+  async getUnreadNotificationCount() {
+    const response = await apiClient.get('/notifications/unread-count');
+    return response.data;
+  }
+
+  async markNotificationRead(notificationId: string) {
+    const response = await apiClient.put(`/notifications/${notificationId}/read`);
+    return response.data;
+  }
+
+  async markAllNotificationsRead() {
+    const response = await apiClient.put('/notifications/mark-all-read');
+    return response.data;
+  }
+
+  async deleteNotification(notificationId: string) {
+    const response = await apiClient.delete(`/notifications/${notificationId}`);
+    return response.data;
+  }
+
+  async sendTestNotification() {
+    const response = await apiClient.post('/notifications/test');
+    return response.data;
+  }
 }
 
 export const api = new ApiService();
