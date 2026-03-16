@@ -8785,7 +8785,20 @@ async def root():
 
 @api_router.get("/health")
 async def health_check():
-    return {"status": "healthy", "timestamp": datetime.utcnow().isoformat()}
+    """Health check endpoint that also verifies database connectivity"""
+    try:
+        # Ping the database to verify connection
+        await client.admin.command('ping')
+        db_status = "connected"
+    except Exception as e:
+        logger.error(f"Database health check failed: {e}")
+        db_status = "disconnected"
+    
+    return {
+        "status": "healthy" if db_status == "connected" else "degraded",
+        "database": db_status,
+        "timestamp": datetime.utcnow().isoformat()
+    }
 
 # Include router and CORS
 app.include_router(api_router)
