@@ -164,6 +164,12 @@ const styles = StyleSheet.create({
   headerRight: {
     width: 44,
   },
+  externalButton: {
+    width: 44,
+    height: 44,
+    justifyContent: 'center',
+    alignItems: 'flex-end',
+  },
   webViewContainer: {
     flex: 1,
     backgroundColor: '#FFFFFF',
