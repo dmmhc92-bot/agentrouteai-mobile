@@ -8118,6 +8118,8 @@ async def create_notification(
                     logger.info(f"Would send push to {user_id}: {title}")
                     # In production, integrate with Expo Push API here
     
+    # Remove MongoDB _id field for serialization
+    notification_doc.pop("_id", None)
     return notification_doc
 
 @api_router.post("/notifications/test")
