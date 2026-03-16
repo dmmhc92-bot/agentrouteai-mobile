@@ -437,6 +437,19 @@ export default function SettingsScreen() {
           </View>
         </View>
 
+        {/* Privacy & Security Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Privacy & Security</Text>
+          <View style={styles.menuCard}>
+            <MenuItem
+              icon="map-outline"
+              title="Route Privacy"
+              subtitle="Control who can see your route"
+              onPress={() => router.push('/route-settings/privacy')}
+            />
+          </View>
+        </View>
+
         {/* Menu Items */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Legal & Support</Text>
