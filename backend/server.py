@@ -180,6 +180,34 @@ class JoinTeamRequest(BaseModel):
 class LeaveTeamRequest(BaseModel):
     confirm: bool = False
 
+# Organization Creation Model
+class OrganizationCreate(BaseModel):
+    organization_name: str = Field(..., min_length=2, max_length=100)
+    name: str  # User's name
+    email: EmailStr
+    password: str = Field(..., min_length=6)
+    phone: Optional[str] = None
+
+# Notification Models
+class NotificationCreate(BaseModel):
+    title: str
+    body: str
+    type: str  # 'appointment', 'lead_alert', 'follow_up', 'team_invite', 'agent_assignment'
+    data: Optional[Dict[str, Any]] = None
+    target_user_id: Optional[str] = None  # For specific user, or None for broadcast
+
+class NotificationPreferences(BaseModel):
+    appointments: bool = True
+    reminders: bool = True
+    follow_ups: bool = True
+    team_alerts: bool = True
+    lead_alerts: bool = True
+    push_enabled: bool = True
+
+class PushTokenRegister(BaseModel):
+    push_token: str
+    device_type: str = "ios"  # 'ios' or 'android'
+
 # User Management Models
 class UserRoleUpdate(BaseModel):
     role: str  # 'manager' or 'agent'
