@@ -8,11 +8,26 @@ import { Ionicons } from '@expo/vector-icons';
 export default function WelcomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, isAdmin, isManager } = useAuth();
+
+  // Helper function to get the correct route based on role
+  const getRouteForRole = (role: string): string => {
+    switch (role) {
+      case 'admin':
+        return '/command-center';
+      case 'manager':
+        return '/command-center';
+      case 'agent':
+      default:
+        return '/(tabs)/dashboard';
+    }
+  };
 
   useEffect(() => {
     if (!isLoading && user) {
-      router.replace('/(tabs)/dashboard');
+      // Route based on user role
+      const route = getRouteForRole(user.role);
+      router.replace(route as any);
     }
   }, [user, isLoading]);
 
@@ -57,9 +72,9 @@ export default function WelcomeScreen() {
 
         <TouchableOpacity
           style={styles.secondaryButton}
-          onPress={() => router.push('/(auth)/signup')}
+          onPress={() => router.push('/(auth)/onboarding')}
         >
-          <Text style={styles.secondaryButtonText}>Create Account</Text>
+          <Text style={styles.secondaryButtonText}>Get Started</Text>
         </TouchableOpacity>
       </View>
     </View>
