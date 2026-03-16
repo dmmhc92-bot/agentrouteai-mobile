@@ -4268,6 +4268,154 @@ async def get_leads_with_coords(current_user: dict = Depends(get_current_user)):
         })
     return result
 
+# ==================== ROUTE VISIBILITY SETTINGS ====================
+
+@api_router.get("/routes/visibility")
+async def get_route_visibility(current_user: dict = Depends(get_current_user)):
+    """Get route visibility settings for the current user"""
+    user = await db.users.find_one({"id": current_user["id"]})
+    
+    # Default visibility settings
+    default_settings = {
+        "visibility_level": "private",  # 'private', 'summary', 'shared'
+        "allow_manager_view": False,
+        "allow_admin_view": False
+    }
+    
+    visibility = user.get("route_visibility", default_settings)
+    return {"visibility": visibility}
+
+@api_router.put("/routes/visibility")
+async def update_route_visibility(
+    settings: RouteVisibilitySettings,
+    current_user: dict = Depends(get_current_user)
+):
+    """Update route visibility settings for the current user"""
+    user_id = current_user["id"]
+    
+    visibility_data = {
+        "visibility_level": settings.visibility_level,
+        "allow_manager_view": settings.visibility_level in ["summary", "shared"],
+        "allow_admin_view": settings.visibility_level in ["summary", "shared"]
+    }
+    
+    await db.users.update_one(
+        {"id": user_id},
+        {
+            "$set": {
+                "route_visibility": visibility_data,
+                "updated_at": datetime.utcnow()
+            }
+        }
+    )
+    
+    return {"status": "success", "visibility": visibility_data}
+
+@api_router.get("/routes/agent/{agent_id}")
+async def get_agent_route(
+    agent_id: str,
+    date: str,
+    current_user: dict = Depends(require_manager_or_admin)
+):
+    """
+    Get an agent's route - respects visibility settings.
+    Admin/Manager only endpoint.
+    """
+    # Get the agent
+    agent = await db.users.find_one({"id": agent_id, "deleted_at": None})
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    
+    # Check if requester has access to this agent
+    requester_role = current_user.get("role")
+    if requester_role == "manager":
+        # Manager can only see their direct reports
+        if agent.get("manager_id") != current_user["id"]:
+            raise HTTPException(status_code=403, detail="You can only view routes for your assigned agents")
+    elif requester_role == "admin":
+        # Admin can see agents in their organization
+        if current_user.get("organization_id") != agent.get("organization_id"):
+            raise HTTPException(status_code=403, detail="Agent not in your organization")
+    
+    # Get visibility settings
+    visibility = agent.get("route_visibility", {"visibility_level": "private"})
+    visibility_level = visibility.get("visibility_level", "private")
+    
+    # Get the agent's appointments for the date
+    appointments = await db.appointments.find({
+        "created_by_user": agent_id,
+        "appointment_date": date,
+        "status": {"$in": ["scheduled", "completed", "cancelled"]}
+    }).to_list(100)
+    
+    # Calculate summary stats
+    total_stops = len(appointments)
+    completed_stops = len([a for a in appointments if a.get("status") == "completed"])
+    remaining_stops = len([a for a in appointments if a.get("status") == "scheduled"])
+    cancelled_stops = len([a for a in appointments if a.get("status") == "cancelled"])
+    
+    # Build response based on visibility level
+    if visibility_level == "private":
+        # Private: Only return that route exists but no details
+        return {
+            "agent_id": agent_id,
+            "agent_name": agent.get("name"),
+            "date": date,
+            "visibility_level": "private",
+            "message": "Agent's route is set to private",
+            "has_route": total_stops > 0
+        }
+    
+    elif visibility_level == "summary":
+        # Summary: Return progress stats only, no stop details
+        return {
+            "agent_id": agent_id,
+            "agent_name": agent.get("name"),
+            "date": date,
+            "visibility_level": "summary",
+            "summary": {
+                "total_stops": total_stops,
+                "completed_stops": completed_stops,
+                "remaining_stops": remaining_stops,
+                "cancelled_stops": cancelled_stops,
+                "completion_rate": round(completed_stops / max(total_stops, 1) * 100, 1)
+            }
+        }
+    
+    else:  # shared
+        # Shared: Return full route details
+        stops = []
+        for apt in appointments:
+            lead = await db.leads.find_one({"id": apt["lead_id"]})
+            if lead:
+                geocode = await db.lead_geocodes.find_one({"lead_id": lead["id"]})
+                stops.append({
+                    "lead_id": lead["id"],
+                    "lead_name": lead["name"],
+                    "address": lead.get("address", ""),
+                    "appointment_id": apt["id"],
+                    "appointment_time": apt["appointment_time"],
+                    "status": apt.get("status"),
+                    "latitude": geocode["latitude"] if geocode else None,
+                    "longitude": geocode["longitude"] if geocode else None,
+                    "notes": lead.get("notes", "")
+                })
+        
+        return {
+            "agent_id": agent_id,
+            "agent_name": agent.get("name"),
+            "date": date,
+            "visibility_level": "shared",
+            "summary": {
+                "total_stops": total_stops,
+                "completed_stops": completed_stops,
+                "remaining_stops": remaining_stops,
+                "cancelled_stops": cancelled_stops,
+                "completion_rate": round(completed_stops / max(total_stops, 1) * 100, 1)
+            },
+            "stops": stops
+        }
+
 # ==================== ADMIN/MANAGER COMMAND CENTER ====================
 
 @api_router.get("/team/agents")
