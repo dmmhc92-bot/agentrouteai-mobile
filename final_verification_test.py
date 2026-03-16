@@ -265,11 +265,14 @@ def test_onboarding_system(results: TestResults):
     print("\n🚀 3. ONBOARDING SYSTEM")
     print("=" * 60)
     
+    import uuid
+    unique_id = str(uuid.uuid4())[:8]
+    
     # 3A. Create Organization Flow
     org_data = {
         "organization_name": "Final Test Agency",
         "name": "Final Admin",
-        "email": "finaladmin@test.com",
+        "email": f"finaladmin{unique_id}@test.com",
         "password": "FinalPass123!"
     }
     response = make_request("POST", "/auth/create-organization", org_data)
@@ -286,7 +289,7 @@ def test_onboarding_system(results: TestResults):
     # 3B. Solo Agent Flow
     solo_data = {
         "name": "Final Solo",
-        "email": "finalsolo@test.com",
+        "email": f"finalsolo{unique_id}@test.com",
         "password": "SoloPass123!"
     }
     response = make_request("POST", "/auth/register-solo", solo_data)
