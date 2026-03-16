@@ -3592,11 +3592,23 @@ async def get_all_scopes(
     scopes = await db.scope_forms.find(query).sort("created_date", -1).skip(skip).limit(limit).to_list(limit)
     total = await db.scope_forms.count_documents(query)
     
+    # Batch fetch lead and agent info to avoid N+1 queries
+    lead_ids = list(set(s.get("lead_id") for s in scopes if s.get("lead_id")))
+    agent_ids = list(set(s.get("created_by_user") for s in scopes if s.get("created_by_user")))
+    
+    leads_cursor = db.leads.find({"id": {"$in": lead_ids}}, {"id": 1, "name": 1, "phone": 1})
+    leads_list = await leads_cursor.to_list(len(lead_ids))
+    leads_map = {l["id"]: l for l in leads_list}
+    
+    agents_cursor = db.users.find({"id": {"$in": agent_ids}}, {"id": 1, "name": 1, "email": 1})
+    agents_list = await agents_cursor.to_list(len(agent_ids))
+    agents_map = {a["id"]: a for a in agents_list}
+    
     # Enrich with lead and agent info
     enriched_scopes = []
     for scope in scopes:
-        lead = await db.leads.find_one({"id": scope.get("lead_id")}, {"name": 1, "phone": 1})
-        agent = await db.users.find_one({"id": scope.get("created_by_user")}, {"name": 1, "email": 1})
+        lead = leads_map.get(scope.get("lead_id"))
+        agent = agents_map.get(scope.get("created_by_user"))
         
         enriched_scopes.append({
             "id": scope["id"],
