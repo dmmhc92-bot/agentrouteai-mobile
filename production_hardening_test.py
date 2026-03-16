@@ -11,7 +11,7 @@ import sys
 from datetime import datetime
 
 # Backend URL from environment
-BACKEND_URL = "https://sales-team-hub-2.preview.emergentagent.com/api"
+BACKEND_URL = "https://agentroute-sales.preview.emergentagent.com/api"
 
 class ProductionHardeningTests:
     def __init__(self):

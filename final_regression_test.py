@@ -25,7 +25,7 @@ import time
 import sys
 
 # Test Configuration
-BASE_URL = "https://sales-team-hub-2.preview.emergentagent.com/api"
+BASE_URL = "https://agentroute-sales.preview.emergentagent.com/api"
 
 # Test Credentials from review request
 TEST_CREDENTIALS = {

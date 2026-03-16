@@ -22,7 +22,7 @@ import Constants from 'expo-constants';
 
 const BASE_URL = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL || 
                  process.env.EXPO_PUBLIC_BACKEND_URL || 
-                 'https://agentroute-ai.preview.emergentagent.com';
+                 'https://agentroute-sales.preview.emergentagent.com';
 
 interface Invitation {
   id: string;

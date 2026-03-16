@@ -10,7 +10,7 @@ import sys
 from datetime import datetime
 
 # Backend URL from frontend/.env
-BACKEND_URL = "https://sales-team-hub-2.preview.emergentagent.com/api"
+BACKEND_URL = "https://agentroute-sales.preview.emergentagent.com/api"
 
 class IOSHealthChecker:
     def __init__(self):

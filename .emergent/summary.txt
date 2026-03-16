@@ -3,204 +3,225 @@
 original_problem_statement:
 Build a production-ready iOS mobile SaaS app called AgentRoute AI for field sales agents.
 
-Key features implemented in this session:
-1.  **Role-Based Hierarchy**: Implement a secure user hierarchy with three roles: Admin, Manager, and Agent. This includes role-specific permissions, dashboards, and data visibility rules. Admins manage the entire organization, Managers oversee their teams, and Agents only see their own data.
-2.  **Invitation System**: Create a secure, token-based invitation flow for onboarding users into the hierarchy. Admins can invite Managers and Agents; Managers can invite Agents.
-3.  **Flexible Account Modes**: Allow users to operate in Solo Mode or Hierarchy Mode. Users can sign up as solo agents and later join a team using an invite token. They can also leave a team and revert to solo mode, taking their personal data (leads, appointments) with them.
-4.  **Data Portability**: When a user leaves a team, ensure all their personally owned records are disconnected from the previous hierarchy and remain with their account. The former team loses access to this data.
-5.  **Compliance and Finalization**: Update legal documents (Privacy Policy, Terms of Service) to reflect new features. Clean up UI display labels. Verify all settings screen actions (legal links, support, account deletion) are functional.
-6.  **Deployment Build Errors**: Analyze and fix errors from a failed production deployment attempt.
+The primary goal is to finalize and production-harden a comprehensive role-based team system. This includes a secure invite-link onboarding flow, strict role-based permissions (Admin, Manager, Agent), and flexible account modes (Solo vs. Hierarchy). The system must be fully wired, with no placeholder functionality, and all user-facing actions must be operational.
+
+Key requirements from the user include:
+- **Invite-Link Onboarding**: Replace the previous token-based system with a secure, single-use, expiring link system for joining teams. The flow must handle both new and existing users seamlessly.
+- **Role Hierarchy & Permissions**: Enforce strict backend permissions for Admins (full org control), Managers (team-level control), and Agents (personal data only).
+- **New Onboarding Flow**: Users must be presented with a clear choice upon signup: Create Organization, Join Existing Team, or Continue as Solo Agent.
+- **Notifications System**: Implement a fully functional push and local notification system with user-configurable preferences.
+- **Route Visibility**: Add a new feature allowing agents to set privacy levels for their route data (Private, Summary, or Shared).
+- **Production Hardening**: Audit the entire application to ensure there are no dead-end buttons, placeholder UIs, or non-functional elements.
+- **App Store Review**: Create and provision dedicated test accounts with sample data for a smooth Apple App Store review process.
 
 **User's preferred language**: English
 
 **what currently exists?**
-The application is a full-stack Expo/FastAPI app. A comprehensive role-based hierarchy (Admin, Manager, Agent) and a flexible account mode system (Solo vs. Hierarchy) have been fully implemented and tested on the backend. This includes secure invitation flows, data ownership rules, and the ability for users to join or leave teams without losing their personal data. All backend queries are filtered based on the user's role and hierarchy.
+The application is a full-stack Expo/FastAPI app. The initial iOS deployment blockers (config errors, non-square icons, conflicting lock files) have been resolved.
 
-The frontend has been updated with a Team Management screen (for admins/managers to send invites), an Account Mode section in Settings (to join/leave teams), and updated signup/signin flows to handle invitation tokens. The main dashboard now displays role-specific information.
+A significant amount of work has been done to implement the new role-based system. This includes:
+- A new three-option onboarding screen ().
+- Backend logic for creating organizations, registering solo agents, and handling notifications.
+- A complete notification system on the frontend, including a preferences screen () and a context ().
+- A new Route Visibility feature with both backend endpoints and a frontend settings screen ().
+- Dynamic legal pages that render backend-hosted HTML in a WebView/iframe.
+- Dedicated test accounts for App Store Review, pre-populated with sample data.
 
-Legal documents (Privacy Policy, Terms of Service) have been updated to reflect these new data handling and membership rules. A critical bug preventing admin login has been debugged and resolved by correcting a corrupted database record.
+The most recent work involved pivoting from a token-based invitation system to a more secure invite-link-based system. The backend has been updated, and the frontend screens ( and ) have been created or rewritten to support this new flow, but are not yet fully wired.
 
 **Last working item**:
-    - Last item agent was working: The user provided logs from a failed Emergent deployment. The agent was tasked with analyzing these logs, debugging the cause, and fixing the underlying issues.
-    - Status: NOT STARTED
+    - Last item agent was working: Implementing the final, secure invite-link onboarding system as per the user's detailed instructions. The agent was in the middle of this task, having created the necessary backend logic and frontend screens, but had not yet completed the full end-to-end wiring and testing.
+    - Status: IN PROGRESS
     - Agent Testing Done: N
-    - Which testing method agent to use? NA. The fixes will involve configuration and asset changes. Verification will require attempting a new deployment.
+    - Which testing method agent to use? both. The backend logic needs verification via the backend testing agent, and the complete user flow from link click to dashboard must be tested on the frontend, likely with manual testing using the screenshot tool to follow the multi-step process.
     - User Testing Done: N
 
 **All Pending/In progress Issue list**:
-  - Issue 1: iOS deployment is failing. (P0)
-  - Issue 2: Monolithic backend server file (). (P2)
-  - Issue 3: N+1 database query in . (P2)
+  - Issue 1: The secure invite-link onboarding system is incomplete. (P0)
+  - Issue 2: The backend server file () is a monolith. (P2)
+  - Issue 3: Potential N+1 database query in . (P2)
+  - Issue 4: Lead Scanner OCR functionality has not been verified on a real device. (P2)
   
   Issues Detail:
   - Issue 1: 
-     - **Description**: The deployment logs indicate three distinct problems causing the build to fail:
-       1.  **Xcode Build Error**: The provisioning profile used by EAS Build is missing the Associated Domains capability/entitlement. This is a hard blocker for the archive step.
-       2.  **Asset Validation Error**: The app's icon () and Android adaptive icon () are not perfectly square (dimensions 512x513), causing  to fail the config schema check.
-       3.  **Conflicting Lock Files**: The project contains both  and , which can cause non-deterministic installs in CI environments.
-     - **Attempted fixes**: None. The agent has only received the logs.
-     - **Next debug checklist**:
-       1.  Address the Xcode error: Add the  key to the  section of . A placeholder value like  will likely be needed, which the user may need to configure later.
-       2.  Address the asset error: Use an image processing tool to resize  and  to be square (e.g., 512x512).
-       3.  Address the lock file conflict: Delete  to ensure only  is used, as indicated by the build scripts.
-       4.  Propose these fixes to the user before attempting another deployment.
-     - **Why fix this issue and what will be achieved with the fix?**: This is a hard blocker for any successful deployment. Fixing it will allow the application's iOS build artifact to be created.
-     - **Status**:  NOT STARTED
+     - **Description**: The new invite-link system is the primary user-facing feature for team creation and is currently half-implemented. The backend endpoints and frontend screens exist but are not fully connected. The complete flow—from an admin creating a link to a new user signing up and joining the team—is not functional.
+     - **Attempted fixes**: The agent has created the backend endpoints, updated the API service, created the  management screen, and rewritten the  accept screen.
+     - **Next debug checklist**: 
+       1. Fully implement the UI and logic for  to allow Admins/Managers to create, list, copy, and revoke invite links.
+       2. Ensure the UI correctly enforces that Managers can only create Agent invites.
+       3. Fully wire the  screen to handle all states: loading, invalid token, new user signup flow, existing user sign-in flow, and successful join.
+       4. Perform the complete 14-point end-to-end test outlined by the user (in message #369) to verify all success and failure paths.
+     - **Why fix this issue and what will be achieved with the fix?**: This is the core mechanism for user onboarding into teams. Completing it is critical for the app's primary functionality and is a hard blocker for the next deployment.
+     - **Status**:  IN PROGRESS
      - **Is recurring issue?** N
-     - **Should Test frontend/backend/both after fix?**: Neither. The test is a successful deployment run.
+     - **Should Test frontend/backend/both after fix?**: both
      - **Blocked on other issue**: None.
 
   - Issue 2: 
-     - **Description**: The backend file  is a monolith now exceeding 7,700 lines.
+     - **Description**: The backend file  is a monolith exceeding 8,500 lines, making it difficult to maintain and debug.
      - **Next debug checklist**: Propose and execute a refactoring plan to split routes into logical groups (e.g., , , ) inside a new  directory using FastAPI's .
-     - **Why fix this issue and what will be achieved with this?**: Improve code organization, maintainability, and reduce the risk of introducing bugs.
+     - **Why fix this issue and what will be achieved with this?**: Improve code organization, maintainability, and reduce the risk of introducing bugs during future development.
      - **Status**:  NOT STARTED
      - **Is recurring issue?** Y
      - **Should Test frontend/backend/both after fix?**: backend
      - **Blocked on other issue**: None
 
   - Issue 3: 
-     - **Description**: A potential N+1 query issue exists at  where  is called inside a loop.
-     - **Next debug checklist**: Refactor the code to fetch all required geocodes in a single batch query before the loop.
-     - **Why fix this issue and what will be achieved with this?**: Improve database performance and prevent scalability issues.
+     - **Description**: A potential N+1 query issue exists at  where  is called inside a loop. This has not been addressed.
+     - **Next debug checklist**: Refactor the code to fetch all required geocodes in a single batch query (e.g., using the  operator) before the loop.
+     - **Why fix this issue and what will be achieved with this?**: Improve database performance and application scalability, especially for users with many leads.
      - **Status**:  NOT STARTED
      - **Is recurring issue?** N
      - **Should Test frontend/backend/both after fix?**: backend
      - **Blocked on other issue**: None
 
+  - Issue 4: 
+     - **Description**: Lead Scanner OCR functionality has not been verified on a real device.
+     - **Next debug checklist**: Generate a QR code for Expo Go and perform a manual test on a physical iOS device to verify camera permissions and OCR accuracy with a real business card.
+     - **Why fix this issue and what will be achieved with this?**: This is a key feature whose end-to-end functionality remains unconfirmed in a real-world scenario.
+     - **Status**:  NOT STARTED
+     - **Is recurring issue?** N
+     - **Should Test frontend/backend/both after fix?**: frontend
+     - **Blocked on other issue**: None
+
 **In progress Task List**:
-  - None.
+  - Task 1: Complete the secure invite-link onboarding system. (P0)
+     - **Where to resume**: The primary focus should be on the frontend implementation. Wire up the  and  screens to the backend. The logic for creating, listing, and revoking invites, as well as the full user journey for accepting an invite, needs to be completed.
+     - **What will be achieved with this?**: A fully functional, secure, and user-friendly system for growing teams within the application, which is the core of the user's recent requests.
+     - **Status**:  IN PROGRESS
+     - **Should Test frontend/backend/both after fix?**: both
+     - **Blocked on something**: None.
 
 **Upcoming and Future Tasks**
 - **Upcoming Tasks:**
     - **P1: Refactor Backend ()**: Execute the plan to split the monolithic  file into smaller router-based files.
     - **P2: Optimize N+1 Query**: Batch the  lookup to improve performance.
+    - **P2: Verify OCR on Device**: Test the Lead Scanner feature on a real iOS device.
+
 - **Future Tasks:**
     - Advanced Route Planner
     - Enhanced AI Sales Coach
     - Underwriting & Commission Tracking Dashboards
-    - Agent Productivity Tools (Task Reminders, Push Notifications)
+    - Agent Productivity Tools (beyond basic notifications)
     - In-app Training Library
 
 **Completed work in this session**
-- **Fixed Initial Deployment Blocker**: Resolved an  validation error by removing an empty  block.
-- **Implemented Role-Based Hierarchy**: Added Admin, Manager, and Agent roles with corresponding permissions and data filtering throughout the backend.
-- **Implemented Flexible Account Modes**: Created a system allowing users to operate in Solo or Hierarchy mode, with the ability to join or leave teams after signup.
-- **Built Data Portability Flow**: Ensured that when a user leaves a team, all their personal records remain with their account and are no longer accessible to the former team.
-- **Created Full Invitation System**: Implemented backend endpoints and frontend UI for generating, managing, and accepting team invitations.
-- **Enhanced UI for Roles/Modes**:
-    - Updated the Settings screen with Account Mode and Team Management sections.
-    - Updated the main dashboard to display role-specific information.
-    - Updated signup/signin flows to handle invite tokens.
-- **Finalized Legal & Compliance**:
-    - Updated Privacy Policy and Terms of Service content in the backend to reflect new features.
-    - Corrected legal page URLs in the frontend to use production-safe links.
-- **Cleaned Up UI Labels**: Standardized sales pipeline stage names for a more professional display.
-- **Fixed Critical Admin Login Bug**: Debugged and corrected a corrupted admin account record in the database that was preventing login. The root cause was a  flag being incorrectly set in the wrong database instance.
+- **Fixed iOS Deployment Blockers**: Resolved build failures by removing the  key from , resizing app icons to be square, and deleting the conflicting .
+- **Implemented New Onboarding Flow**: Created a new signup/onboarding screen that offers users the choice to Create Organization, Join Existing Team, or Continue as Solo Agent.
+- **Implemented Full Notification System**: Added backend endpoints, frontend context/hooks, and a Notification Preferences UI for managing push and local notifications.
+- **Implemented Route Visibility Permissions**: Added a new feature allowing users to control the privacy of their route data.
+- **Implemented Dynamic Legal Pages**: Created a system to display legal documents (Terms, Privacy Policy) from the backend within a WebView/iframe, allowing updates without an app release.
+- **Created App Store Review Accounts**: Provisioned two dedicated test accounts (one admin, one solo agent) and populated them with sample data to facilitate the App Store review process.
+- **Initiated Invite-Link System**: Began the migration from a manual token system to a secure, link-based invitation flow by creating the necessary backend logic and frontend screens.
 
 **Earlier issues found/mentioned but not fixed**
-   - **Issue 1**: Lead Scanner OCR functionality has not been verified on a real device.
+   - **Issue 1**: Lead Scanner OCR functionality has not been verified on a real device. (Same as Pending Issue #4)
      - Debug checklist: Generate a QR code for Expo Go and perform a manual test on a physical iOS device to verify camera permissions and OCR accuracy.
      - Why to solve this issue and what will be achieved with this?: This is a key feature whose end-to-end functionality is unconfirmed.
      - Should Test frontend/backend/both after fix: frontend
      - Is recurring issue? N
+   - **Issue 2**: Monolithic backend server file (). (Same as Pending Issue #2)
+   - **Issue 3**: N+1 database query in . (Same as Pending Issue #3)
 
 **Known issue recurrence from previous fork**
-  - **Issue recurrence in this session**: The monolithic  file continues to grow, increasing technical debt. This was noted in the initial handoff and has become more critical after adding extensive new backend logic.
-  - Recurrence count: 2
-  - Status: NOT STARTED
+  - **Issue recurrence in this session**: The monolithic  file has grown significantly, increasing technical debt. This was noted in the previous handoff and has become more critical after adding extensive new backend logic for notifications, route visibility, and organizations.
+  - **Recurrence count**: 3
+  - **Status**: NOT STARTED
 
 **Code Architecture**
 associatedDomains
 
 **Key Technical Concepts**
-*   **Flexible Account Mode (Solo/Hierarchy)**: A system where a user's account identity is separate from their team membership, allowing them to join or leave hierarchies without creating a new account.
-*   **Data Portability on Team Departure**: A critical business rule ensuring that when users leave a team, they retain ownership of their personal data, and the former team's access is revoked.
-*   **Secure Role/Dashboard Routing**: Post-login, the app reads the user's role (, , ) and account mode from the backend and automatically routes them to the appropriate dashboard/UI. Self-promotion is prevented.
-*   **Token-Based Invitation System**: Secure, unique tokens are generated by the backend for inviting users to a team. These tokens dictate the user's role and position in the hierarchy upon acceptance.
-*   **Atomic Backend Operations**: Using database transactions (implicitly with single document updates, explicitly required for multi-document changes) to ensure that joining or leaving a team is an all-or-nothing operation, preventing inconsistent states.
-*   **Targeted DB Debugging**: The process of directly connecting to the database via a script to inspect and repair corrupted or inconsistent data, which was necessary to fix the admin login issue.
+*   **Invite-Link Onboarding**: A secure flow where users join teams via unique, single-use, expiring URLs instead of manually entering tokens. It handles both new signups and existing users.
+*   **Flexible Account Onboarding**: A crucial UX pattern implemented at signup, allowing users to self-select their initial path (start a team, join one, or go solo), which dictates their role and account setup.
+*   **Platform-Specific UI (WebView vs. iframe)**: A pattern used in  to render backend content, using WebView for native and an iframe for web previews to handle platform differences.
+*   **Local Notifications for Web Preview**: A testing/debugging technique implemented in the notification system to allow verification of notification logic in the web preview, where real push notifications are not supported.
+*   **Backend-Enforced RBAC**: The principle that all authorization checks for roles and permissions must happen on the server for every API request, never trusting client-side state.
 
 **key DB schema**
-- **users** collection extended with:
+- **organizations** (collection):
+  - : ObjectId
+  - : string
+  - : ObjectId
+  - : Datetime
+- **users** (collection updated with):
   - : ('admin' | 'manager' | 'agent')
   - : ('solo' | 'hierarchy')
   - : ObjectId (nullable)
-  - : ObjectId (nullable)
-  - : ObjectId (nullable)
-  - : ObjectId (nullable)
-  - : Datetime (nullable)
-- **invitations** collection (NEW):
-  - : (unique string)
-  - : (string, nullable for open invites)
-  - : (string, e.g., 'manager', 'agent')
+  - : ('private' | 'summary' | 'shared')
+- **invitations** (collection updated for links):
+  - : (unique string for the link)
   - : ObjectId
-  - : ObjectId
-  - : ObjectId (nullable)
-  - : ObjectId
+  - : ('manager' | 'agent')
   - : ('active' | 'used' | 'expired' | 'revoked')
   - : Datetime
-- **leads**, **appointments**, etc., collections now include ownership fields:
   - : ObjectId
-  - : ObjectId (nullable)
-  - : ObjectId (nullable)
-  - : ObjectId (nullable)
+- **notifications** (collection):
+  - : ObjectId
+  - : string
+  - : string
+  - : dict (for deep linking)
+  - : boolean
 
 **changes in tech stack**
-  - No new packages were added, but existing ones (To use the fastapi command, please install "fastapi[standard]":
-
-	pip install "fastapi[standard]", , , ) were heavily utilized to build the new features.
+  - : Added for handling push and local notifications.
+  - : Added to support opening legal page links.  is used within the component.
 
 **All files of reference**
-*   **/app/backend/server.py**: **CRITICAL**. Massively updated to include all logic for roles, account modes, invitations, data ownership, and legal content.
-*   **/app/frontend/src/contexts/AuthContext.tsx**: **CRITICAL**. Entirely refactored to support the new account mode and role states, and to provide functions for joining/leaving teams.
-*   **/app/frontend/app/(tabs)/settings.tsx**: **CRITICAL**. Substantially modified to include the Account Mode and Team Management UI, modals, and handler logic.
-*   **/app/frontend/app/(auth)/signup.tsx**: Updated to integrate the invitation token flow.
-*   **/app/frontend/app.json**: **NEEDS FIXING**. The source of the Associated Domains build error.
-*   **/app/frontend/assets/images/icon.png**: **NEEDS FIXING**. Not a square image, causing a build error.
-*   **/app/frontend/assets/images/adaptive-icon.png**: **NEEDS FIXING**. Not a square image, causing a build error.
-*   **/app/frontend/package-lock.json**: **NEEDS DELETION**. Conflicts with , causing a build warning.
+*   **/app/backend/server.py**: **CRITICAL**. Heavily modified with new endpoints for organizations, notifications, route visibility, admin recovery, and invite links. Needs refactoring.
+*   **/app/frontend/app/(auth)/onboarding.tsx**: **NEW & CRITICAL**. The new entry point for user registration.
+*   **/app/frontend/app/invite/[token].tsx**: **CRITICAL**. Rewritten to handle the new link-based invitation flow. In progress.
+*   **/app/frontend/app/team-invitations/index.tsx**: **NEW & CRITICAL**. The management UI for invite links. In progress.
+*   **/app/frontend/src/contexts/AuthContext.tsx**: Heavily modified to support new onboarding and account creation logic.
+*   **/app/frontend/src/contexts/NotificationContext.tsx**: New context managing all notification logic.
+*   **/app/frontend/app/(tabs)/settings.tsx**: Heavily modified to serve as a hub for new features like notification preferences, route privacy, and team invitations.
+*   **/app/frontend/app/notifications/preferences.tsx**: New screen for users to manage their notification settings.
+*   **/app/frontend/app/route-settings/privacy.tsx**: New screen for users to manage their route visibility.
+*   **/app/frontend/app/legal/[type].tsx**: New screen to render legal documents from the backend.
+*   **/app/frontend/src/services/api.ts**: Heavily modified with numerous new API service methods.
 
 **Areas that need refactoring**:
-*   **/app/backend/server.py**: Urgently needs to be broken down into smaller, manageable router files. Its size and complexity are unsustainable.
+*   **/app/backend/server.py**: Urgently needs to be broken down into smaller, manageable router files. Its size (8500+ lines) is a significant source of technical debt and risk.
 
 **key api endpoints**
-*   : **NEW**. Create a new invitation token.
-*   : **NEW**. Allows an authenticated user to join a team using an invite token.
-*   : **NEW**. Allows an authenticated user to leave their current team and revert to solo mode.
-*   : Updated to handle signups with or without an invitation token, securely assigning roles.
-*   : Updated to return extended user profile info including role and account mode.
-*   : Updated to return extended user profile info.
-*   , : **NEW**. Short-alias routes for legal pages.
+*   : **NEW**. Creates a new organization and assigns the creator as admin.
+*   : **ENHANCED**. Core of the new invite-link system; handles joining a team for both new and existing users.
+*   , : **NEW**. Manage user notification preferences.
+*   : **NEW**. Send a test notification.
+*   , : **NEW**. Manage user route privacy settings.
+*   : **NEW**. Admin recovery endpoint.
+*   : **NEW**. Admin recovery endpoint.
 
 **Critical Info for New Agent**
-*   **Your immediate priority is fixing the iOS deployment failure.** Do not work on any other features. The logs in message #420 point to three specific issues you must resolve:
-    1.  **Associated Domains Entitlement**: The primary build failure. Fix this by adding an  key to the  section of .
-    2.  **Non-Square Images**: The  and  files in  are not square. You must resize them to be square (e.g., 512x512) to pass the  validation.
-    3.  **Duplicate Lock Files**: The project has both  and . You must delete .
-*   All other features (Role Hierarchy, Account Modes, Invitations) are considered functionally complete and have passed extensive backend testing. Do not refactor or modify them unless it's directly related to fixing the deployment.
-*   The admin login issue has been resolved. The correct credentials are  / .
+*   **Your immediate and only priority is to complete the secure invite-link system.** The user's instructions in messages #350 and #369 are the absolute source of truth for this task. Do not work on any other features, bugs, or refactoring until this is done and fully tested.
+*   The task involves significant frontend work: wiring the  and  screens to the backend, handling all UI states (loading, error, success), and ensuring the user flow is seamless.
+*   After implementation, you must perform the rigorous 14-point end-to-end test checklist provided by the user to validate every aspect of the new system.
+*   The monolithic  is a known major issue, but do not address it until the invite-link system is complete and verified by the user.
 
 **documents created in this job**
   - 
   - 
   - 
+  - 
+  - 
+  - 
+  - 
 
 **Last 10 User Messages and any pending HUMAN messages** 
-- **1. (LATEST - PENDING)**: User provided deployment failure logs and requested a fix for all errors preventing a successful build. (NOT STARTED)
-- **2.** User confirmed the admin credential fix and asked to verify routing. (DONE)
-- **3.** User requested a targeted fix for the failing admin credentials. (DONE)
-- **4.** User requested a full audit of the Account Mode & Role Routing system, including UI, security, and legal doc updates. (DONE)
-- **5.** User requested implementation of a flexible Account Mode system (Solo vs. Hierarchy) with join/leave team functionality. (DONE)
-- **6.** User confirmed the completion of the previous finalization tasks. (DONE)
-- **7.** User requested a set of Finalization Tasks: verify legal/support links, verify account deletion, and clean up pipeline UI labels. (DONE)
-- **8.** User confirmed the completion of the Role-Based Hierarchy implementation. (DONE)
-- **9.** User requested the completion of the Role-Based Hierarchy system, fixing all failed tests and adhering to a strict, non-negotiable scope. (DONE)
-- **10.** User confirmed the plan for the Role-Based Hierarchy and provided very specific constraints and implementation rules. (DONE)
+- **1. (LATEST - PENDING)** User provided extremely detailed requirements to finalize the invite-link system, including end-to-end testing criteria, before any build is generated. (IN PROGRESS)
+- **2.** User requested to replace the manual token system with a secure invite-link system. (IN PROGRESS)
+- **3.** User requested a final production hardening audit of all features, ensuring no dead buttons or placeholder flows. (DONE)
+- **4.** User asked for final clarification on role flows and requested the creation of a dedicated App Store Review test account with sample data. (DONE)
+- **5.** User requested the implementation of a new Route Visibility permission setting and a final verification of all systems. (DONE)
+- **6.** User requested a complete functional verification of the entire role-based system, including push notifications, onboarding, and legal docs. (DONE)
+- **7.** User approved the agent's plan and provided specific implementation details for notifications, legal docs, and task priority. (DONE)
+- **8.** User provided a massive, comprehensive feature request to build the entire role-based team system, including onboarding, token generation, RBAC, notifications, and legal updates. (DONE)
+- **9.** User provided very specific, non-negotiable instructions to fix the three iOS deployment blockers. (DONE)
+- **10.** User provided the logs from a failed deployment, initiating the work in this session. (DONE)
 
 **Project Health Check:**
 *   **Broken:**
-    - iOS Deployment is blocked due to configuration, asset, and provisioning profile errors.
+    - The core user invitation and team-joining functionality is in a half-implemented state due to the pivot from tokens to links. This is a critical blocker.
 *   **Mocked:**
     - None.
 
@@ -215,19 +236,23 @@ associatedDomains
 *   **react-native-svg:** Frontend signature canvas rendering.
 *   **react-native-view-shot:** Capturing signature canvas as an image.
 *   **expo-linking / expo-sharing / expo-file-system:** Frontend native file/URL handling.
+*   **expo-notifications**: NEW. Push and local notifications.
+*   **expo-web-browser / react-native-webview**: NEW. In-app web content rendering.
 
 **Testing status**
-  - Testing agent used after significant changes: YES. Extensive backend testing was performed for the role/mode features and the admin login fix.
+  - Testing agent used after significant changes: YES. The backend testing agent was used multiple times to verify new endpoints for organizations, notifications, route visibility, and admin tools. All recent backend tests passed.
   - Troubleshoot agent used after agent stuck in loop: NO
   - Test files created: None. Test cases were added to .
-  - Known regressions: None.
+  - Known regressions: None identified.
 
 **Credentials to test flow:**
-*   **Admin:**  / 
-*   **Manager:**  / 
-*   **Agent:**  / 
+*   **App Review (Solo Agent):**  /  (has sample data)
+*   **App Review (Admin):**  / 
+*   **Existing Admin:**  / 
+*   **Existing Manager:**  / 
+*   **Existing Agent:**  / 
 
 **What agent forgot to execute**
-*   The original task from the very first handoff to verify the Lead Scanner OCR on a real device remains unaddressed.
+*   The task from the original handoff to verify the Lead Scanner OCR feature on a real physical device has been consistently overlooked throughout this entire session.
 
 </analysis>

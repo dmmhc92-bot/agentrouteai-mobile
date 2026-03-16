@@ -22,7 +22,7 @@ if (Platform.OS !== 'web') {
 
 const BASE_URL = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL || 
                  process.env.EXPO_PUBLIC_BACKEND_URL || 
-                 'https://sales-team-hub-2.preview.emergentagent.com';
+                 'https://agentroute-sales.preview.emergentagent.com';
 
 export default function LegalScreen() {
   const router = useRouter();
