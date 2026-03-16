@@ -4525,9 +4525,15 @@ async def geocode_lead(request: dict, current_user: dict = Depends(get_current_u
 @api_router.get("/routes/leads-with-coordinates")
 async def get_leads_with_coords(current_user: dict = Depends(get_current_user)):
     leads = await db.leads.find({"created_by_user": current_user["id"]}).to_list(1000)
+    
+    # Batch fetch all geocodes to avoid N+1 query
+    lead_ids = [lead["id"] for lead in leads]
+    geocodes = await db.lead_geocodes.find({"lead_id": {"$in": lead_ids}}).to_list(len(lead_ids))
+    geocode_map = {g["lead_id"]: g for g in geocodes}
+    
     result = []
     for lead in leads:
-        geocode = await db.lead_geocodes.find_one({"lead_id": lead["id"]})
+        geocode = geocode_map.get(lead["id"])
         result.append({
             "id": lead["id"],
             "name": lead["name"],
