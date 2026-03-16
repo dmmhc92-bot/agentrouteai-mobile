@@ -184,6 +184,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const createOrganization = async (
+    organizationName: string,
+    name: string,
+    email: string,
+    password: string,
+    phone?: string
+  ): Promise<User> => {
+    const response = await api.createOrganization(organizationName, name, email, password, phone);
+    await storage.setItem('auth_token', response.access_token);
+    setToken(response.access_token);
+    api.setAuthToken(response.access_token);
+    setUser(response.user);
+    
+    // Load team info
+    try {
+      const modeData = await api.getAccountMode();
+      setTeamInfo(modeData.team_info || null);
+    } catch (e) {
+      // Ignore
+    }
+    
+    return response.user;
+  };
+
+  const registerSolo = async (
+    name: string,
+    email: string,
+    password: string,
+    phone?: string
+  ): Promise<User> => {
+    const response = await api.registerSolo(name, email, password, phone);
+    await storage.setItem('auth_token', response.access_token);
+    setToken(response.access_token);
+    api.setAuthToken(response.access_token);
+    setUser(response.user);
+    setTeamInfo(null); // Solo mode has no team
+    
+    return response.user;
+  };
+
   const signOut = async () => {
     await storage.removeItem('auth_token');
     setToken(null);
