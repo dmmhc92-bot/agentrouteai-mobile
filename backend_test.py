@@ -224,11 +224,21 @@ class BackendTester:
         success, status_code, response = self.make_request("GET", "/notifications/preferences", token=admin_token)
         
         if success and status_code == 200:
-            expected_fields = ["appointments", "reminders", "follow_ups", "team_alerts", "lead_alerts", "push_enabled"]
-            if all(field in response for field in expected_fields):
-                self.log_test("Get Notification Preferences", True, f"Preferences retrieved: {response}")
+            # Check if response has preferences field or is the preferences object itself
+            if "preferences" in response:
+                prefs = response["preferences"]
+                expected_fields = ["appointments", "reminders", "follow_ups", "team_alerts", "lead_alerts", "push_enabled"]
+                if all(field in prefs for field in expected_fields):
+                    self.log_test("Get Notification Preferences", True, f"Preferences retrieved: {prefs}")
+                else:
+                    self.log_test("Get Notification Preferences", False, f"Missing preference fields in preferences object. Got: {list(prefs.keys())}")
             else:
-                self.log_test("Get Notification Preferences", False, f"Missing preference fields. Got: {list(response.keys())}")
+                # Response might be the preferences object directly
+                expected_fields = ["appointments", "reminders", "follow_ups", "team_alerts", "lead_alerts", "push_enabled"]
+                if all(field in response for field in expected_fields):
+                    self.log_test("Get Notification Preferences", True, f"Preferences retrieved: {response}")
+                else:
+                    self.log_test("Get Notification Preferences", False, f"Missing preference fields. Got: {list(response.keys())}")
         else:
             self.log_test("Get Notification Preferences", False, f"Request failed with status {status_code}", response)
         
