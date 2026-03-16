@@ -1,19 +1,7 @@
 #!/usr/bin/env python3
 """
-FINAL COMPREHENSIVE AUDIT - Account Mode + Role Routing System
-Phase 2 Testing for iOS Build Readiness
-
-Test Areas:
-1. Authentication & Role Assignment Security
-2. Account Mode System
-3. Invitation System with Token Generation
-4. Permission Enforcement (Security Critical)
-5. Role-Based Data Filtering
-6. Legal Pages (Updated Content)
-7. Core Features Regression
-8. Dashboard Routing Verification
-
-Target: 100% pass rate for iOS build readiness.
+AgentRoute AI Backend API Testing Suite
+Testing NEW onboarding and notification endpoints as specified in review request
 """
 
 import requests
@@ -27,565 +15,430 @@ from typing import Dict, Any, Optional
 BASE_URL = "https://sales-team-hub-2.preview.emergentagent.com/api"
 TIMEOUT = 30
 
-# Test Credentials
-ADMIN_CREDS = {"email": "admin@agentroute.com", "password": "Admin123!"}
-MANAGER_CREDS = {"email": "manager@agentroute.com", "password": "Manager123!"}
-AGENT_CREDS = {"email": "agent@agentroute.com", "password": "Agent123!"}
-
-class TestResults:
+class BackendTester:
     def __init__(self):
-        self.total_tests = 0
-        self.passed_tests = 0
-        self.failed_tests = []
-        self.test_details = []
-
-    def add_test(self, test_name: str, passed: bool, details: str = ""):
-        self.total_tests += 1
-        if passed:
-            self.passed_tests += 1
-            status = "✅ PASS"
-        else:
-            self.failed_tests.append(test_name)
-            status = "❌ FAIL"
+        self.session = requests.Session()
+        self.session.timeout = TIMEOUT
+        self.test_results = []
+        self.tokens = {}  # Store tokens for different users
         
-        self.test_details.append(f"{status} - {test_name}: {details}")
-        print(f"{status} - {test_name}: {details}")
+    def log_test(self, test_name: str, success: bool, details: str = "", response_data: Any = None):
+        """Log test results"""
+        result = {
+            "test": test_name,
+            "success": success,
+            "details": details,
+            "timestamp": datetime.now().isoformat(),
+            "response_data": response_data
+        }
+        self.test_results.append(result)
+        status = "✅ PASS" if success else "❌ FAIL"
+        print(f"{status}: {test_name}")
+        if details:
+            print(f"   Details: {details}")
+        if not success and response_data:
+            print(f"   Response: {response_data}")
+        print()
+
+    def make_request(self, method: str, endpoint: str, data: Dict = None, headers: Dict = None, token: str = None) -> tuple:
+        """Make HTTP request with error handling"""
+        url = f"{BASE_URL}{endpoint}"
+        
+        # Set up headers
+        req_headers = {"Content-Type": "application/json"}
+        if headers:
+            req_headers.update(headers)
+        if token:
+            req_headers["Authorization"] = f"Bearer {token}"
+        
+        try:
+            if method.upper() == "GET":
+                response = self.session.get(url, headers=req_headers)
+            elif method.upper() == "POST":
+                response = self.session.post(url, json=data, headers=req_headers)
+            elif method.upper() == "PUT":
+                response = self.session.put(url, json=data, headers=req_headers)
+            elif method.upper() == "DELETE":
+                response = self.session.delete(url, headers=req_headers)
+            else:
+                return False, f"Unsupported method: {method}", None
+            
+            return True, response.status_code, response.json() if response.content else {}
+        except requests.exceptions.Timeout:
+            return False, "Request timeout", None
+        except requests.exceptions.ConnectionError:
+            return False, "Connection error", None
+        except json.JSONDecodeError:
+            return False, f"Invalid JSON response (status: {response.status_code})", response.text if 'response' in locals() else None
+        except Exception as e:
+            return False, f"Request error: {str(e)}", None
+
+    def test_create_organization(self):
+        """Test PRIORITY 1: Create Organization Endpoint (NEW)"""
+        print("🎯 TESTING PRIORITY 1: Core Onboarding Endpoints")
+        print("=" * 60)
+        
+        # Generate unique email to avoid conflicts
+        unique_id = str(uuid.uuid4())[:8]
+        test_data = {
+            "organization_name": "Test Insurance Agency",
+            "name": "John Admin",
+            "email": f"newadmin{unique_id}@testorg.com",
+            "password": "TestPass123!",
+            "phone": "555-123-4567"
+        }
+        
+        success, status_code, response = self.make_request("POST", "/auth/create-organization", test_data)
+        
+        if success and status_code == 200:
+            # Verify response structure
+            required_fields = ["access_token", "token_type", "user"]
+            if all(field in response for field in required_fields):
+                user = response["user"]
+                
+                # Verify user properties
+                checks = [
+                    user.get("role") == "admin",
+                    user.get("organization_owner") == True,
+                    user.get("organization_id") is not None,
+                    user.get("account_mode") == "connected"
+                ]
+                
+                if all(checks):
+                    # Store token for later tests
+                    self.tokens["org_admin"] = response["access_token"]
+                    self.tokens["org_admin_user_id"] = user["id"]
+                    
+                    self.log_test(
+                        "Create Organization Endpoint", 
+                        True, 
+                        f"Organization created successfully. Admin user: {user['email']}, Role: {user['role']}, Org ID: {user['organization_id']}"
+                    )
+                else:
+                    self.log_test(
+                        "Create Organization Endpoint", 
+                        False, 
+                        f"User properties validation failed. Role: {user.get('role')}, Owner: {user.get('organization_owner')}, Account mode: {user.get('account_mode')}"
+                    )
+            else:
+                self.log_test(
+                    "Create Organization Endpoint", 
+                    False, 
+                    f"Missing required fields in response. Got: {list(response.keys())}"
+                )
+        else:
+            self.log_test(
+                "Create Organization Endpoint", 
+                False, 
+                f"Request failed with status {status_code}",
+                response
+            )
+
+    def test_register_solo_agent(self):
+        """Test PRIORITY 1: Register Solo Agent Endpoint (NEW)"""
+        # Generate unique email to avoid conflicts
+        unique_id = str(uuid.uuid4())[:8]
+        test_data = {
+            "name": "Solo Smith",
+            "email": f"solo{unique_id}@testagent.com",
+            "password": "SoloPass123!",
+            "phone": "555-987-6543"
+        }
+        
+        success, status_code, response = self.make_request("POST", "/auth/register-solo", test_data)
+        
+        if success and status_code == 200:
+            # Verify response structure
+            required_fields = ["access_token", "token_type", "user"]
+            if all(field in response for field in required_fields):
+                user = response["user"]
+                
+                # Verify user properties for solo agent
+                checks = [
+                    user.get("role") == "agent",
+                    user.get("organization_id") is None,
+                    user.get("account_mode") == "solo"
+                ]
+                
+                if all(checks):
+                    # Store token for later tests
+                    self.tokens["solo_agent"] = response["access_token"]
+                    
+                    self.log_test(
+                        "Register Solo Agent Endpoint", 
+                        True, 
+                        f"Solo agent registered successfully. User: {user['email']}, Role: {user['role']}, Account mode: {user['account_mode']}"
+                    )
+                else:
+                    self.log_test(
+                        "Register Solo Agent Endpoint", 
+                        False, 
+                        f"User properties validation failed. Role: {user.get('role')}, Org ID: {user.get('organization_id')}, Account mode: {user.get('account_mode')}"
+                    )
+            else:
+                self.log_test(
+                    "Register Solo Agent Endpoint", 
+                    False, 
+                    f"Missing required fields in response. Got: {list(response.keys())}"
+                )
+        else:
+            self.log_test(
+                "Register Solo Agent Endpoint", 
+                False, 
+                f"Request failed with status {status_code}",
+                response
+            )
+
+    def test_notification_system(self):
+        """Test PRIORITY 2: Notification System Endpoints (ALL NEW)"""
+        print("🔔 TESTING PRIORITY 2: Notification System Endpoints")
+        print("=" * 60)
+        
+        # Use org admin token from previous test
+        admin_token = self.tokens.get("org_admin")
+        if not admin_token:
+            self.log_test("Notification System Setup", False, "No admin token available from create-organization test")
+            return
+        
+        # Test 3: Register Push Token
+        push_data = {
+            "push_token": "ExponentPushToken[test123abc456]",
+            "device_type": "ios"
+        }
+        
+        success, status_code, response = self.make_request("POST", "/notifications/register-push-token", push_data, token=admin_token)
+        
+        if success and status_code == 200:
+            expected_response = {"status": "success", "message": "Push token registered"}
+            if response.get("status") == "success":
+                self.log_test("Register Push Token", True, "Push token registered successfully")
+            else:
+                self.log_test("Register Push Token", False, f"Unexpected response: {response}")
+        else:
+            self.log_test("Register Push Token", False, f"Request failed with status {status_code}", response)
+        
+        # Test 4: Get Notification Preferences
+        success, status_code, response = self.make_request("GET", "/notifications/preferences", token=admin_token)
+        
+        if success and status_code == 200:
+            expected_fields = ["appointments", "reminders", "follow_ups", "team_alerts", "lead_alerts", "push_enabled"]
+            if all(field in response for field in expected_fields):
+                self.log_test("Get Notification Preferences", True, f"Preferences retrieved: {response}")
+            else:
+                self.log_test("Get Notification Preferences", False, f"Missing preference fields. Got: {list(response.keys())}")
+        else:
+            self.log_test("Get Notification Preferences", False, f"Request failed with status {status_code}", response)
+        
+        # Test 5: Update Notification Preferences
+        update_prefs = {
+            "appointments": True,
+            "reminders": False,
+            "follow_ups": True,
+            "team_alerts": False,
+            "lead_alerts": True,
+            "push_enabled": True
+        }
+        
+        success, status_code, response = self.make_request("PUT", "/notifications/preferences", update_prefs, token=admin_token)
+        
+        if success and status_code == 200:
+            if response.get("status") == "success" and "preferences" in response:
+                self.log_test("Update Notification Preferences", True, "Preferences updated successfully")
+            else:
+                self.log_test("Update Notification Preferences", False, f"Unexpected response: {response}")
+        else:
+            self.log_test("Update Notification Preferences", False, f"Request failed with status {status_code}", response)
+        
+        # Test 6: Send Test Notification
+        success, status_code, response = self.make_request("POST", "/notifications/test", token=admin_token)
+        
+        notification_id = None
+        if success and status_code == 200:
+            if response.get("status") == "success" and "notification" in response:
+                notification = response["notification"]
+                required_fields = ["id", "title", "body", "type", "read", "created_at"]
+                if all(field in notification for field in required_fields):
+                    notification_id = notification["id"]
+                    self.log_test("Send Test Notification", True, f"Test notification sent: {notification['title']}")
+                else:
+                    self.log_test("Send Test Notification", False, f"Missing notification fields. Got: {list(notification.keys())}")
+            else:
+                self.log_test("Send Test Notification", False, f"Unexpected response: {response}")
+        else:
+            self.log_test("Send Test Notification", False, f"Request failed with status {status_code}", response)
+        
+        # Test 7: Get Notifications
+        success, status_code, response = self.make_request("GET", "/notifications?limit=10&unread_only=false", token=admin_token)
+        
+        if success and status_code == 200:
+            if "notifications" in response and "unread_count" in response:
+                self.log_test("Get Notifications", True, f"Retrieved {len(response['notifications'])} notifications, {response['unread_count']} unread")
+            else:
+                self.log_test("Get Notifications", False, f"Missing required fields. Got: {list(response.keys())}")
+        else:
+            self.log_test("Get Notifications", False, f"Request failed with status {status_code}", response)
+        
+        # Test 8: Get Unread Count
+        success, status_code, response = self.make_request("GET", "/notifications/unread-count", token=admin_token)
+        
+        if success and status_code == 200:
+            if "unread_count" in response:
+                original_unread = response["unread_count"]
+                self.log_test("Get Unread Count", True, f"Unread count: {original_unread}")
+            else:
+                self.log_test("Get Unread Count", False, f"Missing unread_count field. Got: {response}")
+        else:
+            self.log_test("Get Unread Count", False, f"Request failed with status {status_code}", response)
+        
+        # Test 9: Mark Notification Read (if we have a notification ID)
+        if notification_id:
+            success, status_code, response = self.make_request("PUT", f"/notifications/{notification_id}/read", token=admin_token)
+            
+            if success and status_code == 200:
+                if response.get("status") == "success":
+                    self.log_test("Mark Notification Read", True, f"Notification marked as read")
+                else:
+                    self.log_test("Mark Notification Read", False, f"Unexpected response: {response}")
+            else:
+                self.log_test("Mark Notification Read", False, f"Request failed with status {status_code}", response)
+        else:
+            self.log_test("Mark Notification Read", False, "No notification ID available from test notification")
+        
+        # Test 10: Mark All Read
+        success, status_code, response = self.make_request("PUT", "/notifications/mark-all-read", token=admin_token)
+        
+        if success and status_code == 200:
+            if response.get("status") == "success" and "unread_count" in response:
+                self.log_test("Mark All Read", True, f"All notifications marked as read. Unread count: {response['unread_count']}")
+            else:
+                self.log_test("Mark All Read", False, f"Unexpected response: {response}")
+        else:
+            self.log_test("Mark All Read", False, f"Request failed with status {status_code}", response)
+
+    def test_legal_pages(self):
+        """Test PRIORITY 3: Legal Pages (verify still working)"""
+        print("📄 TESTING PRIORITY 3: Legal Pages")
+        print("=" * 60)
+        
+        # Test 11: Privacy Policy Page
+        success, status_code, response = self.make_request("GET", "/privacy")
+        
+        if success and status_code == 200:
+            # Check if response contains HTML with Privacy Policy content
+            if isinstance(response, str) and "Privacy Policy" in response:
+                self.log_test("Privacy Policy Page", True, "Privacy Policy page loaded with HTML content")
+            elif isinstance(response, dict) and any("privacy" in str(v).lower() for v in response.values()):
+                self.log_test("Privacy Policy Page", True, "Privacy Policy page loaded with content")
+            else:
+                self.log_test("Privacy Policy Page", False, f"Privacy Policy content not found in response")
+        else:
+            self.log_test("Privacy Policy Page", False, f"Request failed with status {status_code}", response)
+        
+        # Test 12: Terms of Service Page
+        success, status_code, response = self.make_request("GET", "/terms")
+        
+        if success and status_code == 200:
+            # Check if response contains HTML with Terms of Service content
+            if isinstance(response, str) and "Terms of Service" in response:
+                self.log_test("Terms of Service Page", True, "Terms of Service page loaded with HTML content")
+            elif isinstance(response, dict) and any("terms" in str(v).lower() for v in response.values()):
+                self.log_test("Terms of Service Page", True, "Terms of Service page loaded with content")
+            else:
+                self.log_test("Terms of Service Page", False, f"Terms of Service content not found in response")
+        else:
+            self.log_test("Terms of Service Page", False, f"Request failed with status {status_code}", response)
+
+    def test_existing_auth_regression(self):
+        """Test REGRESSION: Existing Auth (verify still working)"""
+        print("🔐 TESTING REGRESSION: Existing Auth")
+        print("=" * 60)
+        
+        # Test 13: Existing Admin Login
+        admin_credentials = {
+            "email": "admin@agentroute.com",
+            "password": "Admin123!"
+        }
+        
+        success, status_code, response = self.make_request("POST", "/auth/login", admin_credentials)
+        
+        if success and status_code == 200:
+            if "access_token" in response:
+                self.tokens["existing_admin"] = response["access_token"]
+                self.log_test("Existing Admin Login", True, f"Admin login successful")
+            else:
+                self.log_test("Existing Admin Login", False, f"No access token in response: {response}")
+        else:
+            self.log_test("Existing Admin Login", False, f"Request failed with status {status_code}", response)
+        
+        # Test 14: Existing Agent Login
+        agent_credentials = {
+            "email": "agent@agentroute.com",
+            "password": "Agent123!"
+        }
+        
+        success, status_code, response = self.make_request("POST", "/auth/login", agent_credentials)
+        
+        if success and status_code == 200:
+            if "access_token" in response:
+                self.tokens["existing_agent"] = response["access_token"]
+                self.log_test("Existing Agent Login", True, f"Agent login successful")
+            else:
+                self.log_test("Existing Agent Login", False, f"No access token in response: {response}")
+        else:
+            self.log_test("Existing Agent Login", False, f"Request failed with status {status_code}", response)
+
+    def run_all_tests(self):
+        """Run all test suites"""
+        print("🚀 STARTING AGENTROUTE AI BACKEND API TESTING")
+        print("=" * 80)
+        print(f"Base URL: {BASE_URL}")
+        print(f"Test started at: {datetime.now().isoformat()}")
+        print("=" * 80)
+        print()
+        
+        # Run test suites in order
+        self.test_create_organization()
+        self.test_register_solo_agent()
+        self.test_notification_system()
+        self.test_legal_pages()
+        self.test_existing_auth_regression()
+        
+        # Print summary
+        self.print_summary()
 
     def print_summary(self):
-        success_rate = (self.passed_tests / self.total_tests * 100) if self.total_tests > 0 else 0
-        print(f"\n{'='*80}")
-        print(f"ROLE-BASED USER HIERARCHY SYSTEM TEST RESULTS")
-        print(f"{'='*80}")
-        print(f"Total Tests: {self.total_tests}")
-        print(f"Passed: {self.passed_tests}")
-        print(f"Failed: {len(self.failed_tests)}")
-        print(f"Success Rate: {success_rate:.1f}%")
+        """Print test summary"""
+        print("=" * 80)
+        print("🎯 TEST SUMMARY")
+        print("=" * 80)
         
-        if self.failed_tests:
-            print(f"\n❌ FAILED TESTS:")
-            for test in self.failed_tests:
-                print(f"  - {test}")
+        total_tests = len(self.test_results)
+        passed_tests = sum(1 for result in self.test_results if result["success"])
+        failed_tests = total_tests - passed_tests
         
-        print(f"\n📋 DETAILED RESULTS:")
-        for detail in self.test_details:
-            print(f"  {detail}")
+        print(f"Total Tests: {total_tests}")
+        print(f"Passed: {passed_tests} ✅")
+        print(f"Failed: {failed_tests} ❌")
+        print(f"Success Rate: {(passed_tests/total_tests*100):.1f}%")
+        print()
         
-        return success_rate >= 100.0
-
-def make_request(method: str, endpoint: str, data: Dict = None, headers: Dict = None, timeout: int = TIMEOUT) -> requests.Response:
-    """Make HTTP request with error handling"""
-    url = f"{BASE_URL}{endpoint}"
-    try:
-        if method.upper() == "GET":
-            response = requests.get(url, headers=headers, timeout=timeout)
-        elif method.upper() == "POST":
-            response = requests.post(url, json=data, headers=headers, timeout=timeout)
-        elif method.upper() == "PUT":
-            response = requests.put(url, json=data, headers=headers, timeout=timeout)
-        elif method.upper() == "DELETE":
-            response = requests.delete(url, headers=headers, timeout=timeout)
-        else:
-            raise ValueError(f"Unsupported method: {method}")
+        if failed_tests > 0:
+            print("❌ FAILED TESTS:")
+            for result in self.test_results:
+                if not result["success"]:
+                    print(f"   • {result['test']}: {result['details']}")
+            print()
         
-        return response
-    except requests.exceptions.Timeout:
-        print(f"⚠️  Request timeout for {method} {endpoint}")
-        raise
-    except requests.exceptions.RequestException as e:
-        print(f"⚠️  Request error for {method} {endpoint}: {e}")
-        raise
-
-def login_user(credentials: Dict[str, str]) -> Optional[str]:
-    """Login and return access token"""
-    try:
-        response = make_request("POST", "/auth/login", credentials)
-        if response.status_code == 200:
-            return response.json()["access_token"]
-        else:
-            print(f"Login failed: {response.status_code} - {response.text}")
-            return None
-    except Exception as e:
-        print(f"Login error: {e}")
-        return None
-
-def get_auth_headers(token: str) -> Dict[str, str]:
-    """Get authorization headers"""
-    return {"Authorization": f"Bearer {token}"}
-
-def test_existing_auth_verification(results: TestResults):
-    """Test 1: Existing Auth Verification (Must still work)"""
-    print(f"\n🔐 Testing Existing Auth Verification...")
-    
-    # Test Admin Login
-    admin_token = login_user(ADMIN_CREDS)
-    results.add_test("Admin Login", admin_token is not None, 
-                    f"admin@agentroute.com login {'successful' if admin_token else 'failed'}")
-    
-    # Test Agent Login  
-    agent_token = login_user(AGENT_CREDS)
-    results.add_test("Agent Login", agent_token is not None,
-                    f"agent@agentroute.com login {'successful' if agent_token else 'failed'}")
-    
-    # Test /auth/me with admin token
-    if admin_token:
-        try:
-            response = make_request("GET", "/auth/me", headers=get_auth_headers(admin_token))
-            if response.status_code == 200:
-                user_data = response.json()
-                has_hierarchy_fields = all(field in user_data for field in ["admin_id", "organization_id", "approval_status"])
-                results.add_test("Auth Me Hierarchy Fields", has_hierarchy_fields,
-                               f"admin_id: {user_data.get('admin_id')}, org_id: {user_data.get('organization_id')}, approval: {user_data.get('approval_status')}")
-            else:
-                results.add_test("Auth Me Hierarchy Fields", False, f"Status: {response.status_code}")
-        except Exception as e:
-            results.add_test("Auth Me Hierarchy Fields", False, f"Error: {e}")
-    
-    return admin_token, agent_token
-
-def test_password_reset(results: TestResults):
-    """Test 2: Password Reset (Must still work)"""
-    print(f"\n🔑 Testing Password Reset...")
-    
-    try:
-        # Test forgot password
-        response = make_request("POST", "/auth/forgot-password", {"email": "admin@agentroute.com"})
-        forgot_success = response.status_code == 200
-        results.add_test("Forgot Password", forgot_success, 
-                        f"Status: {response.status_code}, Response: {response.json() if forgot_success else response.text}")
+        print("✅ PASSED TESTS:")
+        for result in self.test_results:
+            if result["success"]:
+                print(f"   • {result['test']}")
         
-        # Test reset token generation (check if dev_token is returned)
-        if forgot_success:
-            response_data = response.json()
-            has_token = "dev_token" in response_data
-            results.add_test("Reset Token Generation", has_token,
-                           f"Dev token {'present' if has_token else 'missing'}")
-    except Exception as e:
-        results.add_test("Forgot Password", False, f"Error: {e}")
-        results.add_test("Reset Token Generation", False, f"Error: {e}")
-
-def test_lead_creation(results: TestResults, admin_token: str, agent_token: str):
-    """Test 3: Lead Creation (Must still work)"""
-    print(f"\n👥 Testing Lead Creation...")
-    
-    # Test lead creation with admin
-    if admin_token:
-        try:
-            lead_data = {
-                "name": f"Test Lead Admin {uuid.uuid4().hex[:8]}",
-                "phone": "555-0123",
-                "email": "testlead@example.com",
-                "address": "123 Test St, Test City, TS 12345"
-            }
-            response = make_request("POST", "/leads", lead_data, headers=get_auth_headers(admin_token))
-            if response.status_code == 200:
-                lead = response.json()
-                has_hierarchy_fields = all(field in lead for field in ["owner_agent_id", "manager_id", "admin_id", "organization_id"])
-                results.add_test("Admin Lead Creation", True, 
-                               f"Lead created with hierarchy fields: {has_hierarchy_fields}")
-                admin_lead_id = lead.get("id")
-            else:
-                results.add_test("Admin Lead Creation", False, f"Status: {response.status_code}")
-                admin_lead_id = None
-        except Exception as e:
-            results.add_test("Admin Lead Creation", False, f"Error: {e}")
-            admin_lead_id = None
-    
-    # Test GET /leads with hierarchy filtering
-    if admin_token:
-        try:
-            response = make_request("GET", "/leads", headers=get_auth_headers(admin_token))
-            leads_success = response.status_code == 200
-            results.add_test("Get Leads Hierarchy", leads_success,
-                           f"Status: {response.status_code}, Leads count: {len(response.json()) if leads_success else 0}")
-        except Exception as e:
-            results.add_test("Get Leads Hierarchy", False, f"Error: {e}")
-
-def test_appointment_creation(results: TestResults, admin_token: str):
-    """Test 4: Appointment Creation (Must still work)"""
-    print(f"\n📅 Testing Appointment Creation...")
-    
-    if not admin_token:
-        results.add_test("Appointment Creation", False, "No admin token available")
-        return
-    
-    try:
-        # First create a lead for the appointment
-        lead_data = {
-            "name": f"Appointment Test Lead {uuid.uuid4().hex[:8]}",
-            "phone": "555-0456",
-            "email": "aptlead@example.com"
-        }
-        lead_response = make_request("POST", "/leads", lead_data, headers=get_auth_headers(admin_token))
-        
-        if lead_response.status_code == 200:
-            lead_id = lead_response.json()["id"]
-            
-            # Create appointment
-            apt_data = {
-                "lead_id": lead_id,
-                "appointment_date": "2025-01-20",
-                "appointment_time": "10:00",
-                "notes": "Test appointment for hierarchy system"
-            }
-            response = make_request("POST", "/appointments", apt_data, headers=get_auth_headers(admin_token))
-            
-            if response.status_code == 200:
-                apt = response.json()
-                has_hierarchy_fields = "owner_agent_id" in apt or "admin_id" in apt
-                results.add_test("Appointment Creation", True,
-                               f"Appointment created with hierarchy context: {has_hierarchy_fields}")
-            else:
-                results.add_test("Appointment Creation", False, f"Status: {response.status_code}")
-        else:
-            results.add_test("Appointment Creation", False, f"Lead creation failed: {lead_response.status_code}")
-            
-        # Test GET /appointments
-        response = make_request("GET", "/appointments", headers=get_auth_headers(admin_token))
-        apt_list_success = response.status_code == 200
-        results.add_test("Get Appointments", apt_list_success,
-                       f"Status: {response.status_code}, Count: {len(response.json()) if apt_list_success else 0}")
-        
-    except Exception as e:
-        results.add_test("Appointment Creation", False, f"Error: {e}")
-        results.add_test("Get Appointments", False, f"Error: {e}")
-
-def test_invitation_system(results: TestResults, admin_token: str):
-    """Test 5: Invitation System Tests"""
-    print(f"\n📧 Testing Invitation System...")
-    
-    if not admin_token:
-        results.add_test("Invitation System", False, "No admin token available")
-        return
-    
-    try:
-        # Test Admin inviting Manager
-        manager_invite_data = {
-            "email": "newmanager@test.com",
-            "role": "manager",
-            "name": "New Manager"
-        }
-        response = make_request("POST", "/invitations", manager_invite_data, headers=get_auth_headers(admin_token))
-        manager_invite_success = response.status_code == 200
-        results.add_test("Admin Invite Manager", manager_invite_success,
-                       f"Status: {response.status_code}")
-        
-        manager_invite_id = None
-        if manager_invite_success:
-            manager_invite_id = response.json().get("id")
-        
-        # Test Admin inviting Agent
-        agent_invite_data = {
-            "email": "newagent@test.com", 
-            "role": "agent",
-            "name": "New Agent"
-        }
-        response = make_request("POST", "/invitations", agent_invite_data, headers=get_auth_headers(admin_token))
-        agent_invite_success = response.status_code == 200
-        results.add_test("Admin Invite Agent", agent_invite_success,
-                       f"Status: {response.status_code}")
-        
-        agent_invite_id = None
-        if agent_invite_success:
-            agent_invite_id = response.json().get("id")
-        
-        # Test GET /invitations
-        response = make_request("GET", "/invitations", headers=get_auth_headers(admin_token))
-        list_success = response.status_code == 200
-        results.add_test("List Invitations", list_success,
-                       f"Status: {response.status_code}, Count: {len(response.json()) if list_success else 0}")
-        
-        # Test invitation token validation
-        if manager_invite_success:
-            invitations = make_request("GET", "/invitations", headers=get_auth_headers(admin_token)).json()
-            manager_invitation = next((inv for inv in invitations if inv.get("email") == "newmanager@test.com"), None)
-            
-            if manager_invitation and manager_invitation.get("token"):
-                token = manager_invitation["token"]
-                response = make_request("GET", f"/invitations/validate/{token}")
-                validate_success = response.status_code == 200
-                results.add_test("Validate Invitation Token", validate_success,
-                               f"Status: {response.status_code}")
-            else:
-                results.add_test("Validate Invitation Token", False, "No token found")
-        
-        # Test resend invitation
-        if manager_invite_id:
-            response = make_request("POST", f"/invitations/{manager_invite_id}/resend", headers=get_auth_headers(admin_token))
-            resend_success = response.status_code == 200
-            results.add_test("Resend Invitation", resend_success,
-                           f"Status: {response.status_code}")
-        
-        # Test cancel invitation
-        if agent_invite_id:
-            response = make_request("DELETE", f"/invitations/{agent_invite_id}", headers=get_auth_headers(admin_token))
-            cancel_success = response.status_code == 200
-            results.add_test("Cancel Invitation", cancel_success,
-                           f"Status: {response.status_code}")
-        
-    except Exception as e:
-        results.add_test("Invitation System Error", False, f"Error: {e}")
-
-def test_permission_enforcement(results: TestResults, admin_token: str, agent_token: str):
-    """Test 6: Permission Enforcement Tests"""
-    print(f"\n🛡️ Testing Permission Enforcement...")
-    
-    # Test Agent cannot invite (should return 403)
-    if agent_token:
-        try:
-            invite_data = {"email": "unauthorized@test.com", "role": "agent"}
-            response = make_request("POST", "/invitations", invite_data, headers=get_auth_headers(agent_token))
-            agent_forbidden = response.status_code == 403
-            results.add_test("Agent Cannot Invite", agent_forbidden,
-                           f"Status: {response.status_code} (expected 403)")
-        except Exception as e:
-            results.add_test("Agent Cannot Invite", False, f"Error: {e}")
-    
-    # Test Manager permissions (need to get manager token first)
-    manager_token = login_user(MANAGER_CREDS)
-    if manager_token:
-        try:
-            # Manager cannot invite manager (should return 403)
-            invite_data = {"email": "badmanager@test.com", "role": "manager"}
-            response = make_request("POST", "/invitations", invite_data, headers=get_auth_headers(manager_token))
-            manager_forbidden = response.status_code == 403
-            results.add_test("Manager Cannot Invite Manager", manager_forbidden,
-                           f"Status: {response.status_code} (expected 403)")
-            
-            # Manager can invite agent (should return 200)
-            invite_data = {"email": "manageragent@test.com", "role": "agent"}
-            response = make_request("POST", "/invitations", invite_data, headers=get_auth_headers(manager_token))
-            manager_can_invite_agent = response.status_code == 200
-            results.add_test("Manager Can Invite Agent", manager_can_invite_agent,
-                           f"Status: {response.status_code} (expected 200)")
-        except Exception as e:
-            results.add_test("Manager Permission Tests", False, f"Error: {e}")
-
-def test_user_management(results: TestResults, admin_token: str):
-    """Test 7: User Management Tests (Admin Only)"""
-    print(f"\n👤 Testing User Management...")
-    
-    if not admin_token:
-        results.add_test("User Management", False, "No admin token available")
-        return
-    
-    try:
-        # Test GET /users as Admin
-        response = make_request("GET", "/users", headers=get_auth_headers(admin_token))
-        users_success = response.status_code == 200
-        results.add_test("Get Users (Admin)", users_success,
-                       f"Status: {response.status_code}, Users: {len(response.json()) if users_success else 0}")
-        
-        users = response.json() if users_success else []
-        test_user_id = None
-        
-        # Find a non-admin user to test role changes
-        for user in users:
-            if user.get("role") == "agent":
-                test_user_id = user.get("id")
-                break
-        
-        if test_user_id:
-            # Test promote agent to manager
-            role_data = {"role": "manager"}
-            response = make_request("PUT", f"/users/{test_user_id}/role", role_data, headers=get_auth_headers(admin_token))
-            promote_success = response.status_code == 200
-            results.add_test("Promote User Role", promote_success,
-                           f"Status: {response.status_code}")
-            
-            # Test demote back to agent
-            role_data = {"role": "agent"}
-            response = make_request("PUT", f"/users/{test_user_id}/role", role_data, headers=get_auth_headers(admin_token))
-            demote_success = response.status_code == 200
-            results.add_test("Demote User Role", demote_success,
-                           f"Status: {response.status_code}")
-            
-            # Test deactivate user
-            status_data = {"is_active": False}
-            response = make_request("PUT", f"/users/{test_user_id}/status", status_data, headers=get_auth_headers(admin_token))
-            deactivate_success = response.status_code == 200
-            results.add_test("Deactivate User", deactivate_success,
-                           f"Status: {response.status_code}")
-            
-            # Test reactivate user
-            status_data = {"is_active": True}
-            response = make_request("PUT", f"/users/{test_user_id}/status", status_data, headers=get_auth_headers(admin_token))
-            reactivate_success = response.status_code == 200
-            results.add_test("Reactivate User", reactivate_success,
-                           f"Status: {response.status_code}")
-        else:
-            results.add_test("User Role Management", False, "No test user found")
-        
-    except Exception as e:
-        results.add_test("User Management Error", False, f"Error: {e}")
-
-def test_hierarchy_migration(results: TestResults, admin_token: str):
-    """Test 8: Hierarchy Migration Test"""
-    print(f"\n🔄 Testing Hierarchy Migration...")
-    
-    if not admin_token:
-        results.add_test("Hierarchy Migration", False, "No admin token available")
-        return
-    
-    try:
-        response = make_request("POST", "/admin/migrate-hierarchy", headers=get_auth_headers(admin_token))
-        migration_success = response.status_code == 200
-        results.add_test("Hierarchy Migration", migration_success,
-                       f"Status: {response.status_code}")
-        
-        if migration_success:
-            migration_data = response.json()
-            results.add_test("Migration Data", True,
-                           f"Org ID: {migration_data.get('organization_id')}, Users migrated: {migration_data.get('users_migrated')}")
-    except Exception as e:
-        results.add_test("Hierarchy Migration", False, f"Error: {e}")
-
-def test_soa_workflow(results: TestResults, agent_token: str):
-    """Test 9: SOA Workflow Verification (Must still work)"""
-    print(f"\n📋 Testing SOA Workflow...")
-    
-    if not agent_token:
-        results.add_test("SOA Workflow", False, "No agent token available")
-        return
-    
-    try:
-        # Create a lead first
-        lead_data = {
-            "name": f"SOA Test Lead {uuid.uuid4().hex[:8]}",
-            "phone": "555-0789",
-            "email": "soalead@example.com"
-        }
-        lead_response = make_request("POST", "/leads", lead_data, headers=get_auth_headers(agent_token))
-        
-        if lead_response.status_code == 200:
-            lead_id = lead_response.json()["id"]
-            
-            # Test POST /scope
-            scope_data = {
-                "lead_id": lead_id,
-                "form_fields": {
-                    "beneficiary_name": "John Test Beneficiary",
-                    "beneficiary_phone": "555-1234",
-                    "beneficiary_address": "123 Test Ave"
-                },
-                "typed_name": "John Test Beneficiary",
-                "signature": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==",
-                "agent_typed_name": "Test Agent",
-                "agent_signature": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg=="
-            }
-            
-            response = make_request("POST", "/scope", scope_data, headers=get_auth_headers(agent_token))
-            scope_success = response.status_code == 200
-            results.add_test("SOA Creation", scope_success,
-                           f"Status: {response.status_code}")
-            
-            if scope_success:
-                scope_id = response.json().get("id")
-                
-                # Test GET /scope/{id}
-                response = make_request("GET", f"/scope/{scope_id}", headers=get_auth_headers(agent_token))
-                get_scope_success = response.status_code == 200
-                results.add_test("Get SOA", get_scope_success,
-                               f"Status: {response.status_code}")
-                
-                # Test PDF generation
-                response = make_request("POST", f"/scope/{scope_id}/generate-pdf", headers=get_auth_headers(agent_token))
-                pdf_success = response.status_code == 200
-                results.add_test("SOA PDF Generation", pdf_success,
-                               f"Status: {response.status_code}")
-        else:
-            results.add_test("SOA Workflow", False, f"Lead creation failed: {lead_response.status_code}")
-            
-    except Exception as e:
-        results.add_test("SOA Workflow Error", False, f"Error: {e}")
-
-def test_data_filtering(results: TestResults, admin_token: str, agent_token: str):
-    """Test 10: Data Filtering Verification"""
-    print(f"\n🔍 Testing Data Filtering...")
-    
-    # Test Agent data filtering
-    if agent_token:
-        try:
-            response = make_request("GET", "/leads", headers=get_auth_headers(agent_token))
-            agent_leads_success = response.status_code == 200
-            agent_leads_count = len(response.json()) if agent_leads_success else 0
-            results.add_test("Agent Lead Filtering", agent_leads_success,
-                           f"Status: {response.status_code}, Agent sees {agent_leads_count} leads")
-        except Exception as e:
-            results.add_test("Agent Lead Filtering", False, f"Error: {e}")
-    
-    # Test Manager data filtering (if manager exists)
-    manager_token = login_user(MANAGER_CREDS)
-    if manager_token:
-        try:
-            response = make_request("GET", "/leads", headers=get_auth_headers(manager_token))
-            manager_leads_success = response.status_code == 200
-            manager_leads_count = len(response.json()) if manager_leads_success else 0
-            results.add_test("Manager Lead Filtering", manager_leads_success,
-                           f"Status: {response.status_code}, Manager sees {manager_leads_count} leads")
-        except Exception as e:
-            results.add_test("Manager Lead Filtering", False, f"Error: {e}")
-    
-    # Test Admin data filtering
-    if admin_token:
-        try:
-            response = make_request("GET", "/leads", headers=get_auth_headers(admin_token))
-            admin_leads_success = response.status_code == 200
-            admin_leads_count = len(response.json()) if admin_leads_success else 0
-            results.add_test("Admin Lead Filtering", admin_leads_success,
-                           f"Status: {response.status_code}, Admin sees {admin_leads_count} leads")
-        except Exception as e:
-            results.add_test("Admin Lead Filtering", False, f"Error: {e}")
-
-def main():
-    """Run comprehensive Role-Based User Hierarchy System tests"""
-    print("🎯 ROLE-BASED USER HIERARCHY SYSTEM - COMPREHENSIVE BACKEND TESTING")
-    print("=" * 80)
-    print(f"Base URL: {BASE_URL}")
-    print(f"Test Credentials: Admin, Manager, Agent")
-    print(f"Requirement: ALL TESTS MUST PASS (100% required)")
-    print("=" * 80)
-    
-    results = TestResults()
-    
-    # Test 1: Existing Auth Verification
-    admin_token, agent_token = test_existing_auth_verification(results)
-    
-    # Test 2: Password Reset
-    test_password_reset(results)
-    
-    # Test 3: Lead Creation
-    test_lead_creation(results, admin_token, agent_token)
-    
-    # Test 4: Appointment Creation
-    test_appointment_creation(results, admin_token)
-    
-    # Test 5: Invitation System
-    test_invitation_system(results, admin_token)
-    
-    # Test 6: Permission Enforcement
-    test_permission_enforcement(results, admin_token, agent_token)
-    
-    # Test 7: User Management
-    test_user_management(results, admin_token)
-    
-    # Test 8: Hierarchy Migration
-    test_hierarchy_migration(results, admin_token)
-    
-    # Test 9: SOA Workflow
-    test_soa_workflow(results, agent_token)
-    
-    # Test 10: Data Filtering
-    test_data_filtering(results, admin_token, agent_token)
-    
-    # Print final results
-    all_passed = results.print_summary()
-    
-    if all_passed:
-        print(f"\n🎉 SUCCESS: All tests passed! Role-Based User Hierarchy System is fully functional.")
-    else:
-        print(f"\n⚠️  ATTENTION: {len(results.failed_tests)} test(s) failed. Review required.")
-    
-    return all_passed
+        print()
+        print("=" * 80)
+        print(f"Test completed at: {datetime.now().isoformat()}")
+        print("=" * 80)
 
 if __name__ == "__main__":
-    main()
+    tester = BackendTester()
+    tester.run_all_tests()
