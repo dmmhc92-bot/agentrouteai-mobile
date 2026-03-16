@@ -8,7 +8,10 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "preflight": "node ./scripts/preflight-check.js",
+    "start:ci": "node ./scripts/preflight-check.js && expo start",
+    "tunnel": "node ./scripts/preflight-check.js && expo start --tunnel"
   },
   "dependencies": {
     "@babel/runtime": "^7.20.6",
