@@ -342,7 +342,24 @@ export default function PipelineScreen() {
           </View>
         )}
 
-        {pipelineData?.stages.map(renderStageCard)}
+        {pipelineData?.stages && pipelineData.stages.length > 0 ? (
+          pipelineData.stages.map(renderStageCard)
+        ) : (
+          <View style={styles.emptyState}>
+            <Ionicons name="funnel-outline" size={64} color="#64748B" />
+            <Text style={styles.emptyStateTitle}>No Pipeline Data</Text>
+            <Text style={styles.emptyStateText}>
+              Your pipeline will populate as you create leads and appointments.
+            </Text>
+            <TouchableOpacity 
+              style={styles.emptyStateButton}
+              onPress={() => router.push('/lead/new')}
+            >
+              <Ionicons name="add" size={20} color="#FFFFFF" />
+              <Text style={styles.emptyStateButtonText}>Add Your First Lead</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </ScrollView>
 
       {/* Move Case Modal */}
