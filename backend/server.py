@@ -1373,25 +1373,272 @@ async def get_invitation(invite_id: str, current_user: dict = Depends(require_ma
 @api_router.get("/invitations/validate/{token}")
 async def validate_invitation(token: str):
     """Validate an invitation token (public endpoint for signup flow)"""
-    invitation = await db.invitations.find_one({
-        "token": token,
-        "status": "pending",
-        "expires_at": {"$gt": datetime.utcnow()}
-    })
+    invitation = await db.invitations.find_one({"token": token})
     
     if not invitation:
-        raise HTTPException(status_code=404, detail="Invalid or expired invitation")
+        return {
+            "valid": False,
+            "status": "invalid",
+            "message": "Invitation not found"
+        }
+    
+    # Check various statuses
+    if invitation.get("status") == "accepted":
+        return {
+            "valid": False,
+            "status": "accepted",
+            "message": "This invitation has already been used"
+        }
+    
+    if invitation.get("status") == "cancelled" or invitation.get("status") == "revoked":
+        return {
+            "valid": False,
+            "status": "revoked",
+            "message": "This invitation has been revoked"
+        }
+    
+    if invitation.get("expires_at") and invitation["expires_at"] < datetime.utcnow():
+        return {
+            "valid": False,
+            "status": "expired",
+            "message": "This invitation has expired"
+        }
+    
+    # Get organization info
+    org = await db.organizations.find_one({"id": invitation.get("organization_id")})
+    org_name = org.get("name") if org else None
+    
+    # Fall back to admin's team name
+    if not org_name:
+        admin = await db.users.find_one({"id": invitation.get("admin_id")}, {"name": 1})
+        org_name = f"{admin.get('name', 'Unknown')}'s Team" if admin else "Team"
     
     inviter = await db.users.find_one({"id": invitation.get("invited_by_user_id")}, {"name": 1})
     
     return {
         "valid": True,
-        "email": invitation["email"],
+        "status": "pending",
+        "email": invitation.get("email"),
         "name": invitation.get("name"),
         "role": invitation["role"],
+        "organization_id": invitation.get("organization_id"),
+        "organization_name": org_name,
         "invited_by_name": inviter.get("name") if inviter else "Unknown",
-        "expires_at": invitation["expires_at"]
+        "expires_at": invitation["expires_at"],
+        "is_email_locked": invitation.get("email") is not None
     }
+
+class AcceptInviteRequest(BaseModel):
+    token: str
+    email: Optional[str] = None
+    password: Optional[str] = None
+    name: Optional[str] = None
+    is_existing_user: bool = False
+
+@api_router.post("/invitations/accept")
+async def accept_invitation_link(request: AcceptInviteRequest):
+    """
+    Accept an invitation link. Handles both:
+    1. Existing users: Sign in and attach to organization
+    2. New users: Create account and attach to organization
+    
+    This endpoint NEVER trusts frontend role input - role is always derived from the invite record.
+    """
+    # Find the invitation
+    invitation = await db.invitations.find_one({"token": request.token})
+    
+    if not invitation:
+        raise HTTPException(status_code=404, detail="Invalid invitation link")
+    
+    # Validate invitation status
+    if invitation.get("status") == "accepted":
+        raise HTTPException(status_code=400, detail="This invitation has already been used")
+    
+    if invitation.get("status") in ["cancelled", "revoked"]:
+        raise HTTPException(status_code=400, detail="This invitation has been revoked")
+    
+    if invitation.get("expires_at") and invitation["expires_at"] < datetime.utcnow():
+        raise HTTPException(status_code=400, detail="This invitation has expired")
+    
+    # Determine email to use
+    email_to_use = invitation.get("email") or request.email
+    if not email_to_use:
+        raise HTTPException(status_code=400, detail="Email is required")
+    
+    email_to_use = email_to_use.lower()
+    
+    # If invitation has specific email, enforce it
+    if invitation.get("email") and invitation["email"].lower() != email_to_use:
+        raise HTTPException(status_code=400, detail="This invitation is for a specific email address")
+    
+    now = datetime.utcnow()
+    
+    # Check if user already exists
+    existing_user = await db.users.find_one({"email": email_to_use, "deleted_at": None})
+    
+    if existing_user:
+        # EXISTING USER FLOW
+        # Check if already attached to another organization
+        if existing_user.get("organization_id") and existing_user["organization_id"] != invitation.get("organization_id"):
+            raise HTTPException(
+                status_code=409, 
+                detail="You are already a member of another organization. Please contact support or ask an admin to reassign you using admin recovery tools."
+            )
+        
+        # If request says it's an existing user, we need password validation
+        if request.is_existing_user:
+            if not request.password:
+                raise HTTPException(status_code=400, detail="Password is required for existing users")
+            
+            # Verify password
+            if not verify_password(request.password, existing_user.get("password_hash", "")):
+                raise HTTPException(status_code=401, detail="Invalid password")
+        
+        # Update existing user with organization info - ROLE FROM INVITE ONLY
+        user_id = existing_user["id"]
+        
+        update_data = {
+            "organization_id": invitation.get("organization_id"),
+            "admin_id": invitation.get("admin_id"),
+            "manager_id": invitation.get("manager_id"),
+            "role": invitation["role"],  # ALWAYS from invite record
+            "invited_by_user_id": invitation.get("invited_by_user_id"),
+            "joined_team_at": now,
+            "updated_at": now,
+            "approval_status": "approved"
+        }
+        
+        await db.users.update_one({"id": user_id}, {"$set": update_data})
+        
+        # Update all user's personal data to be associated with the org
+        await db.leads.update_many(
+            {"owner_user_id": user_id},
+            {"$set": {
+                "organization_id": invitation.get("organization_id"),
+                "admin_id": invitation.get("admin_id")
+            }}
+        )
+        await db.appointments.update_many(
+            {"created_by_user": user_id},
+            {"$set": {"organization_id": invitation.get("organization_id")}}
+        )
+        
+        # Fetch updated user
+        updated_user = await db.users.find_one({"id": user_id})
+        
+    else:
+        # NEW USER FLOW
+        if not request.password:
+            raise HTTPException(status_code=400, detail="Password is required for new users")
+        if not request.name:
+            raise HTTPException(status_code=400, detail="Name is required for new users")
+        if len(request.password) < 6:
+            raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+        
+        user_id = str(uuid.uuid4())
+        
+        user_doc = {
+            "id": user_id,
+            "name": request.name,
+            "email": email_to_use,
+            "password_hash": get_password_hash(request.password),
+            "role": invitation["role"],  # ALWAYS from invite record
+            "admin_id": invitation.get("admin_id"),
+            "manager_id": invitation.get("manager_id"),
+            "organization_id": invitation.get("organization_id"),
+            "organization_owner": False,
+            "invited_by_user_id": invitation.get("invited_by_user_id"),
+            "approval_status": "approved",
+            "phone": None,
+            "territory": None,
+            "subscription_status": "trial",
+            "commission_rate": 0.6,
+            "created_at": now,
+            "updated_at": now,
+            "last_login": now,
+            "is_active": True,
+            "deleted_at": None,
+            "joined_team_at": now,
+            "notification_preferences": {
+                "appointments": True,
+                "reminders": True,
+                "follow_ups": True,
+                "team_alerts": True,
+                "lead_alerts": True,
+                "push_enabled": True
+            }
+        }
+        
+        await db.users.insert_one(user_doc)
+        updated_user = user_doc
+    
+    # IMMEDIATELY INVALIDATE THE INVITATION (single-use)
+    await db.invitations.update_one(
+        {"id": invitation["id"]},
+        {
+            "$set": {
+                "status": "accepted",
+                "accepted_at": now,
+                "accepted_by_user_id": user_id
+            }
+        }
+    )
+    
+    # Create access token
+    access_token = create_access_token(data={"sub": user_id})
+    
+    # Log activity
+    await log_activity(user_id, "invitation_accepted", f"Accepted invitation as {invitation['role']}")
+    logger.info(f"Invitation accepted: {email_to_use} joined as {invitation['role']}")
+    
+    # Get organization name
+    org = await db.organizations.find_one({"id": invitation.get("organization_id")})
+    org_name = org.get("name") if org else None
+    
+    if not org_name:
+        admin = await db.users.find_one({"id": invitation.get("admin_id")}, {"name": 1})
+        org_name = f"{admin.get('name', 'Unknown')}'s Team" if admin else "Team"
+    
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": {
+            "id": user_id,
+            "name": updated_user.get("name"),
+            "email": email_to_use,
+            "role": invitation["role"],  # Return the role from invite
+            "organization_id": invitation.get("organization_id"),
+            "organization_name": org_name,
+            "admin_id": invitation.get("admin_id"),
+            "manager_id": invitation.get("manager_id"),
+            "account_mode": "connected",
+            "is_new_user": not existing_user
+        }
+    }
+
+@api_router.post("/invitations/{invite_id}/revoke")
+async def revoke_invitation(invite_id: str, current_user: dict = Depends(require_manager_or_admin)):
+    """Revoke a pending invitation"""
+    invitation = await db.invitations.find_one({"id": invite_id})
+    if not invitation:
+        raise HTTPException(status_code=404, detail="Invitation not found")
+    
+    # Check permission - only admin or the creator can revoke
+    current_role = current_user.get("role")
+    if current_role != "admin" and invitation.get("invited_by_user_id") != current_user["id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    if invitation.get("status") == "accepted":
+        raise HTTPException(status_code=400, detail="Cannot revoke an accepted invitation")
+    
+    await db.invitations.update_one(
+        {"id": invite_id},
+        {"$set": {"status": "revoked", "revoked_at": datetime.utcnow(), "revoked_by_user_id": current_user["id"]}}
+    )
+    
+    await log_activity(current_user["id"], "invitation_revoked", f"Revoked invitation {invite_id}")
+    
+    return {"message": "Invitation revoked", "status": "revoked"}
 
 @api_router.post("/invitations/{invite_id}/resend")
 async def resend_invitation(invite_id: str, current_user: dict = Depends(require_manager_or_admin)):
