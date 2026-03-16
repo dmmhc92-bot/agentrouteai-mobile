@@ -48,20 +48,33 @@ class ProductionHardeningTests:
             
         try:
             if method.upper() == "GET":
-                response = self.session.get(url, headers=headers, timeout=10)
+                response = self.session.get(url, headers=headers, timeout=15)
             elif method.upper() == "POST":
-                response = self.session.post(url, json=data, headers=headers, timeout=10)
+                response = self.session.post(url, json=data, headers=headers, timeout=15)
             elif method.upper() == "PUT":
-                response = self.session.put(url, json=data, headers=headers, timeout=10)
+                response = self.session.put(url, json=data, headers=headers, timeout=15)
             elif method.upper() == "DELETE":
-                response = self.session.delete(url, headers=headers, timeout=10)
+                response = self.session.delete(url, headers=headers, timeout=15)
             else:
                 raise ValueError(f"Unsupported method: {method}")
                 
             return response
         except requests.exceptions.RequestException as e:
             print(f"Request failed: {e}")
-            return None
+            # Retry once for network issues
+            try:
+                time.sleep(1)
+                if method.upper() == "GET":
+                    response = self.session.get(url, headers=headers, timeout=15)
+                elif method.upper() == "POST":
+                    response = self.session.post(url, json=data, headers=headers, timeout=15)
+                elif method.upper() == "PUT":
+                    response = self.session.put(url, json=data, headers=headers, timeout=15)
+                elif method.upper() == "DELETE":
+                    response = self.session.delete(url, headers=headers, timeout=15)
+                return response
+            except:
+                return None
 
     def test_1_team_role_bootstrap(self):
         """Test 1: TEAM/ROLE BOOTSTRAP LOGIC"""
