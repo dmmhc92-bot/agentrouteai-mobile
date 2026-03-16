@@ -24,7 +24,7 @@ from datetime import datetime
 from typing import Dict, Any, Optional
 
 # Configuration
-BASE_URL = "https://agentrouteai-1.preview.emergentagent.com/api"
+BASE_URL = "https://sales-team-hub-2.preview.emergentagent.com/api"
 TIMEOUT = 30
 
 # Test Credentials
