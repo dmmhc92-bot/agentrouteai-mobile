@@ -214,24 +214,21 @@ export default function NotificationPreferencesScreen() {
             <View style={styles.pushStatusHeader}>
               <View style={[
                 styles.statusIndicator, 
-                { backgroundColor: pushToken ? '#22C55E' : '#EF4444' }
+                { backgroundColor: statusInfo.enabled ? '#22C55E' : '#EF4444' }
               ]} />
               <View style={styles.pushStatusInfo}>
                 <Text style={styles.pushStatusTitle}>
-                  {pushToken ? 'Enabled' : 'Disabled'}
+                  {statusInfo.title}
                 </Text>
                 <Text style={styles.pushStatusDescription}>
-                  {pushToken 
-                    ? 'You will receive push notifications'
-                    : 'Enable to receive notifications when app is closed'
-                  }
+                  {statusInfo.description}
                 </Text>
               </View>
             </View>
             
-            {!pushToken && (
+            {!statusInfo.enabled && (
               <TouchableOpacity
-                style={styles.enableButton}
+                style={[styles.enableButton, !isPhysicalDevice && styles.enableButtonDisabled]}
                 onPress={handleEnablePush}
                 disabled={isLoading}
               >
@@ -240,7 +237,9 @@ export default function NotificationPreferencesScreen() {
                 ) : (
                   <>
                     <Ionicons name="notifications" size={18} color="#FFFFFF" />
-                    <Text style={styles.enableButtonText}>Enable Push Notifications</Text>
+                    <Text style={styles.enableButtonText}>
+                      {!isPhysicalDevice ? 'Requires Physical Device' : 'Enable Push Notifications'}
+                    </Text>
                   </>
                 )}
               </TouchableOpacity>
