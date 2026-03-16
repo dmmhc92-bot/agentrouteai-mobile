@@ -52,6 +52,8 @@ interface AuthContextType {
   teamInfo: TeamInfo | null;
   signIn: (email: string, password: string) => Promise<User>;
   signUp: (name: string, email: string, password: string, inviteToken?: string) => Promise<void>;
+  createOrganization: (organizationName: string, name: string, email: string, password: string, phone?: string) => Promise<User>;
+  registerSolo: (name: string, email: string, password: string, phone?: string) => Promise<User>;
   signOut: () => Promise<void>;
   forgotPassword: (email: string) => Promise<{ dev_token?: string }>;
   resetPassword: (token: string, newPassword: string) => Promise<void>;
