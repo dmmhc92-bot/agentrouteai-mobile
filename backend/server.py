@@ -208,6 +208,13 @@ class PushTokenRegister(BaseModel):
     push_token: str
     device_type: str = "ios"  # 'ios' or 'android'
 
+# Route Visibility Settings
+class RouteVisibilitySettings(BaseModel):
+    visibility_level: str = "private"  # 'private', 'summary', 'shared'
+    # private: only agent sees full route
+    # summary: admin/manager sees progress summary only (stops scheduled/completed/remaining)
+    # shared: admin/manager sees full route details
+
 # User Management Models
 class UserRoleUpdate(BaseModel):
     role: str  # 'manager' or 'agent'
