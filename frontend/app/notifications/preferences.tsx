@@ -444,6 +444,9 @@ const styles = StyleSheet.create({
     marginTop: 16,
     gap: 8,
   },
+  enableButtonDisabled: {
+    backgroundColor: '#475569',
+  },
   enableButtonText: {
     color: '#FFFFFF',
     fontSize: 15,
