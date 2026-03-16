@@ -56,6 +56,7 @@ function checkEnvironmentVariables() {
   log('Checking environment variables...', 'check');
   
   let hasErrors = false;
+  const isCI = process.env.CI === 'true' || process.env.CI === '1';
   
   // Check required variables
   for (const varName of REQUIRED_ENV_VARS) {
@@ -67,22 +68,24 @@ function checkEnvironmentVariables() {
     }
   }
   
-  // Check CI-specific variables
-  const isCI = process.env.CI === 'true' || process.env.CI === '1';
+  // Check CI-specific required variables
   if (isCI) {
     log('CI environment detected', 'info');
     
-    if (!process.env.EXPO_TOKEN) {
-      log('EXPO_TOKEN is not set - Expo authentication may fail in CI', 'warn');
-      log('Set EXPO_TOKEN for non-interactive Expo/EAS commands', 'warn');
-      // Don't fail - let Expo handle auth errors
-    } else {
-      log('EXPO_TOKEN is configured for CI authentication');
+    for (const varName of CI_REQUIRED_VARS) {
+      if (!process.env[varName]) {
+        log(`Missing CI-required environment variable: ${varName}`, 'error');
+        log(`EXPO_TOKEN is required for non-interactive Expo/EAS commands in CI`, 'error');
+        log(`Get token from: https://expo.dev/settings/access-tokens`, 'info');
+        hasErrors = true;
+      } else {
+        log(`${varName} is configured for CI authentication`);
+      }
     }
   }
   
   // Log optional variables status
-  for (const varName of OPTIONAL_CI_VARS) {
+  for (const varName of OPTIONAL_VARS) {
     if (process.env[varName]) {
       log(`${varName} is configured`);
     }
