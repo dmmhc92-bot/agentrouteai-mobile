@@ -805,6 +805,181 @@ async def geocode_address(lead_id: str, address: str) -> Optional[dict]:
 
 # ==================== AUTH ROUTES ====================
 
+@api_router.post("/auth/create-organization", response_model=TokenResponse)
+async def create_organization(org_data: OrganizationCreate):
+    """
+    Create a new organization and register the user as Admin/Owner.
+    This is the "Create Organization" flow for first-time business owners.
+    """
+    # Check if email already exists
+    existing = await db.users.find_one({"email": org_data.email.lower(), "deleted_at": None})
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already registered. Please sign in instead.")
+    
+    user_id = str(uuid.uuid4())
+    organization_id = f"org_{uuid.uuid4().hex[:12]}"
+    now = datetime.utcnow()
+    
+    # Create organization record
+    org_doc = {
+        "id": organization_id,
+        "name": org_data.organization_name,
+        "owner_user_id": user_id,
+        "created_at": now,
+        "updated_at": now,
+        "is_active": True,
+        "settings": {
+            "allow_manager_invites": True,
+            "require_approval": False,
+            "default_commission_rate": 0.6
+        }
+    }
+    await db.organizations.insert_one(org_doc)
+    
+    # Create admin user
+    user_doc = {
+        "id": user_id,
+        "name": org_data.name,
+        "email": org_data.email.lower(),
+        "password_hash": get_password_hash(org_data.password),
+        "role": "admin",
+        "admin_id": user_id,  # Self-reference as admin
+        "manager_id": None,
+        "organization_id": organization_id,
+        "organization_owner": True,
+        "invited_by_user_id": None,
+        "approval_status": "approved",
+        "phone": org_data.phone,
+        "territory": None,
+        "subscription_status": "trial",
+        "commission_rate": 0.6,
+        "created_at": now,
+        "updated_at": now,
+        "last_login": now,
+        "is_active": True,
+        "deleted_at": None,
+        "reset_token": None,
+        "reset_token_expiry": None,
+        "notification_preferences": {
+            "appointments": True,
+            "reminders": True,
+            "follow_ups": True,
+            "team_alerts": True,
+            "lead_alerts": True,
+            "push_enabled": True
+        }
+    }
+    await db.users.insert_one(user_doc)
+    await log_activity(user_id, "create_organization", f"Created organization: {org_data.organization_name}")
+    
+    access_token = create_access_token(data={"sub": user_id})
+    
+    logger.info(f"Organization '{org_data.organization_name}' created by {org_data.email} as Admin")
+    
+    return TokenResponse(
+        access_token=access_token,
+        token_type="bearer",
+        user=UserResponse(
+            id=user_id,
+            name=org_data.name,
+            email=org_data.email.lower(),
+            role="admin",
+            manager_id=None,
+            admin_id=user_id,
+            organization_id=organization_id,
+            subscription_status="trial",
+            created_at=now,
+            last_login=now,
+            phone=org_data.phone,
+            territory=None,
+            commission_rate=0.6,
+            is_active=True,
+            approval_status="approved",
+            account_mode="connected",
+            organization_name=org_data.organization_name,
+            upline_name=None,
+            joined_team_at=now
+        )
+    )
+
+@api_router.post("/auth/register-solo", response_model=TokenResponse)
+async def register_solo(user_data: UserCreate):
+    """
+    Register as a Solo Agent without joining any organization.
+    User works independently with their own leads and data.
+    """
+    existing = await db.users.find_one({"email": user_data.email.lower(), "deleted_at": None})
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    
+    user_id = str(uuid.uuid4())
+    now = datetime.utcnow()
+    
+    user_doc = {
+        "id": user_id,
+        "name": user_data.name,
+        "email": user_data.email.lower(),
+        "password_hash": get_password_hash(user_data.password),
+        "role": "agent",
+        "admin_id": None,
+        "manager_id": None,
+        "organization_id": None,
+        "organization_owner": False,
+        "invited_by_user_id": None,
+        "approval_status": "approved",  # Solo agents auto-approved
+        "phone": user_data.phone,
+        "territory": user_data.territory,
+        "subscription_status": "trial",
+        "commission_rate": 0.6,
+        "created_at": now,
+        "updated_at": now,
+        "last_login": now,
+        "is_active": True,
+        "deleted_at": None,
+        "reset_token": None,
+        "reset_token_expiry": None,
+        "notification_preferences": {
+            "appointments": True,
+            "reminders": True,
+            "follow_ups": True,
+            "team_alerts": True,
+            "lead_alerts": True,
+            "push_enabled": True
+        }
+    }
+    await db.users.insert_one(user_doc)
+    await log_activity(user_id, "register_solo", "User registered as Solo Agent")
+    
+    access_token = create_access_token(data={"sub": user_id})
+    
+    logger.info(f"Solo Agent {user_data.email} registered successfully")
+    
+    return TokenResponse(
+        access_token=access_token,
+        token_type="bearer",
+        user=UserResponse(
+            id=user_id,
+            name=user_data.name,
+            email=user_data.email.lower(),
+            role="agent",
+            manager_id=None,
+            admin_id=None,
+            organization_id=None,
+            subscription_status="trial",
+            created_at=now,
+            last_login=now,
+            phone=user_data.phone,
+            territory=user_data.territory,
+            commission_rate=0.6,
+            is_active=True,
+            approval_status="approved",
+            account_mode="solo",
+            organization_name=None,
+            upline_name=None,
+            joined_team_at=None
+        )
+    )
+
 @api_router.post("/auth/register", response_model=TokenResponse)
 async def register(user_data: UserCreate):
     """
