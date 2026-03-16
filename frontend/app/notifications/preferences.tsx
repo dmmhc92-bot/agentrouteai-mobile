@@ -13,6 +13,8 @@ import {
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as Notifications from 'expo-notifications';
+import * as Device from 'expo-device';
 import { useNotifications } from '../../src/contexts/NotificationContext';
 
 interface PreferenceItemProps {
@@ -62,14 +64,26 @@ export default function NotificationPreferencesScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSendingTest, setIsSendingTest] = useState(false);
   const [localPrefs, setLocalPrefs] = useState(preferences);
+  const [permissionStatus, setPermissionStatus] = useState<string>('unknown');
+  const isPhysicalDevice = Device.isDevice;
 
   useEffect(() => {
     loadPreferences();
+    checkPermissionStatus();
   }, []);
 
   useEffect(() => {
     setLocalPrefs(preferences);
   }, [preferences]);
+
+  const checkPermissionStatus = async () => {
+    try {
+      const { status } = await Notifications.getPermissionsAsync();
+      setPermissionStatus(status);
+    } catch (error) {
+      console.log('Error checking permission status:', error);
+    }
+  };
 
   const handleToggle = async (key: keyof typeof preferences, value: boolean) => {
     const newPrefs = { ...localPrefs, [key]: value };
@@ -85,12 +99,34 @@ export default function NotificationPreferencesScreen() {
   };
 
   const handleEnablePush = async () => {
+    if (!isPhysicalDevice) {
+      Alert.alert(
+        'Physical Device Required',
+        'Push notifications require a physical iOS or Android device. They cannot be enabled in the web preview or simulator.\n\nTo test notifications:\n1. Download Expo Go on your device\n2. Scan the QR code\n3. Enable notifications when prompted',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
     setIsLoading(true);
     try {
       await registerForPushNotifications();
-      Alert.alert('Success', 'Push notifications enabled');
+      await checkPermissionStatus();
+      
+      if (pushToken) {
+        Alert.alert('Success', 'Push notifications enabled successfully!');
+      } else {
+        const { status } = await Notifications.getPermissionsAsync();
+        if (status === 'denied') {
+          Alert.alert(
+            'Permission Denied',
+            'Notification permission was denied. Please enable notifications in your device settings:\n\nSettings → AgentRoute AI → Notifications',
+            [{ text: 'OK' }]
+          );
+        }
+      }
     } catch (error) {
-      Alert.alert('Error', 'Failed to enable push notifications');
+      Alert.alert('Error', 'Failed to enable push notifications. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -99,14 +135,65 @@ export default function NotificationPreferencesScreen() {
   const handleSendTestNotification = async () => {
     setIsSendingTest(true);
     try {
+      // Always create a backend notification record
       await sendTestNotification();
-      Alert.alert('Test Sent', 'A test notification has been sent. Check your notification center.');
+      
+      // If on physical device with permissions, also schedule a local notification
+      if (isPhysicalDevice && permissionStatus === 'granted') {
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: 'Test Notification 🔔',
+            body: 'This is a test notification from AgentRoute AI. Tap to open the app.',
+            data: { screen: 'dashboard' },
+            sound: true,
+          },
+          trigger: { seconds: 1 },
+        });
+        Alert.alert('Test Sent', 'A test notification will appear in 1 second. Check your notification center.');
+      } else {
+        Alert.alert(
+          'Notification Created',
+          'A test notification has been created in the system.\n\nNote: To see push notifications appear on your device, you need:\n1. A physical iOS/Android device\n2. Notification permissions enabled',
+          [{ text: 'OK' }]
+        );
+      }
     } catch (error) {
       Alert.alert('Error', 'Failed to send test notification');
     } finally {
       setIsSendingTest(false);
     }
   };
+
+  const getStatusText = () => {
+    if (!isPhysicalDevice) {
+      return { 
+        enabled: false, 
+        title: 'Not Available (Web/Simulator)', 
+        description: 'Push notifications require a physical device' 
+      };
+    }
+    if (pushToken) {
+      return { 
+        enabled: true, 
+        title: 'Enabled', 
+        description: 'You will receive push notifications' 
+      };
+    }
+    if (permissionStatus === 'denied') {
+      return { 
+        enabled: false, 
+        title: 'Permission Denied', 
+        description: 'Enable in device Settings → AgentRoute AI → Notifications' 
+      };
+    }
+    return { 
+      enabled: false, 
+      title: 'Disabled', 
+      description: 'Enable to receive notifications when app is closed' 
+    };
+  };
+
+  const statusInfo = getStatusText();
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
