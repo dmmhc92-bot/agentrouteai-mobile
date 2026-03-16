@@ -735,6 +735,19 @@ const styles = StyleSheet.create({
     color: '#94A3B8',
     fontSize: 14,
   },
+  roleContainer: {
+    marginTop: 8,
+  },
+  roleBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  roleText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
   subscriptionCard: {
     backgroundColor: '#1E293B',
     borderRadius: 16,
