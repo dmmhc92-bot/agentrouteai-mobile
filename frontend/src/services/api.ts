@@ -864,10 +864,7 @@ class ApiService {
     return response.data;
   }
 
-  async getInvitations() {
-    const response = await apiClient.get('/invitations');
-    return response.data;
-  }
+  // Note: getInvitations() is defined earlier in the INVITATION MANAGEMENT section
 
   async validateInviteLink(token: string) {
     const response = await apiClient.get(`/invitations/validate/${token}`);
