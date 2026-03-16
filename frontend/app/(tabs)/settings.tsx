@@ -431,6 +431,19 @@ export default function SettingsScreen() {
           </View>
         </View>
 
+        {/* Notifications Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Notifications</Text>
+          <View style={styles.menuCard}>
+            <MenuItem
+              icon="notifications-outline"
+              title="Notification Preferences"
+              subtitle="Manage alerts and reminders"
+              onPress={() => router.push('/notifications/preferences')}
+            />
+          </View>
+        </View>
+
         {/* Menu Items */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Legal & Support</Text>
