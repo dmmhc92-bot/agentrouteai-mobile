@@ -68,27 +68,11 @@ export default function TeamInvitationsScreen() {
   const [createName, setCreateName] = useState('');
   const [isCreating, setIsCreating] = useState(false);
 
-  // Access control
-  if (!isAdmin && !isManager) {
-    return (
-      <View style={[styles.container, styles.centerContent, { paddingTop: insets.top }]}>
-        <View style={styles.accessDeniedCard}>
-          <Ionicons name="lock-closed" size={48} color="#EF4444" />
-          <Text style={styles.accessDeniedTitle}>Access Restricted</Text>
-          <Text style={styles.accessDeniedMessage}>
-            Only Admins and Managers can manage team invitations.
-          </Text>
-          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-            <Text style={styles.backButtonText}>Go Back</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
-  }
-
   useEffect(() => {
-    loadInvitations();
-  }, []);
+    if (isAdmin || isManager) {
+      loadInvitations();
+    }
+  }, [isAdmin, isManager]);
 
   const loadInvitations = async () => {
     try {
@@ -106,6 +90,24 @@ export default function TeamInvitationsScreen() {
     setIsRefreshing(true);
     loadInvitations();
   }, []);
+
+  // Access control - moved after all hooks
+  if (!isAdmin && !isManager) {
+    return (
+      <View style={[styles.container, styles.centerContent, { paddingTop: insets.top }]}>
+        <View style={styles.accessDeniedCard}>
+          <Ionicons name="lock-closed" size={48} color="#EF4444" />
+          <Text style={styles.accessDeniedTitle}>Access Restricted</Text>
+          <Text style={styles.accessDeniedMessage}>
+            Only Admins and Managers can manage team invitations.
+          </Text>
+          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+            <Text style={styles.backButtonText}>Go Back</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
 
   const getFilteredInvitations = () => {
     const now = new Date();
