@@ -8289,6 +8289,247 @@ async def send_test_notification(current_user: dict = Depends(get_current_user))
     )
     return {"status": "success", "notification": notification}
 
+# ==================== ADMIN RECOVERY / SUPPORT TOOLS ====================
+
+# These endpoints are for internal admin use only to fix orphan accounts and role issues
+
+class AdminRecoveryPromote(BaseModel):
+    user_email: str
+    new_role: str  # 'admin', 'manager', 'agent'
+    organization_id: Optional[str] = None
+    reason: str
+
+class AdminRecoveryAssignTeam(BaseModel):
+    user_email: str
+    organization_id: str
+    role: str = "agent"
+    reason: str
+
+class AdminRecoveryFixOrphan(BaseModel):
+    user_email: str
+    action: str  # 'make_solo' or 'assign_team'
+    organization_id: Optional[str] = None
+    reason: str
+
+@api_router.post("/admin/recovery/promote-user")
+async def admin_recovery_promote_user(
+    request: AdminRecoveryPromote,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Admin-only: Promote a user to a different role.
+    Used for recovering orphan accounts or fixing role issues.
+    Requires super admin (organization owner).
+    """
+    # Only organization owners can use recovery tools
+    user = await db.users.find_one({"id": current_user["id"]})
+    if not user or not user.get("organization_owner"):
+        raise HTTPException(status_code=403, detail="Only organization owners can use admin recovery tools")
+    
+    if request.new_role not in ["admin", "manager", "agent"]:
+        raise HTTPException(status_code=400, detail="Invalid role. Must be admin, manager, or agent")
+    
+    # Find target user
+    target_user = await db.users.find_one({"email": request.user_email.lower(), "deleted_at": None})
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Update user role
+    update_data = {
+        "role": request.new_role,
+        "updated_at": datetime.utcnow()
+    }
+    
+    # If promoting to admin, set organization_owner
+    if request.new_role == "admin":
+        update_data["organization_owner"] = True
+        if request.organization_id:
+            update_data["organization_id"] = request.organization_id
+            update_data["admin_id"] = target_user["id"]
+    
+    await db.users.update_one(
+        {"id": target_user["id"]},
+        {"$set": update_data}
+    )
+    
+    # Log the recovery action
+    await log_activity(
+        current_user["id"], 
+        "admin_recovery_promote", 
+        f"Promoted {request.user_email} to {request.new_role}. Reason: {request.reason}"
+    )
+    
+    logger.info(f"Admin recovery: {current_user['email']} promoted {request.user_email} to {request.new_role}")
+    
+    return {
+        "status": "success",
+        "message": f"User {request.user_email} promoted to {request.new_role}",
+        "user_id": target_user["id"]
+    }
+
+@api_router.post("/admin/recovery/assign-team")
+async def admin_recovery_assign_team(
+    request: AdminRecoveryAssignTeam,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Admin-only: Assign a user to a team/organization.
+    Used for fixing orphan users who have no team.
+    """
+    user = await db.users.find_one({"id": current_user["id"]})
+    if not user or not user.get("organization_owner"):
+        raise HTTPException(status_code=403, detail="Only organization owners can use admin recovery tools")
+    
+    # Find target user
+    target_user = await db.users.find_one({"email": request.user_email.lower(), "deleted_at": None})
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Verify organization exists
+    org = await db.organizations.find_one({"id": request.organization_id})
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    
+    # Get the org admin
+    org_admin = await db.users.find_one({
+        "organization_id": request.organization_id,
+        "role": "admin",
+        "deleted_at": None
+    })
+    
+    # Update user
+    await db.users.update_one(
+        {"id": target_user["id"]},
+        {
+            "$set": {
+                "organization_id": request.organization_id,
+                "role": request.role,
+                "admin_id": org_admin["id"] if org_admin else None,
+                "updated_at": datetime.utcnow(),
+                "joined_team_at": datetime.utcnow()
+            }
+        }
+    )
+    
+    await log_activity(
+        current_user["id"],
+        "admin_recovery_assign_team",
+        f"Assigned {request.user_email} to org {request.organization_id}. Reason: {request.reason}"
+    )
+    
+    return {
+        "status": "success",
+        "message": f"User {request.user_email} assigned to team",
+        "organization_id": request.organization_id
+    }
+
+@api_router.get("/admin/recovery/orphan-users")
+async def admin_recovery_get_orphan_users(current_user: dict = Depends(get_current_user)):
+    """
+    Admin-only: Get list of orphan users (no organization, not marked as solo).
+    """
+    user = await db.users.find_one({"id": current_user["id"]})
+    if not user or user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    # Find users with no organization and unclear status
+    orphans = await db.users.find({
+        "organization_id": None,
+        "deleted_at": None,
+        "$or": [
+            {"role": {"$ne": "agent"}},  # Non-agents without org are orphans
+            {"approval_status": "pending"}  # Pending users might be orphans
+        ]
+    }).to_list(100)
+    
+    return {
+        "orphan_users": [
+            {
+                "id": u["id"],
+                "email": u["email"],
+                "name": u.get("name"),
+                "role": u.get("role"),
+                "created_at": u.get("created_at"),
+                "approval_status": u.get("approval_status")
+            }
+            for u in orphans
+        ],
+        "count": len(orphans)
+    }
+
+@api_router.post("/admin/recovery/fix-orphan")
+async def admin_recovery_fix_orphan(
+    request: AdminRecoveryFixOrphan,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Admin-only: Fix an orphan user by either making them solo or assigning to a team.
+    """
+    user = await db.users.find_one({"id": current_user["id"]})
+    if not user or user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    target_user = await db.users.find_one({"email": request.user_email.lower(), "deleted_at": None})
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    if request.action == "make_solo":
+        # Convert to solo agent
+        await db.users.update_one(
+            {"id": target_user["id"]},
+            {
+                "$set": {
+                    "role": "agent",
+                    "organization_id": None,
+                    "admin_id": None,
+                    "manager_id": None,
+                    "approval_status": "approved",
+                    "updated_at": datetime.utcnow()
+                }
+            }
+        )
+        message = f"User {request.user_email} converted to solo agent"
+    
+    elif request.action == "assign_team":
+        if not request.organization_id:
+            raise HTTPException(status_code=400, detail="organization_id required for assign_team action")
+        
+        org = await db.organizations.find_one({"id": request.organization_id})
+        if not org:
+            raise HTTPException(status_code=404, detail="Organization not found")
+        
+        org_admin = await db.users.find_one({
+            "organization_id": request.organization_id,
+            "role": "admin",
+            "deleted_at": None
+        })
+        
+        await db.users.update_one(
+            {"id": target_user["id"]},
+            {
+                "$set": {
+                    "organization_id": request.organization_id,
+                    "admin_id": org_admin["id"] if org_admin else None,
+                    "role": "agent",
+                    "approval_status": "approved",
+                    "updated_at": datetime.utcnow(),
+                    "joined_team_at": datetime.utcnow()
+                }
+            }
+        )
+        message = f"User {request.user_email} assigned to organization"
+    
+    else:
+        raise HTTPException(status_code=400, detail="Invalid action. Must be 'make_solo' or 'assign_team'")
+    
+    await log_activity(
+        current_user["id"],
+        "admin_recovery_fix_orphan",
+        f"{request.action} for {request.user_email}. Reason: {request.reason}"
+    )
+    
+    return {"status": "success", "message": message}
+
 # ==================== HEALTH CHECK ====================
 
 @api_router.get("/")
