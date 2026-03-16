@@ -7917,6 +7917,221 @@ async def get_compliance_dashboard_cards(current_user: dict = Depends(get_curren
         "total_upcoming_appointments": len(upcoming_appointments)
     }
 
+# ==================== NOTIFICATION SYSTEM ====================
+
+@api_router.post("/notifications/register-push-token")
+async def register_push_token(token_data: PushTokenRegister, current_user: dict = Depends(get_current_user)):
+    """Register a push notification token for the current user"""
+    user_id = current_user["id"]
+    now = datetime.utcnow()
+    
+    # Update user's push token
+    await db.users.update_one(
+        {"id": user_id},
+        {
+            "$set": {
+                "push_token": token_data.push_token,
+                "push_device_type": token_data.device_type,
+                "push_token_updated_at": now
+            }
+        }
+    )
+    
+    logger.info(f"Push token registered for user {user_id}")
+    return {"status": "success", "message": "Push token registered"}
+
+@api_router.get("/notifications/preferences")
+async def get_notification_preferences(current_user: dict = Depends(get_current_user)):
+    """Get user's notification preferences"""
+    user = await db.users.find_one({"id": current_user["id"]})
+    
+    # Return existing preferences or defaults
+    default_preferences = {
+        "appointments": True,
+        "reminders": True,
+        "follow_ups": True,
+        "team_alerts": True,
+        "lead_alerts": True,
+        "push_enabled": True
+    }
+    
+    preferences = user.get("notification_preferences", default_preferences)
+    return {"preferences": preferences}
+
+@api_router.put("/notifications/preferences")
+async def update_notification_preferences(
+    preferences: NotificationPreferences, 
+    current_user: dict = Depends(get_current_user)
+):
+    """Update user's notification preferences"""
+    user_id = current_user["id"]
+    
+    await db.users.update_one(
+        {"id": user_id},
+        {
+            "$set": {
+                "notification_preferences": preferences.dict(),
+                "updated_at": datetime.utcnow()
+            }
+        }
+    )
+    
+    return {"status": "success", "preferences": preferences.dict()}
+
+@api_router.get("/notifications")
+async def get_notifications(
+    limit: int = 50,
+    unread_only: bool = False,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get user's notifications"""
+    user_id = current_user["id"]
+    
+    query = {"user_id": user_id}
+    if unread_only:
+        query["read"] = False
+    
+    notifications = await db.notifications.find(query).sort("created_at", -1).limit(limit).to_list(limit)
+    
+    # Convert ObjectId to string
+    for n in notifications:
+        n["_id"] = str(n.get("_id", ""))
+    
+    # Get unread count
+    unread_count = await db.notifications.count_documents({"user_id": user_id, "read": False})
+    
+    return {
+        "notifications": notifications,
+        "unread_count": unread_count
+    }
+
+@api_router.get("/notifications/unread-count")
+async def get_unread_notification_count(current_user: dict = Depends(get_current_user)):
+    """Get count of unread notifications for badge"""
+    user_id = current_user["id"]
+    count = await db.notifications.count_documents({"user_id": user_id, "read": False})
+    return {"unread_count": count}
+
+@api_router.put("/notifications/{notification_id}/read")
+async def mark_notification_read(notification_id: str, current_user: dict = Depends(get_current_user)):
+    """Mark a notification as read"""
+    user_id = current_user["id"]
+    
+    result = await db.notifications.update_one(
+        {"id": notification_id, "user_id": user_id},
+        {"$set": {"read": True, "read_at": datetime.utcnow()}}
+    )
+    
+    if result.modified_count == 0:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    
+    # Get updated unread count
+    unread_count = await db.notifications.count_documents({"user_id": user_id, "read": False})
+    
+    return {"status": "success", "unread_count": unread_count}
+
+@api_router.put("/notifications/mark-all-read")
+async def mark_all_notifications_read(current_user: dict = Depends(get_current_user)):
+    """Mark all notifications as read"""
+    user_id = current_user["id"]
+    now = datetime.utcnow()
+    
+    await db.notifications.update_many(
+        {"user_id": user_id, "read": False},
+        {"$set": {"read": True, "read_at": now}}
+    )
+    
+    return {"status": "success", "unread_count": 0}
+
+@api_router.delete("/notifications/{notification_id}")
+async def delete_notification(notification_id: str, current_user: dict = Depends(get_current_user)):
+    """Delete a notification"""
+    user_id = current_user["id"]
+    
+    result = await db.notifications.delete_one({"id": notification_id, "user_id": user_id})
+    
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    
+    return {"status": "success"}
+
+async def create_notification(
+    user_id: str,
+    title: str,
+    body: str,
+    notification_type: str,
+    data: dict = None,
+    send_push: bool = True
+):
+    """
+    Internal function to create a notification and optionally send push.
+    
+    Types: 'appointment', 'lead_alert', 'follow_up', 'reminder', 'team_invite', 'agent_assignment'
+    
+    Data should contain deep link information:
+    - For appointments: {"screen": "calendar", "appointment_id": "xxx"}
+    - For leads: {"screen": "lead_detail", "lead_id": "xxx"}
+    - For team invites: {"screen": "settings_team"}
+    - etc.
+    """
+    notification_id = str(uuid.uuid4())
+    now = datetime.utcnow()
+    
+    notification_doc = {
+        "id": notification_id,
+        "user_id": user_id,
+        "title": title,
+        "body": body,
+        "type": notification_type,
+        "data": data or {},
+        "read": False,
+        "created_at": now,
+        "read_at": None
+    }
+    
+    await db.notifications.insert_one(notification_doc)
+    
+    # Check if user wants push notifications for this type
+    if send_push:
+        user = await db.users.find_one({"id": user_id})
+        if user:
+            prefs = user.get("notification_preferences", {})
+            push_enabled = prefs.get("push_enabled", True)
+            
+            # Check specific category preferences
+            type_mapping = {
+                "appointment": "appointments",
+                "lead_alert": "lead_alerts",
+                "follow_up": "follow_ups",
+                "reminder": "reminders",
+                "team_invite": "team_alerts",
+                "agent_assignment": "lead_alerts"
+            }
+            
+            category = type_mapping.get(notification_type, "reminders")
+            category_enabled = prefs.get(category, True)
+            
+            if push_enabled and category_enabled:
+                push_token = user.get("push_token")
+                if push_token:
+                    # Log that we would send push (actual push requires Expo push service)
+                    logger.info(f"Would send push to {user_id}: {title}")
+                    # In production, integrate with Expo Push API here
+    
+    return notification_doc
+
+@api_router.post("/notifications/test")
+async def send_test_notification(current_user: dict = Depends(get_current_user)):
+    """Send a test notification to the current user"""
+    notification = await create_notification(
+        user_id=current_user["id"],
+        title="Test Notification",
+        body="This is a test notification from AgentRoute AI",
+        notification_type="reminder",
+        data={"screen": "dashboard"}
+    )
+    return {"status": "success", "notification": notification}
+
 # ==================== HEALTH CHECK ====================
 
 @api_router.get("/")
