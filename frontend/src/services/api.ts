@@ -852,6 +852,53 @@ class ApiService {
     const response = await apiClient.get(`/routes/agent/${agentId}?date=${date}`);
     return response.data;
   }
+
+  // ==================== INVITE LINK SYSTEM ====================
+
+  async createInviteLink(role: 'manager' | 'agent', email?: string, name?: string) {
+    const response = await apiClient.post('/invitations', {
+      role,
+      email,
+      name
+    });
+    return response.data;
+  }
+
+  async getInvitations() {
+    const response = await apiClient.get('/invitations');
+    return response.data;
+  }
+
+  async validateInviteLink(token: string) {
+    const response = await apiClient.get(`/invitations/validate/${token}`);
+    return response.data;
+  }
+
+  async acceptInviteLink(data: {
+    token: string;
+    email?: string;
+    password?: string;
+    name?: string;
+    is_existing_user?: boolean;
+  }) {
+    const response = await apiClient.post('/invitations/accept', data);
+    return response.data;
+  }
+
+  async revokeInvitation(inviteId: string) {
+    const response = await apiClient.post(`/invitations/${inviteId}/revoke`);
+    return response.data;
+  }
+
+  async resendInvitation(inviteId: string) {
+    const response = await apiClient.post(`/invitations/${inviteId}/resend`);
+    return response.data;
+  }
+
+  async deleteInvitation(inviteId: string) {
+    const response = await apiClient.delete(`/invitations/${inviteId}`);
+    return response.data;
+  }
 }
 
 export const api = new ApiService();
