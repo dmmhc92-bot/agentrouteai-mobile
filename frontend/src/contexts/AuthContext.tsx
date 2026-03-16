@@ -293,6 +293,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         teamInfo,
         signIn,
         signUp,
+        createOrganization,
+        registerSolo,
         signOut,
         forgotPassword,
         resetPassword,
