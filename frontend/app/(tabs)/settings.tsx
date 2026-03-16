@@ -150,34 +150,14 @@ export default function SettingsScreen() {
     }
   };
 
-  // Privacy Policy - Opens in browser/WebView
-  const handlePrivacyPolicy = async () => {
-    try {
-      const supported = await Linking.canOpenURL(PRIVACY_POLICY_URL);
-      if (supported) {
-        await Linking.openURL(PRIVACY_POLICY_URL);
-      } else {
-        Alert.alert('Error', 'Unable to open Privacy Policy. Please visit our website.');
-      }
-    } catch (error) {
-      console.error('Error opening Privacy Policy:', error);
-      Alert.alert('Error', 'Failed to open Privacy Policy');
-    }
+  // Privacy Policy - Opens in-app WebView
+  const handlePrivacyPolicy = () => {
+    router.push('/legal/privacy');
   };
 
-  // Terms of Service - Opens in browser/WebView
-  const handleTermsOfService = async () => {
-    try {
-      const supported = await Linking.canOpenURL(TERMS_OF_SERVICE_URL);
-      if (supported) {
-        await Linking.openURL(TERMS_OF_SERVICE_URL);
-      } else {
-        Alert.alert('Error', 'Unable to open Terms of Service. Please visit our website.');
-      }
-    } catch (error) {
-      console.error('Error opening Terms of Service:', error);
-      Alert.alert('Error', 'Failed to open Terms of Service');
-    }
+  // Terms of Service - Opens in-app WebView
+  const handleTermsOfService = () => {
+    router.push('/legal/terms');
   };
 
   // Delete Account - Real deletion with confirmation
