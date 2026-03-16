@@ -115,11 +115,12 @@ def test_route_visibility_permissions(results: TestResults):
     # 1A. Get Default Visibility
     response = make_request("GET", "/routes/visibility", token=agent_token)
     if response.get("status_code") == 200:
-        visibility = response["data"].get("visibility_level")
-        if visibility == "private":
+        visibility_data = response["data"].get("visibility", {})
+        visibility_level = visibility_data.get("visibility_level")
+        if visibility_level == "private":
             results.add_result("1A. Get Default Visibility", True, "Returns visibility_level='private' by default")
         else:
-            results.add_result("1A. Get Default Visibility", False, f"Expected 'private', got '{visibility}'")
+            results.add_result("1A. Get Default Visibility", False, f"Expected 'private', got '{visibility_level}'")
     else:
         results.add_result("1A. Get Default Visibility", False, f"Status: {response.get('status_code')}, Error: {response.get('error', 'Unknown')}")
     
@@ -127,7 +128,8 @@ def test_route_visibility_permissions(results: TestResults):
     response = make_request("PUT", "/routes/visibility", {"visibility_level": "summary"}, token=agent_token)
     if response.get("status_code") == 200:
         data = response["data"]
-        if data.get("visibility_level") == "summary" and data.get("allow_manager_view") == True:
+        visibility_data = data.get("visibility", {})
+        if visibility_data.get("visibility_level") == "summary" and visibility_data.get("allow_manager_view") == True:
             results.add_result("1B. Update to Summary View", True, "Returns success, visibility_level='summary', allow_manager_view=true")
         else:
             results.add_result("1B. Update to Summary View", False, f"Unexpected response: {data}")
@@ -138,7 +140,8 @@ def test_route_visibility_permissions(results: TestResults):
     response = make_request("PUT", "/routes/visibility", {"visibility_level": "shared"}, token=agent_token)
     if response.get("status_code") == 200:
         data = response["data"]
-        if data.get("visibility_level") == "shared":
+        visibility_data = data.get("visibility", {})
+        if visibility_data.get("visibility_level") == "shared":
             results.add_result("1C. Update to Shared View", True, "Returns success, visibility_level='shared'")
         else:
             results.add_result("1C. Update to Shared View", False, f"Unexpected response: {data}")
@@ -149,7 +152,8 @@ def test_route_visibility_permissions(results: TestResults):
     response = make_request("PUT", "/routes/visibility", {"visibility_level": "private"}, token=agent_token)
     if response.get("status_code") == 200:
         data = response["data"]
-        if data.get("visibility_level") == "private" and data.get("allow_manager_view") == False:
+        visibility_data = data.get("visibility", {})
+        if visibility_data.get("visibility_level") == "private" and visibility_data.get("allow_manager_view") == False:
             results.add_result("1D. Reset to Private", True, "Returns success, visibility_level='private', allow_manager_view=false")
         else:
             results.add_result("1D. Reset to Private", False, f"Unexpected response: {data}")
