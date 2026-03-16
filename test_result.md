@@ -397,6 +397,30 @@ frontend:
           agent: "testing"
           comment: "✅ FULL iOS MOBILE AUDIT COMPLETED - Lead Management flow fully verified on iPhone 14 (390x844). Add Lead button accessible from Dashboard Quick Actions, lead creation form opens correctly, form navigation working. Lead management functionality fully accessible and responsive on mobile. Test flow: Dashboard → Add Lead → Lead creation form → Navigation back working."
 
+  - task: "Invite-Link System - Team Invitations Management"
+    implemented: true
+    working: true
+    file: "app/team-invitations/index.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "main"
+          comment: "Team invitations management screen fully implemented and tested. Shows pending/accepted/expired tabs, allows admins/managers to create/copy/share/resend/revoke invites. Role badges (Manager=blue, Agent=green) and expiration info displayed. Access control working - only admins and managers can access."
+
+  - task: "Invite-Link System - Accept Invite Flow"
+    implemented: true
+    working: true
+    file: "app/invite/[token].tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "main"
+          comment: "Invite accept flow fully implemented and tested. Shows: 1) Valid token - 'You're Invited!' with org name, inviter name, role badge, and options for existing/new user, 2) Already used token - 'Already Accepted' with green checkmark, 3) Invalid token - 'Invalid Invitation' with red alert. Both new user signup and existing user signin paths ready."
+
   - task: "Mobile Responsiveness - iPhone 14"
     implemented: true
     working: true
