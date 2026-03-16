@@ -462,10 +462,13 @@ def test_solo_agent_functionality(results: TestResults):
     print("\n🏃 7. SOLO AGENT FUNCTIONALITY")
     print("=" * 60)
     
+    import uuid
+    unique_id = str(uuid.uuid4())[:8]
+    
     # Create a solo agent first (reuse from onboarding test but with different email)
     solo_data = {
         "name": "Test Solo Agent",
-        "email": "testsolo2@test.com",
+        "email": f"testsolo{unique_id}@test.com",
         "password": "TestSolo123!"
     }
     response = make_request("POST", "/auth/register-solo", solo_data)
@@ -503,8 +506,9 @@ def test_solo_agent_functionality(results: TestResults):
             results.add_result("7A. Solo Agent Can Create Leads", False, f"Status: {lead_response.get('status_code')}")
             results.add_result("7B. Solo Agent Can Create Appointments", False, "Lead creation failed")
     else:
-        results.add_result("7A. Solo Agent Can Create Leads", False, "Solo agent registration failed")
-        results.add_result("7B. Solo Agent Can Create Appointments", False, "Solo agent registration failed")
+        error_detail = response.get("data", {}).get("detail", "Unknown error") if isinstance(response.get("data"), dict) else response.get("data", "Unknown")
+        results.add_result("7A. Solo Agent Can Create Leads", False, f"Solo agent registration failed: {error_detail}")
+        results.add_result("7B. Solo Agent Can Create Appointments", False, f"Solo agent registration failed: {error_detail}")
 
 def test_legal_documents(results: TestResults):
     """Test Legal Documents"""
