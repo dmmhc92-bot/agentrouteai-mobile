@@ -63,16 +63,11 @@
       "typedRoutes": true
     },
     "extra": {
-      "eas": {
-        "projectId": "agentroute-ai"
-      }
+      "eas": {}
     },
     "owner": "agentroute",
     "runtimeVersion": {
       "policy": "sdkVersion"
-    },
-    "updates": {
-      "url": "https://u.expo.dev/agentroute-ai"
     }
   }
 }
