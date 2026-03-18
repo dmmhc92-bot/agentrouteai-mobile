@@ -12,7 +12,7 @@ from datetime import datetime
 from typing import Dict, Any, Optional
 
 # Backend URL from environment
-BACKEND_URL = "https://agentroute-app-store.preview.emergentagent.com/api"
+BACKEND_URL = "https://secure-app-lock.preview.emergentagent.com/api"
 
 class ManagerCommandCenterTester:
     def __init__(self):

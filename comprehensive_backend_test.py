@@ -2,7 +2,7 @@
 """
 Comprehensive Backend API Testing for AgentRoute AI CRM
 Complete system verification as requested in review request
-Backend URL: https://agentroute-app-store.preview.emergentagent.com/api
+Backend URL: https://secure-app-lock.preview.emergentagent.com/api
 """
 
 import requests
@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
 
 # Configuration
-BACKEND_URL = "https://agentroute-app-store.preview.emergentagent.com/api"
+BACKEND_URL = "https://secure-app-lock.preview.emergentagent.com/api"
 
 # Test credentials from review request
 TEST_CREDENTIALS = {

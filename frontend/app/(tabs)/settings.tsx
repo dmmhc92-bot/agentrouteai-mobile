@@ -28,7 +28,7 @@ import * as ImageManipulator from 'expo-image-manipulator';
 // Constants - Use environment variable for base URL
 const BASE_URL = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL || 
                  process.env.EXPO_PUBLIC_BACKEND_URL || 
-                 'https://agentroute-app-store.preview.emergentagent.com';
+                 'https://secure-app-lock.preview.emergentagent.com';
 const PRIVACY_POLICY_URL = `${BASE_URL}/api/privacy`;
 const TERMS_OF_SERVICE_URL = `${BASE_URL}/api/terms`;
 const SUPPORT_EMAIL = 'agentrouteai@gmail.com';

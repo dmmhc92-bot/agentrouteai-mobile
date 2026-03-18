@@ -12,7 +12,7 @@ from typing import Dict, List, Optional, Tuple
 import uuid
 
 # Configuration
-BACKEND_URL = "https://agentroute-app-store.preview.emergentagent.com/api"
+BACKEND_URL = "https://secure-app-lock.preview.emergentagent.com/api"
 
 # Test credentials as specified in the audit request
 TEST_CREDENTIALS = {

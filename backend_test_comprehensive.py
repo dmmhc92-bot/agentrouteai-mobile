@@ -12,7 +12,7 @@ import base64
 import time
 
 # Configuration
-BASE_URL = "https://agentroute-app-store.preview.emergentagent.com/api"
+BASE_URL = "https://secure-app-lock.preview.emergentagent.com/api"
 TIMEOUT = 30
 
 # Test credentials from review request

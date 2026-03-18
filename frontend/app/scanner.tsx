@@ -18,6 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import { api } from '../src/services/api';
+import { useNetwork } from '../src/contexts/NetworkContext';
 
 interface ScanResult {
   name: string;
@@ -56,6 +57,7 @@ export default function ScannerScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const cameraRef = useRef<CameraView>(null);
+  const { isOnline } = useNetwork();
 
   const [permission, requestPermission] = useCameraPermissions();
   const [isScanning, setIsScanning] = useState(false);
@@ -111,6 +113,16 @@ export default function ScannerScreen() {
   const handleCapture = async () => {
     if (!cameraRef.current) return;
 
+    // Check network before attempting OCR
+    if (!isOnline) {
+      Alert.alert(
+        'Internet Required',
+        'Scanning business cards requires an internet connection for AI-powered text recognition. Please connect to the internet and try again.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
     setIsScanning(true);
     try {
       const photo = await cameraRef.current.takePictureAsync({
@@ -139,7 +151,7 @@ export default function ScannerScreen() {
       }
     } catch (error: any) {
       console.log('Scan error:', error);
-      const message = error.response?.data?.detail || 'Failed to scan. Please try again.';
+      const message = error.response?.data?.detail || 'Failed to scan. Please try again with a clearer image.';
       Alert.alert('Scan Error', message);
     } finally {
       setIsScanning(false);
@@ -147,6 +159,16 @@ export default function ScannerScreen() {
   };
 
   const handlePickImage = async () => {
+    // Check network before attempting OCR
+    if (!isOnline) {
+      Alert.alert(
+        'Internet Required',
+        'Scanning business cards requires an internet connection for AI-powered text recognition. Please connect to the internet and try again.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
@@ -175,7 +197,7 @@ export default function ScannerScreen() {
           document_type_detected: scanData.document_type_detected || 'unknown',
         });
       } catch (error: any) {
-        const message = error.response?.data?.detail || 'Failed to scan image';
+        const message = error.response?.data?.detail || 'Failed to scan image. Please try a clearer image.';
         Alert.alert('Scan Error', message);
       } finally {
         setIsScanning(false);

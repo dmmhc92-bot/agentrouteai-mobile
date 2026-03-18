@@ -1,7 +1,7 @@
 import axios, { AxiosError } from 'axios';
 
 // Use the stable production backend URL - NOT ngrok
-const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL || 'https://agentroute-app-store.preview.emergentagent.com';
+const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL || 'https://secure-app-lock.preview.emergentagent.com';
 
 // Network error types for offline handling
 export type NetworkErrorType = 'offline' | 'timeout' | 'server_error' | 'unknown';

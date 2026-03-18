@@ -6,7 +6,7 @@ Debug permission enforcement for invite system
 import requests
 import json
 
-API_BASE_URL = "https://agentroute-app-store.preview.emergentagent.com/api"
+API_BASE_URL = "https://secure-app-lock.preview.emergentagent.com/api"
 
 # Test credentials
 TEST_CREDENTIALS = {

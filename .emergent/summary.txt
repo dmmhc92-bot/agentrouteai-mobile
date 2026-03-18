@@ -1,109 +1,101 @@
-<analysis>
-<original_problem_statement>
+**original_problem_statement:**
 The overall project is to build a production-ready iOS mobile SaaS app called AgentRoute AI for field sales agents.
 
-The initial user request in this session was to add a fully functional profile image system. This was followed by requests to:
-1.  Add a Manager Daily Command Center for team oversight.
-2.  Add an Offline Lead Capture and Auto Sync system.
-3.  Perform a full end-to-end engineering audit to ensure production readiness.
-4.  Update all legal policies (Privacy Policy, Terms of Service) to reflect the app's current functionality.
-5.  Verify App Review tester accounts for all roles.
-6.  Fix iOS build failures to prepare for App Store submission.
-
-The app is currently blocked by a recurring iOS build failure related to package dependencies.
-</original_problem_statement>
+The user's requests in this session were to:
+1.  Fix a critical iOS build failure caused by dependency conflicts.
+2.  Perform a full security audit and implement hardening measures, including secure storage for tokens and an optional biometric app lock.
+3.  Remove all ngrok dependencies from the app's runtime code to ensure it's offline-safe and production-ready.
+4.  Resolve revoked Apple signing credentials and update the app versioning for a new TestFlight submission.
+5.  Update the app icon.
+6.  Run a final Apple review readiness audit to find and fix any remaining blockers.
+7.  Perform a focused pre-submission hardening pass on the Scanner OCR and Offline Mode features to ensure they are reliable and present a truthful experience to the user and Apple reviewers.
 
 **User's preferred language**: English
 
 **what currently exists?**
-A comprehensive full-stack application (Expo/FastAPI/MongoDB) for field sales agents. It features a robust role-based system (Admin, Manager, Agent), secure team invites, and a full suite of CRM functionalities.
+A comprehensive full-stack application (Expo/FastAPI/MongoDB) for field sales agents. The app is feature-complete, including role-based access, team management, lead/appointment management, and document signing.
 
-In this session, the following major features were successfully implemented and verified:
--   A complete Profile Image system (upload, remove, display across the app).
--   A Manager Daily Command Center with role-scoped data for team activity and performance.
--   An Offline Lead Capture & Sync system using AsyncStorage and network detection.
--   Updated legal policies (Privacy & Terms) to reflect all new features.
--   A full engineering audit was conducted, which identified and fixed one broken route.
--   App review test accounts for all roles were verified.
+During this session, several critical production-readiness tasks were completed:
+-   The initial iOS build failure due to dependency conflicts was resolved.
+-   A full security audit was conducted. Hardening was implemented by migrating sensitive data storage from AsyncStorage to  and adding an optional, non-blocking biometric app lock using .
+-   All runtime dependencies on ngrok have been removed from the frontend code, and the app has been made more resilient to offline scenarios.
+-   Multiple issues with iOS deployment, including revoked credentials, incorrect app icons, and push notification entitlements, were fixed, leading to several successful builds and submissions to App Store Connect.
+-   A full pre-submission audit was performed, verifying core functionality like account deletion, legal page accessibility, and role permissions.
 
-The application is functionally complete and has been extensively tested via UI screenshots and backend tests. However, it is currently unable to produce a successful iOS build for deployment.
+The application is functionally stable and has a successful build available on TestFlight. The current focus is on the final hardening of two specific features.
 
 **Last working item**:
-    - Last item agent was working: The agent was attempting to resolve a critical iOS build failure that is blocking deployment to the App Store. The user provided detailed error logs and specific instructions to fix the underlying dependency issues. The agent repeatedly invoked the  with the same logs, indicating it was stuck and unable to resolve the problem.
+    - Last item agent was working: The agent was hardening the Scanner (OCR) and Offline Mode features as per the user's final pre-submission request. The agent identified that the Scanner's OCR function requires an internet connection and began implementing offline-aware logic in . It successfully added the  hook and integrated checks into the  and  functions to prevent scanning attempts and alert the user when offline.
     - Status: IN PROGRESS
     - Agent Testing Done: N
-    - Which testing method agent to use? The next agent should attempt to run an iOS build using the  after fixing the dependency issues to verify the compilation passes. No frontend/backend testing is needed until the build is successful.
+    - Which testing method agent to use? frontend testing agent. The agent should use the screenshot tool to verify that the UI correctly reflects the new logic (e.g., alerts popping up) and to confirm the placement and appearance of the offline banner that still needs to be added.
     - User Testing Done: N
 
 **All Pending/In progress Issue list**:
-  - Issue 1: iOS Build Failure due to Dependency Conflicts (P0)
-  - Issue 2: Monolithic Backend Server File () (P1)
-  - Issue 3: Lead Scanner OCR functionality has not been verified on a real device (P2)
-  - Issue 4: Offline lead capture has not been fully verified by simulating a network disconnection (P2)
+  - Issue 1: Complete hardening of Scanner and Offline Mode (P0)
+  - Issue 2: Unoptimized N+1 database queries in  (P1)
+  - Issue 3: Monolithic Backend Server File () (P1)
+  - Issue 4: Real-device verification for OCR and Offline Sync (P2)
 
   Issues Detail:
-  - Issue 1: 
-     - **Description**: The iOS build process is failing during the Xcode compile stage. The build logs clearly indicate three primary problems:
-       1.  **Xcode Compile Error**:  within the  pod. This points to a version incompatibility between  and the build environment (Expo SDK 54, Xcode 26).
-       2.  **Duplicate Dependencies**:  found duplicate versions of  ( and ), which can cause native build errors.
-       3.  **Multiple Lock Files**: Both  and  exist, which can lead to inconsistent dependency resolution in CI environments like EAS Build.
-     - **Attempted fixes**: The agent called the  multiple times, which correctly identified the issues but the agent failed to execute the required fixes. The agent was stuck in a loop.
+  - Issue 1:
+     - **Description**: The Scanner feature attempts to use an online-only OCR service without checking for network connectivity, leading to a poor user experience. The general offline mode needs final validation to ensure it's reliable and truthful for Apple Review.
+     - **Attempted fixes**: The agent has already added network state checking to the scanner's core functions (, ) to alert the user if they are offline.
      - **Next debug checklist**:
-       1.  Delete the  file to standardize on .
-       2.  Inspect  and  to identify the source of the duplicate  and version conflict with .
-       3.  Search for the compatible version of  for Expo SDK 54.
-       4.  Use yarn add v1.22.22
-info Visit https://yarnpkg.com/en/docs/cli/add for documentation about this command. or yarn install v1.22.22
-[1/4] Resolving packages...
-success Already up-to-date.
-Done in 0.39s. to align the package versions correctly. Using yarn run v1.22.22
-info Visit https://yarnpkg.com/en/docs/cli/run for documentation about this command. in  might be necessary to force a single version of .
-       5.  Delete  and  and run yarn install v1.22.22
-[1/4] Resolving packages...
-success Already up-to-date.
-Done in 0.33s. to ensure a clean slate.
-       6.  Trigger a new iOS build via the deployment agent to confirm the compilation error is resolved.
-     - **Why fix this issue and what will be achieved with the fix?**: This is a hard blocker preventing the app from being built and submitted to the iOS App Store. Resolving it is the final step before the app can be deployed.
+       1.  Add a visible, non-intrusive UI banner at the top or bottom of the  screen that clearly indicates when the device is offline, using the  state from the  hook.
+       2.  Verify using the  that the new banner appears correctly.
+       3.  Review the create/edit lead screens (, ) to confirm their offline UI indicators (e.g., Save Offline button text) are working as intended.
+     - **Why fix this issue and what will be achieved with the fix?**: This ensures the app provides a truthful and non-frustrating experience, which is critical for passing Apple's review process. It prevents silent failures when using the scanner offline.
      - **Status**:  IN PROGRESS
-     - **Is recurring issue?** Y
-     - **Should Test frontend/backend/both after fix?**: backend (deployment build)
+     - **Is recurring issue?** N
+     - **Should Test frontend/backend/both after fix?**: frontend
      - **Blocked on other issue**: None
 
-  - Issue 2: 
-     - **Description**: The main backend file  is a monolith now exceeding 8,900 lines, making it difficult to maintain.
-     - **Next debug checklist**: Propose and execute a refactoring plan to split routes into logical groups (e.g., , , , ) inside a new  directory using FastAPI's .
-     - **Why fix this issue and what will be achieved with this?**: Improve code organization, maintainability, and developer velocity.
+  - Issue 2:
+     - **Description**: During a deployment attempt, the deployment agent identified several unoptimized N+1 database queries in  that will cause significant performance issues in production.
+     - **Next debug checklist**:
+        1. Analyze the flagged endpoints in  (lines 3015, 8007, 8041, 9332-9374).
+        2. Rewrite the queries to use MongoDB's aggregation framework or  operators to fetch data in a single, efficient query instead of looping.
+     - **Why fix this issue and what will be achieved with this?**: To ensure the backend is scalable and can handle a production load without timeouts or excessive memory usage.
+     - **Status**:  NOT STARTED
+     - **Is recurring issue?** N
+     - **Should Test frontend/backend/both after fix?**: backend
+     - **Blocked on other issue**: None
+
+  - Issue 3:
+     - **Description**: The main backend file  is a monolith exceeding 8,900 lines, making it difficult to maintain and debug.
+     - **Next debug checklist**: Propose and execute a refactoring plan to split routes into logical groups (e.g., , , ) inside a new  directory using FastAPI's .
+     - **Why fix this issue and what will be achieved with this?**: Improves code organization, maintainability, and future development speed.
      - **Status**:  NOT STARTED
      - **Is recurring issue?** Y
      - **Should Test frontend/backend/both after fix?**: backend
      - **Blocked on other issue**: None
 
-  - Issue 3: 
-     - **Description**: Lead Scanner OCR functionality has not been verified on a real physical device.
-     - **Next debug checklist**: Once an iOS build is available, generate a QR code for Expo Go or a TestFlight build and perform a manual test on a physical iOS device to verify camera permissions and OCR accuracy.
-     - **Why fix this issue and what will be achieved with this?**: This is a key feature whose real-world functionality remains unconfirmed.
-     - **Status**:  NOT STARTED
-     - **Is recurring issue?** N
-     - **Should Test frontend/backend/both after fix?**: frontend
-     - **Blocked on other issue**: iOS Build Failure
-
   - Issue 4:
-     - **Description**: While the UI and backend for offline lead sync are in place, the complete end-to-end flow of creating/editing a lead while offline and successfully syncing upon reconnection has not been physically tested.
-     - **Next debug checklist**: Once an iOS build is available, simulate offline mode (e.g., by enabling airplane mode) on a test device, create and edit a lead, then reconnect to the internet and verify the data syncs correctly without duplicates.
-     - **Why fix this issue and what will be achieved with this?**: Confirms a critical feature works as expected in a real-world scenario.
-     - **Status**: USER VERIFICATION PENDING
+     - **Description**: Core features like the Scanner OCR's real-world accuracy and the full offline-to-online data sync flow have only been validated through code audits and emulators, not on a physical device.
+     - **Next debug checklist**: This is a user-facing task. Once the hardening is complete and a new build is available, the user needs to test on a physical iOS device by:
+        1. Putting the device in airplane mode.
+        2. Creating and editing a lead.
+        3. Reconnecting to the internet and verifying the data syncs correctly.
+        4. Scanning a real business card and verifying OCR accuracy.
+     - **Why fix this issue and what will be achieved with this?**: To confirm that critical, real-world features work as expected before releasing to the public.
+     - **Status**:  BLOCKED
      - **Is recurring issue?** N
      - **Should Test frontend/backend/both after fix?**: frontend
-     - **Blocked on other issue**: iOS Build Failure
+     - **Blocked on other issue**: Issue 1: Complete hardening of Scanner and Offline Mode
 
 **In progress Task List**:
-- There are no in-progress development tasks. The entire focus is on resolving the P0 build issue.
+  - Task 1: Harden Scanner OCR and Offline Mode Features
+     - **Where to resume**: Add a UI banner component to  that is conditionally rendered based on the  state from the  hook.
+     - **What will be achieved with this?**: This will complete the scanner hardening by providing clear, persistent feedback to the user that the feature requires an internet connection, satisfying the user's requirement for a truthful UI.
+     - **Status**:  IN PROGRESS
+     - **Should Test frontend/backend/both after fix?**: frontend
+     - **Blocked on something**: None
 
 **Upcoming and Future Tasks**
 - **Upcoming Tasks:**
     - **P1: Refactor Backend ()**: Split the monolithic  file into smaller router-based files.
-    - **P2: Verify OCR on Device**: Test the Lead Scanner feature on a real iOS device.
-    - **P2: Verify Offline Sync**: Test the Offline Lead Capture feature on a real iOS device by simulating network loss.
+    - **P1: Optimize Database Queries**: Address the N+1 query issues in .
 - **Future Tasks:**
     - Advanced Route Planner
     - Enhanced AI Sales Coach
@@ -111,138 +103,124 @@ Done in 0.33s. to ensure a clean slate.
     - In-app Training Library
 
 **Completed work in this session**
-- **Profile Image System**: Implemented the full frontend UI (, ) and backend endpoints () for users to upload, replace, and remove their profile photo. Integrated the avatar across the app (, ).
-- **Manager Daily Command Center**: Created a new screen () and backend endpoint () to provide Admins and Managers with a real-time overview of team activity, members needing attention, and top performers. Verified role-based access control.
-- **Offline Lead Capture & Sync**: Implemented the core infrastructure for offline lead creation and editing. This included adding network status detection (), local storage queuing (, ), and backend sync endpoints (, ).
-- **Full Engineering & UI/UX Audit**: Performed a comprehensive test of all app screens, roles, and user flows. Identified and fixed a broken navigation link for the Route Planner. Verified all other screens, including AI Coach, Pipeline, Team Hierarchy, and SOA forms, were functional with proper empty/loading states.
-- **Legal Policies Update**: Updated the  and  files to include disclosures about profile photos, role-based data access, and offline data storage, ensuring compliance for App Store submission.
-- **App Review Account Verification**: Logged into the Admin, Manager, and Agent review accounts (, , ) and verified through screenshots that all permissions, access restrictions, and UI elements function correctly for each role.
+- **iOS Build Fixed**: Resolved critical dependency conflicts (, ) that were blocking iOS builds.
+- **Security Hardening**:
+  - Migrated auth tokens and other sensitive data from  to  by creating a  service.
+  - Implemented an optional, non-blocking biometric app lock using  (, ).
+  - Added encryption to offline lead data stored in  via .
+- **Ngrok Dependency Removal**: Audited the entire frontend and removed all runtime dependencies on ngrok URLs, making the app offline-resilient. Updated  and  to handle network errors gracefully.
+- **iOS Deployment & Submission**:
+  - Successfully managed iOS signing credentials, replacing a revoked certificate.
+  - Correctly configured  with the  to ensure direct submission to the correct App Store Connect record.
+  - Incrementally updated the app version and build numbers in .
+  - Fixed multiple build-time errors, including a missing splash screen asset reference.
+  - Correctly disabled push notifications by removing the  package and stubbing related code to resolve a provisioning profile mismatch.
+  - Updated the app icon and successfully submitted the new build to TestFlight.
+- **Pre-Submission Audit**: Conducted a comprehensive audit verifying core functionality, account deletion, legal/support URLs, and role permissions, confirming the app is safe to submit.
 
 **Earlier issues found/mentioned but not fixed**
-   - Issue 1: Monolithic backend server file (). (Same as Pending Issue #2)
-   - Issue 2: Lead Scanner OCR functionality has not been verified on a real device. (Same as Pending Issue #3)
+   - **Issue 1: Monolithic backend server file ()**: Same as Pending Issue #3.
+   - **Issue 2: Unoptimized N+1 queries**: Same as Pending Issue #2.
 
 **Known issue recurrence from previous fork**
-  - **Issue recurrence in this session**: The monolithic  file continues to grow, increasing technical debt.
-  - **Recurrence count**: 5
+  - **Issue recurrence in this session**: The monolithic  file continues to be a source of technical debt.
+  - **Recurrence count**: 6
   - **Status**: NOT STARTED
-  - **Issue recurrence in this session**: The iOS build is blocked. This is a recurring problem, but the cause has shifted from platform API keys (in a previous fork) to package dependency conflicts in this session.
-  - **Recurrence count**: 2
-  - **Status**: IN PROGRESS
+  - **Issue recurrence in this session**: iOS build failures were a recurring theme throughout the session, with different root causes (dependencies, credentials, entitlements). All known causes have been resolved, and a successful build was submitted.
+  - **Recurrence count**: 4
+  - **Status**: RESOLVED
 
 **Code Architecture**
 
 
 **Key Technical Concepts**
-*   **Offline Data Sync**: Implemented using  to detect connection status. Offline actions (lead creation/editing) are queued in  with a temporary . A  periodically attempts to send the queued data to new backend endpoints () when the network is online.
-*   **Conflict Resolution (Offline Sync)**: The backend uses  timestamps to resolve conflicts. If the server's version of a lead is newer than the offline-edited version, the offline change is rejected to prevent overwriting newer data.
-*   **Duplicate Prevention (Offline Sync)**: A  is generated on the client for new offline leads. The backend checks for the existence of this  before creating a new record to prevent duplicates during retries.
-*   **Comprehensive Auditing**: A process of systematically testing all user flows, roles, and UI components to ensure production readiness, which was completed in this session.
+*   **Secure Storage**: Implemented  (which uses native iOS Keychain/Android Keystore) via a custom  service. This service also adds a layer of  obfuscation for data at rest. All auth tokens and sensitive cached data now use this service.
+*   **Biometric Authentication**: Implemented an optional app lock feature using . An  manages the state, and an  component provides a non-blocking overlay to authenticate on app resume.
+*   **Offline-First Hardening**: Removed all hardcoded ngrok dependencies. The application now uses the  and has improved logic in  and  to handle network failures gracefully, load cached data, and prevent crashes when offline.
+*   **EAS Build & Submission**: Gained experience with the full Expo Application Services (EAS) workflow, including resolving dependency issues, managing signing credentials ( key, certificates, provisioning profiles), configuring  for production submission (including ), and troubleshooting build errors from logs.
+*   **Build-time Configuration**: Successfully removed a feature (Push Notifications) that was causing build failures by removing the package (), stubbing out the related code, and ensuring no entitlements were requested in the build profile.
 
 **key DB schema**
-  - No new collections were added. The agent added new API endpoints that rely on the existing , , and  collections. The  collection was previously updated to include  (string).
+  - No changes were made to the database schema in this session.
 
 **changes in tech stack**
-  - : Added for profile image resizing. **This is the source of the current build error.**
-  - : Added for offline detection.
-  -  and : Added for generating temporary IDs for offline leads.
+  - **Added**: , 
+  - **Removed**: 
+  - **Resolved Conflicts**: Cleaned up  and removed .
 
 **All files of reference**
-*   **/app/frontend/package.json**: **CRITICAL**. Contains the dependency declarations that are causing the build failure. Needs to be edited to resolve conflicts.
-*   **/app/frontend/yarn.lock**: The lockfile that should be used as the source of truth after  is deleted.
-*   **/app/frontend/package-lock.json**: **CRITICAL**. Should be deleted.
-*   **/app/backend/server.py**: Heavily modified with new endpoints for the command center and offline sync.
-*   **/app/frontend/app/(tabs)/settings.tsx**: Modified for profile image UI and link to the command center.
-*   **/app/frontend/app/command-center/index.tsx**: New file for the Manager Daily Command Center.
-*   **/app/frontend/src/services/offline.ts**, **/app/frontend/src/services/sync.ts**: New files containing the core logic for the offline sync feature.
-*   **/app/frontend/src/contexts/NetworkContext.tsx**, **/app/frontend/src/contexts/SyncContext.tsx**: New context providers for the offline sync feature.
-*   **/app/backend/privacy.html**, **/app/backend/terms.html**: Updated legal policy files.
+*   : **CRITICAL**. Currently being modified to add an offline UI banner.
+*   : **NEW**. Core of the security hardening, provides encrypted storage.
+*   : **NEW**. Manages the optional biometric lock feature.
+*   : **MODIFIED**. Updated to use  and handle offline states.
+*   : **MODIFIED**. Now contains the  for direct App Store submission.
+*   : **MODIFIED**. Contains updated version/build numbers, icon paths, and plugin configuration.
+*   : Contains unoptimized N+1 queries that need to be fixed.
 
 **Areas that need refactoring**:
-*   **/app/backend/server.py**: Urgently needs to be broken down into smaller router files. Its monolithic nature is a major source of technical debt and slows down development and testing.
+*   : Urgently needs to be refactored from a monolith into smaller  files. It also contains several N+1 queries that must be optimized for production scalability.
 
 **key api endpoints**
-*   : Uploads a user's profile image (base64).
-*   : Deletes a user's profile image.
-*   : **NEW**. Retrieves data for the Manager Daily Command Center, scoped by user role.
-*   : **NEW**. Endpoint for syncing a new lead created offline.
-*   : **NEW**. Endpoint for syncing an updated lead edited offline.
+*   No new endpoints were added. The focus was on auditing, hardening, and ensuring the reliability of existing frontend-backend communication. The public-facing legal page routes were confirmed to be  and .
 
 **Critical Info for New Agent**
-*   **Your immediate and only priority is to fix the iOS build failure.** Do not work on any other features or refactoring. The user has provided explicit instructions and logs.
-*   **Focus on the dependency issues:**
-    1.  Delete .
-    2.  Resolve the  version to be compatible with Expo SDK 54.
-    3.  Resolve the duplicate  dependency, likely by using  in  or aligning other package versions.
-    4.  After editing , delete  and , then run yarn install v1.22.22
-[1/4] Resolving packages...
-success Already up-to-date.
-Done in 0.39s. to create a clean dependency tree.
-*   Do not guess at fixes or change unrelated code. The error is specific to native dependencies. After applying the fixes, immediately attempt another build to confirm the issue is resolved.
-*   The monolithic backend () and the unverified OCR feature are known, lower-priority technical debt. Acknowledge them but do not work on them until the build is fixed and the user approves.
+*   **Your immediate priority is to finish hardening the Scanner and Offline features.**
+    1.  Resume work in .
+    2.  Add a UI banner that displays when  from the  hook is .
+    3.  Once the UI change is made, the app will need a new build to be tested. The user has been clear that builds should only be triggered after a true blocker is fixed. This qualifies. You will need to increment the  in  before triggering the build.
+*   **Do not work on lower-priority tasks** like refactoring the backend or fixing N+1 queries until the user approves.
+*   The iOS build and submission pipeline is now fully functional. Follow the established pattern: update  (increment build number), then run An Expo user account is required to proceed.
 
-**documents created in this job**
+Log in to EAS with email or username (exit and run eas login --help to see other login options)
+Input is required, but stdin is not readable. Failed to display prompt: Email or username and An Expo user account is required to proceed.
+
+Log in to EAS with email or username (exit and run eas login --help to see other login options)
+Input is required, but stdin is not readable. Failed to display prompt: Email or username.
+
+**documents and test reports created in this job**
   - 
-  - 
-  - 
-  - 
-  - 
-  - 
-  -  (Updated)
-  -  (Updated)
+  - All other reports were transient test scripts and have been cleaned up.
 
 **Last 10 User Messages and any pending HUMAN messages** 
- -  **1. (LATEST)** User provided corrected instructions, clarifying the build error is a dependency issue with  and Expo SDK 54, and instructed the agent to fix that specific problem. (NOT STARTED)
- -  **2.** User re-iterated that the build failure is a dependency issue and to focus on fixing  compatibility and duplicate packages. (NOT STARTED)
- -  **3.** User provided logs for a failed iOS build and asked the agent to fix it. (IN PROGRESS)
- -  **4.** User requested verification of App Review tester accounts. (COMPLETED)
- -  **5.** User requested an update of all legal policies (Privacy/Terms) to reflect new features. (COMPLETED)
- -  **6.** User requested a final end-to-end verification of the app to confirm production readiness, specifically checking routing and data persistence. (COMPLETED)
- -  **7.** User initiated a full end-to-end engineering audit to verify and stabilize the entire application. (COMPLETED)
- -  **8.** User approved the plan for the offline lead sync feature with strict requirements for stability and data integrity. (COMPLETED)
- -  **9.** User requested a safe, production-ready Offline Lead Capture and Auto Sync system. (COMPLETED)
- -  **10.** User approved the plan for the Manager Daily Command Center with strict requirements for data reliability and fallback states. (COMPLETED)
+ - **10. (LATEST)** User initiated a focused pre-submission hardening pass for Scanner OCR and Offline Mode reliability. (IN PROGRESS)
+ - **9.** User confirmed the final audit results and that the app was safe to submit. (COMPLETED)
+ - **8.** User requested a final, comprehensive Apple Review readiness audit. (COMPLETED)
+ - **7.** User requested an app icon update, a new build, and submission. (COMPLETED)
+ - **6.** User instructed the agent to remove all push notification capabilities to fix a build error. (COMPLETED)
+ - **5.** User reported a new build failure related to a provisioning profile entitlement (). (COMPLETED)
+ - **4.** User instructed the agent to proceed with a fresh deployment and new iOS build after fixing a corrupted file issue. (COMPLETED)
+ - **3.** User reported a deployment failure due to a corrupted file in the source package. (COMPLETED)
+ - **2.** User requested explicit verification that all ngrok dependencies were removed from the mobile runtime. (COMPLETED)
+ - **1.** User reported the app must not depend on ngrok for startup or core runtime. (COMPLETED)
 
 **Project Health Check:**
 *   **Broken:**
-    *   **iOS Deployment Pipeline**: The entire process is blocked by a native dependency compilation error (). The app cannot be built for iOS.
-*   **Mocked:**
-    *   None.
+    *   None. The app is stable and buildable.
+*   **Mocked / Needs Hardening:**
+    *   **Scanner OCR**: The feature is functional but relies on an internet connection. The UI is currently being updated to make this requirement clear to the user. Its real-world accuracy has not been tested on a physical device.
+    *   **Offline Mode**: The core logic for offline lead creation exists, but the end-to-end flow of creating a lead offline and verifying a successful sync upon reconnection has not been tested on a physical device.
 
 **3rd Party Integrations**
-*   **Gemini Pro Vision:** OCR. Uses Emergent LLM Key.
-*   **OpenAI GPT-4/4o:** AI features. Uses Emergent LLM Key.
-*   **ReportLab:** Backend PDF canvas creation.
-*   **Pillow (PIL Fork):** Backend image processing.
-*   **pypdf:** Backend PDF reading/writing/merging.
-*   **cairosvg**: Backend SVG to PNG conversion.
-*   **passlib[bcrypt]**: Backend password hashing.
-*   **react-native-svg:** Frontend signature rendering.
-*   **react-native-view-shot:** Capturing views as images.
-*   **expo-linking / expo-sharing / expo-file-system:** Frontend native file/URL handling.
-*   **expo-notifications**: Push and local notifications.
-*   **expo-web-browser / react-native-webview**: In-app web content.
-*   **expo-clipboard**: Copy-to-clipboard functionality.
-*   : Image resizing/compression.
-*   : Network status detection.
-*   : Generating unique identifiers.
+*   **Gemini Pro Vision:** Used for backend OCR. Requires Emergent LLM Key.
+*   **OpenAI GPT-4/4o:** Used for AI Coach features. Requires Emergent LLM Key.
+*   **Expo Application Services (EAS):** Used for building and submitting the iOS app.
+*   : For network status detection.
+*   : For secure on-device storage (iOS Keychain, Android Keystore).
+*   : For biometric (Face ID/Touch ID) authentication.
+*   : For an additional layer of data obfuscation.
+*   : Backend password hashing.
+*   And other various Expo and React Native libraries for UI and device functionality.
 
 **Testing status**
-  - Testing agent used after significant changes: YES. The agent performed extensive visual verification of all new features and roles. Backend testing achieved a 100% pass rate after new features were added.
-  - Troubleshoot agent used after agent stuck in loop: NO. The agent got stuck in a loop calling the deployment agent but did not call the troubleshoot agent.
+  - Testing agent used after significant changes: YES. Backend testing was run after security hardening and passed 100%. The screenshot tool was used extensively to verify UI flows.
+  - Troubleshoot agent used after agent stuck in loop: YES. The  was used successfully to diagnose a build failure related to a missing splash screen asset.
   - Test files created: None.
-  - Known regressions: The iOS build is regressed and currently fails to compile.
+  - Known regressions: None. The previous build-blocking regressions have all been resolved.
 
 **Credentials to test flow:**
 *   **Admin:**  / 
 *   **Manager:**  / 
 *   **Agent:**  / 
-*   **Existing Admin:**  / 
-*   **Existing Manager:**  / 
-*   **Existing Agent:**  / 
 
 **What agent forgot to execute**
-- The agent failed to resolve the iOS build failure. It got stuck in a loop calling the  instead of taking direct action to fix the identified dependency conflicts ( version, duplicate , and multiple lock files) as instructed by the user.
-- The agent did not call the  after getting stuck, despite the system prompt's rules to do so after repeated failures.
-- The long-standing task to verify the Lead Scanner OCR feature on a real physical device is still pending.
-</analysis>
+- The agent has been diligent in following user instructions in this session. The main outstanding tasks are the explicit  and  items from the pending list (backend refactoring, query optimization, and real-device testing), which have been correctly deprioritized in favor of fixing build blockers and completing the user's explicit pre-submission hardening requests.

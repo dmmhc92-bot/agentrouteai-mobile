@@ -10,7 +10,7 @@ Tests the following endpoints:
 5. GET /api/leads - Lead Retrieval (regression)
 6. POST /api/auth/login - Auth Test (regression)
 
-Backend URL: https://agentroute-app-store.preview.emergentagent.com/api
+Backend URL: https://secure-app-lock.preview.emergentagent.com/api
 Test Credentials:
 - Admin: admin@agentroute.com / Admin123!
 - Agent: agent@agentroute.com / Agent123!
@@ -28,7 +28,7 @@ import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-BASE_URL = "https://agentroute-app-store.preview.emergentagent.com/api"
+BASE_URL = "https://secure-app-lock.preview.emergentagent.com/api"
 
 class OfflineLeadTester:
     def __init__(self):

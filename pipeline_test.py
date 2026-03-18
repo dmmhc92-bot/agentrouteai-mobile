@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 import time
 
 # Configuration
-BASE_URL = "https://agentroute-app-store.preview.emergentagent.com/api"
+BASE_URL = "https://secure-app-lock.preview.emergentagent.com/api"
 TEST_EMAIL = "demo@agentroute.com"
 TEST_PASSWORD = "Demo1234!"
 
