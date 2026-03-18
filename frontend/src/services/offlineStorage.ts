@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as Crypto from 'expo-crypto';
+import { v4 as uuidv4 } from 'uuid';
 
 // Storage keys
 const OFFLINE_LEADS_KEY = '@offline_leads';
@@ -38,10 +38,8 @@ class OfflineStorageService {
   private isInitialized = false;
 
   // Generate unique temporary ID
-  async generateTempId(): Promise<string> {
-    const randomBytes = await Crypto.getRandomBytesAsync(16);
-    const hex = Array.from(randomBytes).map(b => b.toString(16).padStart(2, '0')).join('');
-    return `temp_${hex}_${Date.now()}`;
+  generateTempId(): string {
+    return `temp_${uuidv4()}_${Date.now()}`;
   }
 
   // Get all pending changes
@@ -78,7 +76,7 @@ class OfflineStorageService {
 
   // Add a new lead creation to queue
   async queueLeadCreate(data: OfflineLeadData): Promise<PendingLeadChange> {
-    const tempId = await this.generateTempId();
+    const tempId = this.generateTempId();
     const change: PendingLeadChange = {
       tempId,
       action: 'create',
@@ -98,7 +96,7 @@ class OfflineStorageService {
 
   // Add a lead update to queue
   async queueLeadUpdate(leadId: string, data: OfflineLeadData): Promise<PendingLeadChange> {
-    const tempId = await this.generateTempId();
+    const tempId = this.generateTempId();
     const change: PendingLeadChange = {
       tempId,
       leadId,
