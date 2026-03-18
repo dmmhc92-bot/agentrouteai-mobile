@@ -1200,8 +1200,115 @@ async def get_me(current_user: dict = Depends(get_current_user)):
         territory=current_user.get("territory"),
         commission_rate=current_user.get("commission_rate", 0.6),
         is_active=current_user.get("is_active", True),
-        approval_status=current_user.get("approval_status", "approved")
+        approval_status=current_user.get("approval_status", "approved"),
+        profile_image=current_user.get("profile_image")
     )
+
+# ==================== PROFILE IMAGE ROUTES ====================
+
+class ProfileImageUpdate(BaseModel):
+    image_data: str  # Base64 encoded image data
+
+@api_router.post("/auth/profile-image")
+async def upload_profile_image(image_data: ProfileImageUpdate, current_user: dict = Depends(get_current_user)):
+    """Upload or update the user's profile image"""
+    try:
+        # Validate base64 data
+        image_base64 = image_data.image_data
+        
+        # Remove data URL prefix if present
+        if ',' in image_base64:
+            image_base64 = image_base64.split(',')[1]
+        
+        # Validate it's valid base64
+        try:
+            decoded = base64.b64decode(image_base64)
+            # Check file size (max 5MB after decoding)
+            if len(decoded) > 5 * 1024 * 1024:
+                raise HTTPException(status_code=400, detail="Image too large. Maximum size is 5MB.")
+        except Exception as e:
+            raise HTTPException(status_code=400, detail="Invalid image data")
+        
+        # Store the image (with data URL prefix for proper display)
+        # Detect image type from first few bytes
+        if decoded[:8] == b'\x89PNG\r\n\x1a\n':
+            mime_type = "image/png"
+        elif decoded[:2] == b'\xff\xd8':
+            mime_type = "image/jpeg"
+        elif decoded[:4] == b'RIFF' and decoded[8:12] == b'WEBP':
+            mime_type = "image/webp"
+        else:
+            mime_type = "image/jpeg"  # Default to JPEG
+        
+        full_image_data = f"data:{mime_type};base64,{image_base64}"
+        
+        # Update the user's profile image
+        await db.users.update_one(
+            {"id": current_user["id"]},
+            {"$set": {"profile_image": full_image_data, "profile_image_updated_at": datetime.utcnow()}}
+        )
+        
+        await log_activity(current_user["id"], "profile_image_updated", "Profile image uploaded")
+        
+        return {"message": "Profile image updated successfully", "profile_image": full_image_data}
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error uploading profile image: {e}")
+        raise HTTPException(status_code=500, detail="Failed to upload profile image")
+
+@api_router.delete("/auth/profile-image")
+async def delete_profile_image(current_user: dict = Depends(get_current_user)):
+    """Remove the user's profile image"""
+    try:
+        await db.users.update_one(
+            {"id": current_user["id"]},
+            {"$unset": {"profile_image": "", "profile_image_updated_at": ""}}
+        )
+        
+        await log_activity(current_user["id"], "profile_image_removed", "Profile image removed")
+        
+        return {"message": "Profile image removed successfully"}
+    
+    except Exception as e:
+        logger.error(f"Error removing profile image: {e}")
+        raise HTTPException(status_code=500, detail="Failed to remove profile image")
+
+@api_router.get("/users/{user_id}/profile-image")
+async def get_user_profile_image(user_id: str, current_user: dict = Depends(get_current_user)):
+    """Get a specific user's profile image (respects visibility rules)"""
+    try:
+        user = await db.users.find_one({"id": user_id})
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Check visibility based on role hierarchy
+        current_role = current_user.get("role", "agent")
+        current_org = current_user.get("organization_id")
+        target_org = user.get("organization_id")
+        
+        # Allow if same user, same org, or admin
+        can_view = (
+            user_id == current_user["id"] or
+            current_role == "admin" or
+            (current_org and current_org == target_org)
+        )
+        
+        if not can_view:
+            raise HTTPException(status_code=403, detail="Not authorized to view this user's profile")
+        
+        return {
+            "user_id": user_id,
+            "name": user.get("name"),
+            "profile_image": user.get("profile_image")
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting user profile image: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get profile image")
 
 @api_router.delete("/auth/account")
 async def delete_account(current_user: dict = Depends(get_current_user)):
