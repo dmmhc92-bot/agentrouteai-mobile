@@ -17,6 +17,7 @@
         "NSPhotoLibraryUsageDescription": "Import business card photos to create leads",
         "NSLocationWhenInUseUsageDescription": "Optimize your daily sales route to leads",
         "NSContactsUsageDescription": "Import contacts to create leads",
+        "NSFaceIDUsageDescription": "Use Face ID to unlock app after inactivity",
         "ITSAppUsesNonExemptEncryption": false
       },
       "config": {
@@ -36,7 +37,9 @@
         "READ_EXTERNAL_STORAGE",
         "WRITE_EXTERNAL_STORAGE",
         "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION"
+        "ACCESS_COARSE_LOCATION",
+        "USE_BIOMETRIC",
+        "USE_FINGERPRINT"
       ]
     },
     "web": {
@@ -56,6 +59,7 @@
         }
       ],
       "expo-secure-store",
+      "expo-local-authentication",
       "@react-native-community/datetimepicker",
       "expo-web-browser"
     ],

@@ -916,15 +916,7 @@ class ApiService {
     return response.data;
   }
 
-  async resendInvitation(inviteId: string) {
-    const response = await apiClient.post(`/invitations/${inviteId}/resend`);
-    return response.data;
-  }
-
-  async deleteInvitation(inviteId: string) {
-    const response = await apiClient.delete(`/invitations/${inviteId}`);
-    return response.data;
-  }
+  // Note: resendInvitation and deleteInvitation are defined in INVITATION MANAGEMENT section above
 
   // ==================== MANAGER DAILY COMMAND CENTER ====================
 

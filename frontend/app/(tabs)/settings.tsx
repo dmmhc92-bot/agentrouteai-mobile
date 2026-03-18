@@ -12,11 +12,13 @@ import {
   Modal,
   TextInput,
   Image,
+  Switch,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../src/contexts/AuthContext';
+import { useAppLock } from '../../src/contexts/AppLockContext';
 import { api } from '../../src/services/api';
 import { format } from 'date-fns';
 import Constants from 'expo-constants';
@@ -36,10 +38,18 @@ export default function SettingsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user, signOut, isAdmin, isManager, canInviteUsers, isSoloMode, isConnectedMode, teamInfo, joinTeam, leaveTeam, refreshUser, updateProfile } = useAuth();
+  const { 
+    isAppLockEnabled, 
+    isBiometricAvailable, 
+    biometricType, 
+    enableAppLock, 
+    disableAppLock 
+  } = useAppLock();
 
   const [subscription, setSubscription] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  const [isTogglingAppLock, setIsTogglingAppLock] = useState(false);
   
   // Profile Image state
   const [isUploadingImage, setIsUploadingImage] = useState(false);
@@ -356,6 +366,28 @@ export default function SettingsScreen() {
     }
   };
 
+  // App Lock toggle handler
+  const handleToggleAppLock = async (value: boolean) => {
+    setIsTogglingAppLock(true);
+    try {
+      if (value) {
+        const success = await enableAppLock();
+        if (!success) {
+          Alert.alert(
+            'Unable to Enable',
+            'Biometric authentication could not be enabled. Please ensure you have Face ID or Touch ID set up on your device.'
+          );
+        }
+      } else {
+        await disableAppLock();
+      }
+    } catch (error) {
+      console.warn('Error toggling app lock');
+    } finally {
+      setIsTogglingAppLock(false);
+    }
+  };
+
   const getSubscriptionBadgeColor = () => {
     switch (subscription?.status) {
       case 'active':
@@ -593,6 +625,37 @@ export default function SettingsScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Privacy & Security</Text>
           <View style={styles.menuCard}>
+            {/* App Lock Toggle - Only show if biometric is available */}
+            {isBiometricAvailable && (
+              <View style={styles.appLockItem}>
+                <View style={styles.appLockLeft}>
+                  <Ionicons 
+                    name={biometricType === 'Face ID' ? 'scan-outline' : 'finger-print-outline'} 
+                    size={22} 
+                    color="#94A3B8" 
+                  />
+                  <View style={styles.appLockTextContainer}>
+                    <Text style={styles.menuItemText}>
+                      {biometricType || 'Biometric'} Lock
+                    </Text>
+                    <Text style={styles.menuItemSubtitle}>
+                      Require {biometricType || 'biometric'} after inactivity
+                    </Text>
+                  </View>
+                </View>
+                {isTogglingAppLock ? (
+                  <ActivityIndicator size="small" color="#3B82F6" />
+                ) : (
+                  <Switch
+                    value={isAppLockEnabled}
+                    onValueChange={handleToggleAppLock}
+                    trackColor={{ false: '#334155', true: '#3B82F6' }}
+                    thumbColor="#FFFFFF"
+                    ios_backgroundColor="#334155"
+                  />
+                )}
+              </View>
+            )}
             <MenuItem
               icon="map-outline"
               title="Route Privacy"
@@ -1411,5 +1474,24 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
+  },
+  // App Lock Toggle styles
+  appLockItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#334155',
+  },
+  appLockLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  appLockTextContainer: {
+    flex: 1,
   },
 });

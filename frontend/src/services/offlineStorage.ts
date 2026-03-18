@@ -1,9 +1,9 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { v4 as uuidv4 } from 'uuid';
+import { secureStorage } from './secureStorage';
 
 // Storage keys
 const OFFLINE_LEADS_KEY = '@offline_leads';
-const SYNC_QUEUE_KEY = '@sync_queue';
+const SYNC_QUEUE_KEY = '@sync_queue_v2'; // Changed key for encrypted version
 const MAX_QUEUE_SIZE = 50; // Prevent memory bloat
 
 // Types
@@ -42,19 +42,19 @@ class OfflineStorageService {
     return `temp_${uuidv4()}_${Date.now()}`;
   }
 
-  // Get all pending changes
+  // Get all pending changes (now with encryption)
   async getPendingChanges(): Promise<PendingLeadChange[]> {
     try {
-      const data = await AsyncStorage.getItem(SYNC_QUEUE_KEY);
+      const data = await secureStorage.getObfuscatedItem(SYNC_QUEUE_KEY);
       if (!data) return [];
       return JSON.parse(data);
     } catch (error) {
-      console.error('[OfflineStorage] Failed to get pending changes:', error);
+      console.warn('[OfflineStorage] Failed to get pending changes');
       return [];
     }
   }
 
-  // Save pending changes
+  // Save pending changes (now with encryption)
   private async savePendingChanges(changes: PendingLeadChange[]): Promise<void> {
     try {
       // Enforce max queue size - remove oldest synced/failed items first
@@ -67,9 +67,9 @@ class OfflineStorageService {
         });
         changes = sortedByPriority.slice(0, MAX_QUEUE_SIZE);
       }
-      await AsyncStorage.setItem(SYNC_QUEUE_KEY, JSON.stringify(changes));
+      await secureStorage.setObfuscatedItem(SYNC_QUEUE_KEY, JSON.stringify(changes));
     } catch (error) {
-      console.error('[OfflineStorage] Failed to save pending changes:', error);
+      console.warn('[OfflineStorage] Failed to save pending changes');
       throw error;
     }
   }
@@ -180,8 +180,8 @@ class OfflineStorageService {
 
   // Clear everything (for testing/debugging)
   async clearAll(): Promise<void> {
-    await AsyncStorage.removeItem(SYNC_QUEUE_KEY);
-    await AsyncStorage.removeItem(OFFLINE_LEADS_KEY);
+    await secureStorage.deleteObfuscatedItem(SYNC_QUEUE_KEY);
+    await secureStorage.deleteObfuscatedItem(OFFLINE_LEADS_KEY);
     console.log('[OfflineStorage] Cleared all offline data');
   }
 }

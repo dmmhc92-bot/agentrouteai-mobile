@@ -18,7 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import Svg, { Path, Rect } from 'react-native-svg';
 import { captureRef } from 'react-native-view-shot';
 import * as ImagePicker from 'expo-image-picker';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { secureStorage } from '../services/secureStorage';
 
 interface SignatureCaptureProps {
   visible: boolean;
@@ -332,11 +332,11 @@ export default function SignatureCapture({
       console.log(`[SignatureCapture] Final signature type: ${finalSignatureData.substring(5, 25)}`);
       console.log(`[SignatureCapture] Final signature length: ${finalSignatureData.length}`);
       
-      // Store in AsyncStorage as backup
+      // Store in SecureStorage as backup (using obfuscation for large data)
       try {
         const storageKey = `${SIGNATURE_STORAGE_KEY}${title.replace(/\s/g, '_')}`;
-        await AsyncStorage.setItem(storageKey, finalSignatureData);
-        console.log(`[SignatureCapture] Signature backed up to AsyncStorage: ${storageKey}`);
+        await secureStorage.setObfuscatedItem(storageKey, finalSignatureData);
+        console.log(`[SignatureCapture] Signature backed up securely: ${storageKey}`);
       } catch (storageError) {
         console.warn('[SignatureCapture] AsyncStorage backup failed:', storageError);
       }
