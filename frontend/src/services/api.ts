@@ -896,6 +896,23 @@ class ApiService {
     const response = await apiClient.delete(`/invitations/${inviteId}`);
     return response.data;
   }
+
+  // ==================== PROFILE IMAGE ====================
+
+  async uploadProfileImage(imageData: string) {
+    const response = await apiClient.post('/auth/profile-image', { image_data: imageData });
+    return response.data;
+  }
+
+  async deleteProfileImage() {
+    const response = await apiClient.delete('/auth/profile-image');
+    return response.data;
+  }
+
+  async getUserProfileImage(userId: string) {
+    const response = await apiClient.get(`/users/${userId}/profile-image`);
+    return response.data;
+  }
 }
 
 export const api = new ApiService();
