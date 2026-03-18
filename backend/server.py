@@ -6572,43 +6572,67 @@ async def get_privacy_policy_html():
 </head>
 <body>
     <h1>AgentRoute AI Privacy Policy</h1>
-    <p class="last-updated">Last Updated: March 15, 2026</p>
+    <p class="last-updated">Last Updated: March 18, 2026</p>
     
-    <h2>Information We Collect</h2>
+    <h2>1. Information We Collect</h2>
+    <p>AgentRoute AI collects the following types of information:</p>
     <ul>
-        <li>Personal information (name, email, phone number)</li>
-        <li>Lead and customer data you enter into the app</li>
-        <li>Location data (for route optimization, with your permission)</li>
-        <li>Usage analytics to improve our services</li>
-        <li>Account mode preferences (Solo or Team membership)</li>
-        <li>Organization and hierarchy information when connected to a team</li>
+        <li><strong>Account Information:</strong> Name, email address, phone number, and password</li>
+        <li><strong>Profile Photos:</strong> Profile images you upload for identification within the app</li>
+        <li><strong>Lead & Customer Data:</strong> Contact information, notes, appointments, and other data you enter about your leads and customers</li>
+        <li><strong>Location Data:</strong> GPS coordinates for route optimization (with your explicit permission)</li>
+        <li><strong>Usage Analytics:</strong> App interaction data, feature usage patterns, and crash reports to improve our services</li>
+        <li><strong>Device Information:</strong> Device type, operating system, and app version for troubleshooting</li>
+        <li><strong>Organization Data:</strong> Team membership, hierarchy position, and role information when connected to a team</li>
     </ul>
     
-    <h2>Account Modes</h2>
+    <h2>2. Profile Photos</h2>
+    <p>When you upload a profile photo:</p>
+    <ul>
+        <li>Your profile image is securely stored and encrypted in our database</li>
+        <li>Profile photos are used solely for user identification within the app</li>
+        <li>Your photo may be visible to team members if you are connected to an organization</li>
+        <li>You can update or remove your profile photo at any time from the Settings screen</li>
+        <li>When you delete your account, your profile photo is permanently deleted</li>
+    </ul>
+    
+    <h2>3. Account Modes</h2>
     <p>AgentRoute AI supports two account modes:</p>
     <div class="highlight">
         <p><strong>Solo Mode:</strong> You operate independently. All your data is private and only accessible to you.</p>
         <p><strong>Team/Hierarchy Mode:</strong> When connected to an organization, certain data may be visible to your Admin, Manager, or Upline according to their role permissions.</p>
     </div>
     
-    <h2>Team/Hierarchy Data Visibility</h2>
-    <p>When you join a team or organization:</p>
+    <h2>4. Role-Based Data Access</h2>
+    <p>When you join a team or organization, data visibility is determined by role:</p>
     <ul>
-        <li>Admins can view all team member activity, leads, and performance</li>
-        <li>Managers can view data for agents directly under their supervision</li>
-        <li>Agents can only view their own records unless explicit sharing is enabled</li>
-        <li>Your personal profile information remains private</li>
+        <li><strong>Admins:</strong> Can view all team member activity, leads, performance metrics, and team management data</li>
+        <li><strong>Managers:</strong> Can view data for agents directly under their supervision, including leads, appointments, and activity</li>
+        <li><strong>Agents:</strong> Can only view their own records unless explicit sharing is enabled</li>
+        <li>Your personal profile information (email, password) remains private regardless of role</li>
+        <li>Profile photos are visible to team members within the same organization</li>
     </ul>
     
-    <h2>Data Ownership & Portability</h2>
+    <h2>5. Offline Data Handling</h2>
+    <p>AgentRoute AI includes offline functionality:</p>
+    <ul>
+        <li>When you lose internet connectivity, certain data may be temporarily stored locally on your device</li>
+        <li>Offline-created leads and edits are saved securely on your device</li>
+        <li>When internet connectivity is restored, your offline data automatically syncs with our servers</li>
+        <li>Local offline data is encrypted and deleted from your device after successful synchronization</li>
+        <li>You can view sync status in the app to know if data is pending upload</li>
+    </ul>
+    
+    <h2>6. Data Ownership & Portability</h2>
     <ul>
         <li>Records you create as an agent are owned by you</li>
         <li>If you leave a team, your agent-owned records remain with you</li>
         <li>Your former team loses access to your records immediately upon separation</li>
         <li>Only records explicitly marked as team-owned remain with the organization</li>
+        <li>You can export your data at any time</li>
     </ul>
     
-    <h2>Invitation Tokens</h2>
+    <h2>7. Invitation Tokens</h2>
     <p>When joining a team via invitation:</p>
     <ul>
         <li>Invitation tokens are system-generated and unique</li>
@@ -6617,54 +6641,69 @@ async def get_privacy_policy_html():
         <li>Used or revoked tokens cannot be reused</li>
     </ul>
     
-    <h2>How We Use Your Data</h2>
+    <h2>8. How We Use Your Data</h2>
     <ul>
         <li>Provide and improve app functionality</li>
-        <li>Power AI-driven features and recommendations</li>
-        <li>Send notifications, reminders, and important updates</li>
+        <li>Power AI-driven features and recommendations (using OpenAI and Google AI services)</li>
+        <li>Send push notifications, reminders, and important updates</li>
         <li>Analyze usage patterns to enhance user experience</li>
         <li>Facilitate team collaboration when in hierarchy mode</li>
+        <li>Generate compliance documents (SOA forms)</li>
+        <li>Optimize route planning and scheduling</li>
     </ul>
     
-    <h2>Data Storage & Security</h2>
+    <h2>9. Data Storage & Security</h2>
     <ul>
         <li>All data is stored in encrypted databases</li>
-        <li>Passwords are securely hashed (never stored in plain text)</li>
-        <li>We use industry-standard security protocols</li>
+        <li>Passwords are securely hashed using bcrypt (never stored in plain text)</li>
+        <li>We use industry-standard HTTPS encryption for all data transmission</li>
+        <li>We implement role-based access control to protect team data boundaries</li>
+        <li>Profile images are stored as encrypted base64 data</li>
+        <li>We conduct regular security audits and updates</li>
         <li>We never sell your personal data to third parties</li>
-        <li>Role-based access control protects team data boundaries</li>
     </ul>
     
-    <h2>Your Rights</h2>
+    <h2>10. Your Rights</h2>
     <ul>
         <li>Access and export your data at any time</li>
         <li>Request deletion of your account and all associated data</li>
         <li>Opt out of marketing communications</li>
-        <li>Update or correct your personal information</li>
+        <li>Update or correct your personal information and profile photo</li>
         <li>Switch between Solo and Team modes at any time</li>
         <li>Leave a team without deleting your account</li>
+        <li>Control push notification preferences</li>
     </ul>
     
-    <h2>Account Deletion</h2>
+    <h2>11. Account Deletion</h2>
     <p>You can delete your account at any time through the Settings screen in the app. When you delete your account:</p>
     <ul>
         <li>Your personal information will be permanently removed</li>
+        <li>Your profile photo will be permanently deleted</li>
         <li>Your leads, appointments, and documents will be deleted</li>
+        <li>Any locally stored offline data will be cleared</li>
         <li>This action cannot be undone</li>
         <li>Note: Leaving a team does NOT delete your account</li>
     </ul>
     
-    <h2>Third-Party Services</h2>
-    <p>We may use third-party services for:</p>
+    <h2>12. Third-Party Services</h2>
+    <p>We use the following third-party services:</p>
     <ul>
-        <li>AI processing (OpenAI, Google)</li>
-        <li>Analytics and crash reporting</li>
-        <li>Push notifications</li>
+        <li><strong>AI Processing:</strong> OpenAI GPT and Google Gemini for AI coaching and document analysis</li>
+        <li><strong>Analytics:</strong> Usage analytics to improve app performance</li>
+        <li><strong>Push Notifications:</strong> Expo notification services for alerts and reminders</li>
+        <li><strong>Maps & Geocoding:</strong> Location services for route optimization</li>
     </ul>
+    <p>These services have their own privacy policies and data handling practices.</p>
+    
+    <h2>13. Children's Privacy</h2>
+    <p>AgentRoute AI is not intended for users under 18 years of age. We do not knowingly collect personal information from children.</p>
+    
+    <h2>14. Changes to This Policy</h2>
+    <p>We may update this Privacy Policy from time to time. We will notify you of significant changes through the app or via email.</p>
     
     <div class="contact">
         <h2 style="margin-top: 0;">Contact Us</h2>
-        <p>For privacy-related questions or concerns:</p>
+        <p>For privacy-related questions, data requests, or concerns:</p>
         <p>Email: <a href="mailto:agentrouteai@gmail.com">agentrouteai@gmail.com</a></p>
     </div>
 </body>
@@ -6733,7 +6772,7 @@ async def get_terms_of_service_html():
 </head>
 <body>
     <h1>AgentRoute AI Terms of Service</h1>
-    <p class="last-updated">Last Updated: January 1, 2024</p>
+    <p class="last-updated">Last Updated: March 18, 2026</p>
     
     <p>Welcome to AgentRoute AI. By accessing or using our mobile application and services, you agree to be bound by these Terms of Service.</p>
     
@@ -6781,13 +6820,40 @@ async def get_terms_of_service_html():
         <li>Respect the privacy of your clients and leads</li>
     </ul>
     
-    <h2>6. Intellectual Property</h2>
+    <h3>5.1 Data Accuracy Responsibility</h3>
+    <p><strong>You are solely responsible for the accuracy, completeness, and legality of all data you enter into AgentRoute AI.</strong> This includes but is not limited to:</p>
+    <ul>
+        <li>Lead and customer contact information</li>
+        <li>Appointment details and scheduling information</li>
+        <li>Notes, comments, and communication records</li>
+        <li>Scope of Appointment document information</li>
+        <li>Any other data entered through the Service</li>
+    </ul>
+    <p>AgentRoute AI does not verify the accuracy of user-entered data and is not liable for any consequences arising from inaccurate or incomplete information.</p>
+    
+    <h2>6. Acceptable Use Policy</h2>
+    <p>You agree NOT to use AgentRoute AI to:</p>
+    <ul>
+        <li>Violate any applicable laws, regulations, or third-party rights</li>
+        <li>Access, collect, or store personal data about others without their consent</li>
+        <li>Attempt unauthorized access to other users' accounts or data</li>
+        <li>Misuse customer information for purposes other than legitimate business activities</li>
+        <li>Transmit malicious code, viruses, or harmful content</li>
+        <li>Interfere with or disrupt the Service or servers</li>
+        <li>Reverse engineer, decompile, or attempt to extract source code</li>
+        <li>Share, transfer, or sell your account credentials</li>
+        <li>Use automated means to access the Service without authorization</li>
+        <li>Harass, abuse, or harm other users</li>
+    </ul>
+    <p>Violation of this Acceptable Use Policy may result in immediate account suspension or termination.</p>
+    
+    <h2>7. Intellectual Property</h2>
     <p>The Service, including its content, features, and functionality, is owned by AgentRoute AI and is protected by copyright, trademark, and other intellectual property laws.</p>
     
     <h2>7. Data and Privacy</h2>
     <p>Your use of the Service is also governed by our Privacy Policy. By using the Service, you consent to the collection and use of your information as described in our Privacy Policy.</p>
     
-    <h2>8. Disclaimers</h2>
+    <h2>9. Disclaimers</h2>
     <ul>
         <li>AgentRoute AI is a productivity tool and does not provide insurance, legal, or financial advice</li>
         <li>The Service is provided "as is" without warranties of any kind</li>
@@ -6795,10 +6861,20 @@ async def get_terms_of_service_html():
         <li>AI-generated content is for assistance only and should be reviewed before use</li>
     </ul>
     
-    <h2>9. Limitation of Liability</h2>
-    <p>To the maximum extent permitted by law, AgentRoute AI shall not be liable for any indirect, incidental, special, consequential, or punitive damages arising from your use of the Service.</p>
+    <h2>10. Limitation of Liability</h2>
+    <div class="highlight">
+        <p><strong>IMPORTANT:</strong> AgentRoute AI is a productivity and CRM tool designed to assist with lead management and sales activities. <strong>The app does not guarantee any specific business outcomes, sales results, or revenue.</strong></p>
+    </div>
+    <p>To the maximum extent permitted by law:</p>
+    <ul>
+        <li>AgentRoute AI shall not be liable for any indirect, incidental, special, consequential, or punitive damages arising from your use of the Service</li>
+        <li>We are not responsible for any lost sales, missed opportunities, or business losses resulting from use of the Service</li>
+        <li>We are not liable for any errors in AI-generated content or suggestions</li>
+        <li>We are not responsible for data loss resulting from device failure, user error, or service interruptions</li>
+        <li>Our total liability shall not exceed the amount you paid for the Service in the 12 months preceding the claim</li>
+    </ul>
     
-    <h2>10. Account Termination</h2>
+    <h2>11. Account Control and Termination</h2>
     <p>We reserve the right to suspend or terminate your account if you:</p>
     <ul>
         <li>Violate these Terms of Service</li>
