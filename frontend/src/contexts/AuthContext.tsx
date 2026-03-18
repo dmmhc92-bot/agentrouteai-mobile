@@ -2,7 +2,8 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
-import { api } from '../services/api';
+import { api, createApiError, ApiError } from '../services/api';
+import NetInfo from '@react-native-community/netinfo';
 
 interface User {
   id: string;
@@ -41,6 +42,7 @@ interface AuthContextType {
   user: User | null;
   token: string | null;
   isLoading: boolean;
+  isOffline: boolean;
   isAdmin: boolean;
   isManager: boolean;
   isAgent: boolean;
@@ -66,6 +68,12 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Cache keys for offline data
+const CACHE_KEYS = {
+  USER_DATA: '@cached_user_data',
+  TEAM_INFO: '@cached_team_info',
+};
+
 // Platform-aware storage
 const storage = {
   async getItem(key: string): Promise<string | null> {
@@ -90,10 +98,39 @@ const storage = {
   },
 };
 
+// Helper to cache user data for offline use
+async function cacheUserData(user: User | null, teamInfo: TeamInfo | null) {
+  try {
+    if (user) {
+      await AsyncStorage.setItem(CACHE_KEYS.USER_DATA, JSON.stringify(user));
+    }
+    if (teamInfo) {
+      await AsyncStorage.setItem(CACHE_KEYS.TEAM_INFO, JSON.stringify(teamInfo));
+    }
+  } catch (e) {
+    // Ignore cache errors
+  }
+}
+
+// Helper to load cached user data
+async function loadCachedUserData(): Promise<{ user: User | null; teamInfo: TeamInfo | null }> {
+  try {
+    const userData = await AsyncStorage.getItem(CACHE_KEYS.USER_DATA);
+    const teamData = await AsyncStorage.getItem(CACHE_KEYS.TEAM_INFO);
+    return {
+      user: userData ? JSON.parse(userData) : null,
+      teamInfo: teamData ? JSON.parse(teamData) : null
+    };
+  } catch (e) {
+    return { user: null, teamInfo: null };
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isOffline, setIsOffline] = useState(false);
   const [teamInfo, setTeamInfo] = useState<TeamInfo | null>(null);
 
   useEffect(() => {
@@ -102,29 +139,72 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const loadStoredAuth = async () => {
     try {
+      // Check network status first
+      const netState = await NetInfo.fetch();
+      const hasNetwork = netState.isConnected === true && netState.isInternetReachable !== false;
+      
       const storedToken = await storage.getItem('auth_token');
+      
       if (storedToken) {
         setToken(storedToken);
         api.setAuthToken(storedToken);
-        const userData = await api.getMe();
-        setUser(userData);
         
-        // Load account mode info
-        try {
-          const modeData = await api.getAccountMode();
-          if (modeData.team_info) {
-            setTeamInfo(modeData.team_info);
+        if (hasNetwork) {
+          // Online: try to fetch fresh user data
+          try {
+            const userData = await api.getMe();
+            setUser(userData);
+            setIsOffline(false);
+            
+            // Load account mode info
+            try {
+              const modeData = await api.getAccountMode();
+              if (modeData.team_info) {
+                setTeamInfo(modeData.team_info);
+              }
+              // Cache the fresh data for offline use
+              cacheUserData(userData, modeData.team_info || null);
+            } catch (e) {
+              // Account mode endpoint may not exist for older backends
+            }
+          } catch (error) {
+            // API failed even with network - use cached data
+            console.warn('[Auth] API failed, loading cached data');
+            const cached = await loadCachedUserData();
+            if (cached.user) {
+              setUser(cached.user);
+              setTeamInfo(cached.teamInfo);
+              setIsOffline(true);
+            } else {
+              // No cached data - clear token
+              await storage.removeItem('auth_token');
+              setToken(null);
+            }
           }
-        } catch (e) {
-          // Account mode endpoint may not exist for older backends
+        } else {
+          // Offline: load cached user data
+          console.log('[Auth] Offline mode - loading cached data');
+          const cached = await loadCachedUserData();
+          if (cached.user) {
+            setUser(cached.user);
+            setTeamInfo(cached.teamInfo);
+            setIsOffline(true);
+          }
+          // Don't clear token if offline - keep session for when online
         }
       }
     } catch (error) {
-      console.log('Auth load error:', error);
+      console.warn('[Auth] Load error:', error);
+      // On any error, try to load cached data
       try {
-        await storage.removeItem('auth_token');
+        const cached = await loadCachedUserData();
+        if (cached.user) {
+          setUser(cached.user);
+          setTeamInfo(cached.teamInfo);
+          setIsOffline(true);
+        }
       } catch (e) {
-        // Ignore cleanup errors
+        // Ignore
       }
     } finally {
       setIsLoading(false);
@@ -136,16 +216,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const userData = await api.getMe();
         setUser(userData);
+        setIsOffline(false);
         
         // Refresh team info
         try {
           const modeData = await api.getAccountMode();
           setTeamInfo(modeData.team_info || null);
+          // Cache fresh data
+          cacheUserData(userData, modeData.team_info || null);
         } catch (e) {
           // Ignore
         }
       } catch (error) {
-        console.log('Refresh user error:', error);
+        console.warn('[Auth] Refresh user error:', error);
+        const apiError = createApiError(error);
+        if (apiError.isOffline) {
+          setIsOffline(true);
+        }
       }
     }
   };
@@ -156,13 +243,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(response.access_token);
     api.setAuthToken(response.access_token);
     setUser(response.user);
+    setIsOffline(false);
     
     // Load team info
     try {
       const modeData = await api.getAccountMode();
       setTeamInfo(modeData.team_info || null);
+      // Cache for offline use
+      cacheUserData(response.user, modeData.team_info || null);
     } catch (e) {
-      // Ignore
+      // Cache user without team info
+      cacheUserData(response.user, null);
     }
     
     return response.user;
@@ -174,13 +265,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(response.access_token);
     api.setAuthToken(response.access_token);
     setUser(response.user);
+    setIsOffline(false);
     
     // Load team info
     try {
       const modeData = await api.getAccountMode();
       setTeamInfo(modeData.team_info || null);
+      cacheUserData(response.user, modeData.team_info || null);
     } catch (e) {
-      // Ignore
+      cacheUserData(response.user, null);
     }
   };
 
@@ -226,9 +319,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     await storage.removeItem('auth_token');
+    // Clear cached user data on logout
+    try {
+      await AsyncStorage.removeItem(CACHE_KEYS.USER_DATA);
+      await AsyncStorage.removeItem(CACHE_KEYS.TEAM_INFO);
+    } catch (e) {
+      // Ignore cache clear errors
+    }
     setToken(null);
     setUser(null);
     setTeamInfo(null);
+    setIsOffline(false);
     api.setAuthToken(null);
   };
 
@@ -282,6 +383,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         token,
         isLoading,
+        isOffline,
         isAdmin,
         isManager,
         isAgent,

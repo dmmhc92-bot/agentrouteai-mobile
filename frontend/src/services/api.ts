@@ -1,8 +1,66 @@
-import axios from 'axios';
+import axios, { AxiosError } from 'axios';
 
-const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
-if (!BACKEND_URL) {
-  console.error('EXPO_PUBLIC_BACKEND_URL environment variable is not set');
+// Use the stable production backend URL - NOT ngrok
+const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL || 'https://agentroute-app-store.preview.emergentagent.com';
+
+// Network error types for offline handling
+export type NetworkErrorType = 'offline' | 'timeout' | 'server_error' | 'unknown';
+
+export interface ApiError {
+  type: NetworkErrorType;
+  message: string;
+  isOffline: boolean;
+  originalError?: Error;
+}
+
+// Helper to determine if error is network-related
+function isNetworkError(error: AxiosError): boolean {
+  return (
+    !error.response && 
+    (error.code === 'ECONNABORTED' || 
+     error.code === 'ERR_NETWORK' || 
+     error.message?.includes('Network Error') ||
+     error.message?.includes('timeout') ||
+     error.message?.includes('ENOTFOUND') ||
+     error.message?.includes('ETIMEDOUT') ||
+     error.message?.includes('ECONNREFUSED'))
+  );
+}
+
+// Create user-friendly error from axios error
+export function createApiError(error: any): ApiError {
+  if (axios.isAxiosError(error)) {
+    if (isNetworkError(error)) {
+      return {
+        type: 'offline',
+        message: 'No internet connection. Your data is saved locally.',
+        isOffline: true,
+        originalError: error
+      };
+    }
+    if (error.code === 'ECONNABORTED') {
+      return {
+        type: 'timeout',
+        message: 'Request timed out. Please try again.',
+        isOffline: false,
+        originalError: error
+      };
+    }
+    if (error.response?.status && error.response.status >= 500) {
+      return {
+        type: 'server_error',
+        message: 'Server is temporarily unavailable.',
+        isOffline: false,
+        originalError: error
+      };
+    }
+  }
+  return {
+    type: 'unknown',
+    message: error?.message || 'An unexpected error occurred.',
+    isOffline: false,
+    originalError: error
+  };
 }
 
 const apiClient = axios.create({
