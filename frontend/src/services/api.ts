@@ -897,6 +897,13 @@ class ApiService {
     return response.data;
   }
 
+  // ==================== MANAGER DAILY COMMAND CENTER ====================
+
+  async getManagerDailyCommandCenter() {
+    const response = await apiClient.get('/manager/daily-command-center');
+    return response.data;
+  }
+
   // ==================== PROFILE IMAGE ====================
 
   async uploadProfileImage(imageData: string) {

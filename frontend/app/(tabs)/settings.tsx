@@ -475,6 +475,12 @@ export default function SettingsScreen() {
             <Text style={styles.sectionTitle}>Team Management</Text>
             <View style={styles.menuCard}>
               <MenuItem
+                icon="pulse-outline"
+                title="Daily Command Center"
+                subtitle="Team activity, needs attention, top performer"
+                onPress={() => router.push('/manager-command-center')}
+              />
+              <MenuItem
                 icon="people-outline"
                 title="Manage Team"
                 subtitle={isAdmin ? "Users, invitations, approvals" : "Agents & invitations"}

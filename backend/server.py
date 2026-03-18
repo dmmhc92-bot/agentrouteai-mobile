@@ -9017,6 +9017,256 @@ async def health_check():
         "timestamp": datetime.utcnow().isoformat()
     }
 
+# ==================== MANAGER DAILY COMMAND CENTER ====================
+
+@api_router.get("/manager/daily-command-center")
+async def get_manager_daily_command_center(current_user: dict = Depends(require_manager_or_admin)):
+    """
+    Manager Daily Command Center - Aggregated operational data for Admins and Managers.
+    Returns team activity, needs attention items, and top performer for the current day.
+    Uses only existing stable data from leads, appointments, and activity_logs.
+    """
+    from datetime import datetime, timedelta
+    
+    user_id = current_user["id"]
+    role = current_user.get("role", "agent")
+    organization_id = current_user.get("organization_id")
+    
+    # Get today's date range (UTC)
+    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    today_end = today_start + timedelta(days=1)
+    
+    # Define stale lead threshold (7 days with no update)
+    stale_threshold = datetime.utcnow() - timedelta(days=7)
+    
+    try:
+        # Get team members based on role
+        if role == "admin":
+            if organization_id:
+                team_query = {"organization_id": organization_id, "deleted_at": None, "is_active": {"$ne": False}}
+            else:
+                team_query = {"deleted_at": None, "is_active": {"$ne": False}}
+        else:
+            # Manager sees themselves and their direct reports
+            team_query = {
+                "$or": [
+                    {"id": user_id},
+                    {"manager_id": user_id}
+                ],
+                "deleted_at": None,
+                "is_active": {"$ne": False}
+            }
+        
+        team_members = await db.users.find(team_query, {
+            "id": 1, "name": 1, "email": 1, "role": 1, "profile_image": 1
+        }).to_list(100)
+        
+        if not team_members:
+            # Return safe empty state
+            return {
+                "team_activity_today": [],
+                "needs_attention": {
+                    "inactive_agents": [],
+                    "stale_leads": [],
+                    "summary": {"inactive_count": 0, "stale_leads_count": 0}
+                },
+                "top_performer": None,
+                "summary": {
+                    "total_team_members": 0,
+                    "active_today": 0,
+                    "total_leads_today": 0,
+                    "total_appointments_today": 0
+                },
+                "generated_at": datetime.utcnow().isoformat()
+            }
+        
+        team_ids = [m["id"] for m in team_members]
+        
+        # ========== SECTION A: Team Activity Today ==========
+        team_activity = []
+        for member in team_members:
+            member_id = member["id"]
+            
+            # Count leads created today by this user
+            leads_today = await db.leads.count_documents({
+                "created_by_user": member_id,
+                "created_date": {"$gte": today_start, "$lt": today_end}
+            })
+            
+            # Count appointments created today by this user
+            appointments_today = await db.appointments.count_documents({
+                "created_by_user": member_id,
+                "created_date": {"$gte": today_start, "$lt": today_end}
+            })
+            
+            # Get last activity from activity_logs
+            last_activity_doc = await db.activity_logs.find_one(
+                {"user_id": member_id},
+                sort=[("created_at", -1)]
+            )
+            last_activity_time = last_activity_doc["created_at"] if last_activity_doc else None
+            
+            # Count follow-up activities today (appointments completed or stage changes)
+            follow_ups_today = await db.activity_logs.count_documents({
+                "user_id": member_id,
+                "activity_type": {"$in": ["appointment_completed", "stage_changed", "lead_updated"]},
+                "created_at": {"$gte": today_start, "$lt": today_end}
+            })
+            
+            has_activity = leads_today > 0 or appointments_today > 0 or follow_ups_today > 0
+            
+            team_activity.append({
+                "user_id": member_id,
+                "name": member["name"],
+                "email": member["email"],
+                "role": member.get("role", "agent"),
+                "profile_image": member.get("profile_image"),
+                "leads_added_today": leads_today,
+                "appointments_created_today": appointments_today,
+                "follow_ups_completed_today": follow_ups_today,
+                "last_activity": last_activity_time.isoformat() if last_activity_time else None,
+                "has_activity_today": has_activity
+            })
+        
+        # ========== SECTION B: Needs Attention ==========
+        # Inactive agents (no activity today)
+        inactive_agents = [
+            {
+                "user_id": a["user_id"],
+                "name": a["name"],
+                "email": a["email"],
+                "role": a["role"],
+                "profile_image": a.get("profile_image"),
+                "last_activity": a["last_activity"]
+            }
+            for a in team_activity 
+            if not a["has_activity_today"] and a["role"] != "admin"  # Don't flag admins as inactive
+        ]
+        
+        # Stale leads (not updated in 7+ days)
+        stale_leads_query = {
+            "created_by_user": {"$in": team_ids},
+            "stage": {"$nin": ["policy_issued", "policy_delivered", "lost", "not_qualified"]},
+            "created_date": {"$lt": stale_threshold}
+        }
+        stale_leads_cursor = db.leads.find(stale_leads_query, {
+            "id": 1, "name": 1, "phone": 1, "stage": 1, "created_date": 1, 
+            "last_contact_date": 1, "created_by_user": 1, "assigned_to_user": 1
+        }).sort("created_date", 1).limit(20)
+        
+        stale_leads_raw = await stale_leads_cursor.to_list(20)
+        
+        # Enrich stale leads with owner info
+        stale_leads = []
+        for lead in stale_leads_raw:
+            owner_id = lead.get("assigned_to_user") or lead.get("created_by_user")
+            owner = next((m for m in team_members if m["id"] == owner_id), None)
+            
+            # Calculate days since last activity
+            last_date = lead.get("last_contact_date") or lead.get("created_date")
+            days_stale = (datetime.utcnow() - last_date).days if last_date else 999
+            
+            stale_leads.append({
+                "lead_id": lead["id"],
+                "name": lead["name"],
+                "phone": lead.get("phone", ""),
+                "stage": lead.get("stage", "new_lead"),
+                "days_since_activity": days_stale,
+                "last_activity_date": last_date.isoformat() if last_date else None,
+                "owner_name": owner["name"] if owner else "Unassigned",
+                "owner_id": owner_id
+            })
+        
+        needs_attention = {
+            "inactive_agents": inactive_agents,
+            "stale_leads": stale_leads,
+            "summary": {
+                "inactive_count": len(inactive_agents),
+                "stale_leads_count": len(stale_leads)
+            }
+        }
+        
+        # ========== SECTION C: Top Performer Snapshot ==========
+        # Score based on: leads_added (1pt) + appointments_created (2pts) + follow_ups (1pt)
+        scored_members = []
+        for a in team_activity:
+            if a["role"] == "admin":
+                continue  # Skip admin in top performer calculation
+            score = (a["leads_added_today"] * 1) + (a["appointments_created_today"] * 2) + (a["follow_ups_completed_today"] * 1)
+            if score > 0:
+                scored_members.append({
+                    "user_id": a["user_id"],
+                    "name": a["name"],
+                    "email": a["email"],
+                    "role": a["role"],
+                    "profile_image": a.get("profile_image"),
+                    "score": score,
+                    "leads_added": a["leads_added_today"],
+                    "appointments_created": a["appointments_created_today"],
+                    "follow_ups_completed": a["follow_ups_completed_today"]
+                })
+        
+        # Sort by score descending, then by name for tie-breaking
+        scored_members.sort(key=lambda x: (-x["score"], x["name"]))
+        
+        top_performer = None
+        if scored_members:
+            top = scored_members[0]
+            top_performer = {
+                "user_id": top["user_id"],
+                "name": top["name"],
+                "email": top["email"],
+                "role": top["role"],
+                "profile_image": top.get("profile_image"),
+                "score": top["score"],
+                "breakdown": {
+                    "leads_added": top["leads_added"],
+                    "appointments_created": top["appointments_created"],
+                    "follow_ups_completed": top["follow_ups_completed"]
+                },
+                "scoring_rule": "leads(×1) + appointments(×2) + follow_ups(×1)"
+            }
+        
+        # ========== Summary Stats ==========
+        active_today_count = len([a for a in team_activity if a["has_activity_today"]])
+        total_leads_today = sum(a["leads_added_today"] for a in team_activity)
+        total_appointments_today = sum(a["appointments_created_today"] for a in team_activity)
+        
+        return {
+            "team_activity_today": team_activity,
+            "needs_attention": needs_attention,
+            "top_performer": top_performer,
+            "summary": {
+                "total_team_members": len(team_members),
+                "active_today": active_today_count,
+                "total_leads_today": total_leads_today,
+                "total_appointments_today": total_appointments_today
+            },
+            "generated_at": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in daily command center: {str(e)}")
+        # Return safe fallback on error
+        return {
+            "team_activity_today": [],
+            "needs_attention": {
+                "inactive_agents": [],
+                "stale_leads": [],
+                "summary": {"inactive_count": 0, "stale_leads_count": 0}
+            },
+            "top_performer": None,
+            "summary": {
+                "total_team_members": 0,
+                "active_today": 0,
+                "total_leads_today": 0,
+                "total_appointments_today": 0
+            },
+            "error": "Unable to load command center data. Please try again.",
+            "generated_at": datetime.utcnow().isoformat()
+        }
+
+
 # Include router and CORS
 app.include_router(api_router)
 app.add_middleware(CORSMiddleware, allow_credentials=True, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
