@@ -15,10 +15,15 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../../src/services/api';
+import { useNetwork } from '../../src/contexts/NetworkContext';
+import { offlineStorage } from '../../src/services/offlineStorage';
+import { syncService } from '../../src/services/syncService';
+import SyncStatusIndicator from '../../src/components/SyncStatusIndicator';
 
 export default function NewLeadScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { isOnline } = useNetwork();
 
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -26,6 +31,7 @@ export default function NewLeadScreen() {
   const [address, setAddress] = useState('');
   const [notes, setNotes] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [savedOffline, setSavedOffline] = useState(false);
 
   const handleSave = async () => {
     if (!name.trim()) {
@@ -34,16 +40,53 @@ export default function NewLeadScreen() {
     }
 
     setIsLoading(true);
+    
+    const leadData = {
+      name: name.trim(),
+      phone: phone.trim(),
+      email: email.trim(),
+      address: address.trim(),
+      notes: notes.trim(),
+    };
+
     try {
-      const lead = await api.createLead({
-        name: name.trim(),
-        phone: phone.trim(),
-        email: email.trim(),
-        address: address.trim(),
-        notes: notes.trim(),
-      });
-      router.replace(`/lead/${lead.id}`);
+      if (isOnline) {
+        // Online mode - create directly on server
+        const lead = await api.createLead(leadData);
+        router.replace(`/lead/${lead.id}`);
+      } else {
+        // Offline mode - save locally and queue for sync
+        await offlineStorage.queueLeadCreate(leadData);
+        setSavedOffline(true);
+        
+        Alert.alert(
+          'Saved Locally',
+          'Lead has been saved to your device. It will sync automatically when you\'re back online.',
+          [
+            {
+              text: 'OK',
+              onPress: () => router.back(),
+            }
+          ]
+        );
+      }
     } catch (error: any) {
+      // If online request fails, try saving offline
+      if (error.message?.includes('Network') || error.code === 'ERR_NETWORK') {
+        try {
+          await offlineStorage.queueLeadCreate(leadData);
+          setSavedOffline(true);
+          Alert.alert(
+            'Saved Locally',
+            'Network unavailable. Lead saved locally and will sync when online.',
+            [{ text: 'OK', onPress: () => router.back() }]
+          );
+          return;
+        } catch (offlineError) {
+          console.error('Failed to save offline:', offlineError);
+        }
+      }
+      
       const message = error.response?.data?.detail || 'Failed to create lead';
       Alert.alert('Error', message);
     } finally {
@@ -60,7 +103,12 @@ export default function NewLeadScreen() {
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
           <Ionicons name="close" size={24} color="#FFFFFF" />
         </TouchableOpacity>
-        <Text style={styles.title}>New Lead</Text>
+        <View style={styles.titleContainer}>
+          <Text style={styles.title}>New Lead</Text>
+          {!isOnline && (
+            <SyncStatusIndicator status="pending" compact />
+          )}
+        </View>
         <TouchableOpacity
           style={[styles.saveButton, isLoading && styles.saveButtonDisabled]}
           onPress={handleSave}
@@ -69,7 +117,9 @@ export default function NewLeadScreen() {
           {isLoading ? (
             <ActivityIndicator size="small" color="#FFFFFF" />
           ) : (
-            <Text style={styles.saveButtonText}>Save</Text>
+            <Text style={styles.saveButtonText}>
+              {isOnline ? 'Save' : 'Save Offline'}
+            </Text>
           )}
         </TouchableOpacity>
       </View>
@@ -184,6 +234,11 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     color: '#FFFFFF',
+  },
+  titleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   saveButton: {
     backgroundColor: '#3B82F6',

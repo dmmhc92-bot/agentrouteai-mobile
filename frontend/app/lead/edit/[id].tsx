@@ -15,11 +15,15 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../../../src/services/api';
+import { useNetwork } from '../../../src/contexts/NetworkContext';
+import { offlineStorage } from '../../../src/services/offlineStorage';
+import SyncStatusIndicator from '../../../src/components/SyncStatusIndicator';
 
 export default function EditLeadScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { isOnline } = useNetwork();
 
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -28,6 +32,8 @@ export default function EditLeadScreen() {
   const [notes, setNotes] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [leadLoaded, setLeadLoaded] = useState(false);
+  const [savedOffline, setSavedOffline] = useState(false);
 
   useEffect(() => {
     loadLead();
@@ -41,8 +47,9 @@ export default function EditLeadScreen() {
       setEmail(lead.email || '');
       setAddress(lead.address || '');
       setNotes(lead.notes || '');
+      setLeadLoaded(true);
     } catch (error) {
-      Alert.alert('Error', 'Failed to load lead');
+      Alert.alert('Error', 'Failed to load lead. Please try again when online.');
       router.back();
     } finally {
       setIsLoading(false);
@@ -55,17 +62,60 @@ export default function EditLeadScreen() {
       return;
     }
 
+    // Only allow offline edit if lead was already loaded
+    if (!isOnline && !leadLoaded) {
+      Alert.alert('Error', 'Cannot edit lead offline - please reconnect and try again.');
+      return;
+    }
+
     setIsSaving(true);
+    
+    const updateData = {
+      name: name.trim(),
+      phone: phone.trim(),
+      email: email.trim(),
+      address: address.trim(),
+      notes: notes.trim(),
+    };
+
     try {
-      await api.updateLead(id!, {
-        name: name.trim(),
-        phone: phone.trim(),
-        email: email.trim(),
-        address: address.trim(),
-        notes: notes.trim(),
-      });
-      router.back();
+      if (isOnline) {
+        // Online mode - update directly on server
+        await api.updateLead(id!, updateData);
+        router.back();
+      } else {
+        // Offline mode - save locally and queue for sync
+        await offlineStorage.queueLeadUpdate(id!, updateData);
+        setSavedOffline(true);
+        
+        Alert.alert(
+          'Saved Locally',
+          'Changes have been saved to your device. They will sync automatically when you\'re back online.',
+          [
+            {
+              text: 'OK',
+              onPress: () => router.back(),
+            }
+          ]
+        );
+      }
     } catch (error: any) {
+      // If online request fails, try saving offline
+      if (leadLoaded && (error.message?.includes('Network') || error.code === 'ERR_NETWORK')) {
+        try {
+          await offlineStorage.queueLeadUpdate(id!, updateData);
+          setSavedOffline(true);
+          Alert.alert(
+            'Saved Locally',
+            'Network unavailable. Changes saved locally and will sync when online.',
+            [{ text: 'OK', onPress: () => router.back() }]
+          );
+          return;
+        } catch (offlineError) {
+          console.error('Failed to save offline:', offlineError);
+        }
+      }
+      
       const message = error.response?.data?.detail || 'Failed to update lead';
       Alert.alert('Error', message);
     } finally {
@@ -90,7 +140,12 @@ export default function EditLeadScreen() {
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
           <Ionicons name="close" size={24} color="#FFFFFF" />
         </TouchableOpacity>
-        <Text style={styles.title}>Edit Lead</Text>
+        <View style={styles.titleContainer}>
+          <Text style={styles.title}>Edit Lead</Text>
+          {!isOnline && leadLoaded && (
+            <SyncStatusIndicator status="pending" compact />
+          )}
+        </View>
         <TouchableOpacity
           style={[styles.saveButton, isSaving && styles.saveButtonDisabled]}
           onPress={handleSave}
@@ -99,7 +154,9 @@ export default function EditLeadScreen() {
           {isSaving ? (
             <ActivityIndicator size="small" color="#FFFFFF" />
           ) : (
-            <Text style={styles.saveButtonText}>Save</Text>
+            <Text style={styles.saveButtonText}>
+              {isOnline ? 'Save' : 'Save Offline'}
+            </Text>
           )}
         </TouchableOpacity>
       </View>
@@ -218,6 +275,11 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     color: '#FFFFFF',
+  },
+  titleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   saveButton: {
     backgroundColor: '#3B82F6',

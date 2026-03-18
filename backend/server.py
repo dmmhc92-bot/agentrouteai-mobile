@@ -2441,6 +2441,175 @@ async def create_lead(lead_data: LeadCreate, current_user: dict = Depends(get_cu
     
     return LeadResponse(**{**lead_doc, "latitude": None, "longitude": None})
 
+
+# ==================== OFFLINE SYNC ENDPOINTS ====================
+
+class OfflineLeadCreate(BaseModel):
+    """Lead creation request with offline sync support"""
+    name: str
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    address: Optional[str] = None
+    notes: Optional[str] = None
+    source: Optional[str] = "manual"
+    referral_source: Optional[str] = None
+    temp_id: str  # Required - client-generated unique ID for duplicate prevention
+
+class OfflineLeadUpdate(BaseModel):
+    """Lead update request with offline sync support"""
+    name: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    address: Optional[str] = None
+    notes: Optional[str] = None
+    stage: Optional[str] = None
+    temp_id: str              # Required - for tracking sync
+    offline_timestamp: str    # Required - ISO timestamp when edit was made offline
+
+@api_router.post("/leads/offline", response_model=LeadResponse)
+async def create_lead_offline(lead_data: OfflineLeadCreate, current_user: dict = Depends(get_current_user)):
+    """
+    Idempotent lead creation endpoint for offline sync.
+    Uses temp_id to prevent duplicate lead creation.
+    If a lead with the same temp_id already exists, returns the existing lead (409 response).
+    """
+    # Check if a lead with this temp_id already exists (duplicate prevention)
+    existing_lead = await db.leads.find_one({
+        "offline_temp_id": lead_data.temp_id,
+        "created_by_user": current_user["id"]
+    })
+    
+    if existing_lead:
+        # Lead already synced - return it with 409 to indicate duplicate
+        logger.info(f"Duplicate offline lead prevented: temp_id={lead_data.temp_id}")
+        geocode = await db.lead_geocodes.find_one({"lead_id": existing_lead["id"]})
+        raise HTTPException(
+            status_code=409, 
+            detail=f"Lead already exists with temp_id {lead_data.temp_id}",
+            headers={"X-Existing-Lead-Id": existing_lead["id"]}
+        )
+    
+    # Create new lead with temp_id stored for future dedup checks
+    lead_id = str(uuid.uuid4())
+    lead_doc = {
+        "id": lead_id,
+        "name": lead_data.name,
+        "phone": lead_data.phone or "",
+        "email": lead_data.email or "",
+        "address": lead_data.address or "",
+        "notes": lead_data.notes or "",
+        "source": lead_data.source or "manual",
+        "stage": "new_lead",
+        "underwriting_status": "not_submitted",
+        "referral_source": lead_data.referral_source,
+        "referred_by_lead_id": None,
+        "created_by_user": current_user["id"],
+        "assigned_to_user": current_user["id"],
+        "owner_agent_id": current_user["id"],
+        "manager_id": current_user.get("manager_id"),
+        "admin_id": current_user.get("admin_id"),
+        "organization_id": current_user.get("organization_id"),
+        "created_date": datetime.utcnow(),
+        "last_contact_date": None,
+        "next_follow_up": None,
+        "renewal_date": None,
+        "offline_temp_id": lead_data.temp_id,  # Store temp_id for dedup
+        "synced_from_offline": True
+    }
+    await db.leads.insert_one(lead_doc)
+    
+    if lead_data.address:
+        await geocode_address(lead_id, lead_data.address)
+    
+    await log_activity(current_user["id"], "lead_created", f"Created lead (offline sync): {lead_data.name}", lead_id)
+    logger.info(f"Offline lead created: id={lead_id}, temp_id={lead_data.temp_id}")
+    
+    return LeadResponse(**{**lead_doc, "latitude": None, "longitude": None})
+
+
+@api_router.put("/leads/{lead_id}/offline")
+async def update_lead_offline(
+    lead_id: str, 
+    lead_data: OfflineLeadUpdate, 
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Safe lead update endpoint for offline sync with conflict detection.
+    Compares offline_timestamp with server's updated_at to detect conflicts.
+    If server version is newer, preserves server data and notifies client.
+    """
+    lead = await db.leads.find_one({"id": lead_id})
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    
+    # Check if user has permission to update this lead
+    user_ids = await get_user_hierarchy_ids(current_user)
+    if lead.get("created_by_user") not in user_ids and lead.get("assigned_to_user") not in user_ids:
+        raise HTTPException(status_code=403, detail="Not authorized to update this lead")
+    
+    # Parse offline timestamp - make it timezone-naive for comparison
+    try:
+        offline_time = datetime.fromisoformat(lead_data.offline_timestamp.replace('Z', '+00:00'))
+        # Convert to naive UTC for comparison with server timestamps
+        if offline_time.tzinfo is not None:
+            offline_time = offline_time.replace(tzinfo=None)
+    except:
+        offline_time = datetime.utcnow()
+    
+    # Get server's last update time (ensure it's naive)
+    server_updated_at = lead.get("updated_at") or lead.get("created_date")
+    if server_updated_at and hasattr(server_updated_at, 'tzinfo') and server_updated_at.tzinfo is not None:
+        server_updated_at = server_updated_at.replace(tzinfo=None)
+    
+    # Conflict detection: if server was updated after offline edit, we have a conflict
+    has_conflict = False
+    if server_updated_at and server_updated_at > offline_time:
+        has_conflict = True
+        logger.warning(f"Offline sync conflict detected for lead {lead_id}: server updated at {server_updated_at}, offline edit at {offline_time}")
+    
+    if has_conflict:
+        # Server wins - don't overwrite, but return conflict info
+        return {
+            "message": "Conflict detected - server version preserved",
+            "conflict": True,
+            "server_updated_at": server_updated_at.isoformat() if server_updated_at else None,
+            "offline_timestamp": lead_data.offline_timestamp,
+            "lead_id": lead_id
+        }
+    
+    # No conflict - apply the update
+    update_data = {}
+    if lead_data.name is not None:
+        update_data["name"] = lead_data.name
+    if lead_data.phone is not None:
+        update_data["phone"] = lead_data.phone
+    if lead_data.email is not None:
+        update_data["email"] = lead_data.email
+    if lead_data.address is not None:
+        update_data["address"] = lead_data.address
+    if lead_data.notes is not None:
+        update_data["notes"] = lead_data.notes
+    if lead_data.stage is not None:
+        update_data["stage"] = lead_data.stage
+    
+    if update_data:
+        update_data["updated_at"] = datetime.utcnow()
+        update_data["last_offline_sync_id"] = lead_data.temp_id
+        
+        if "address" in update_data and update_data["address"] != lead.get("address"):
+            await geocode_address(lead_id, update_data["address"])
+        
+        await db.leads.update_one({"id": lead_id}, {"$set": update_data})
+        await log_activity(current_user["id"], "lead_updated", f"Updated lead (offline sync)", lead_id, update_data)
+        logger.info(f"Offline lead update applied: id={lead_id}, temp_id={lead_data.temp_id}")
+    
+    return {
+        "message": "Lead updated from offline sync",
+        "conflict": False,
+        "lead_id": lead_id
+    }
+
+
 @api_router.get("/leads/{lead_id}", response_model=LeadResponse)
 async def get_lead(lead_id: str, current_user: dict = Depends(get_current_user)):
     user_ids = await get_user_hierarchy_ids(current_user)

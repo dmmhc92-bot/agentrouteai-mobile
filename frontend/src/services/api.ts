@@ -236,8 +236,37 @@ class ApiService {
     return response.data;
   }
 
+  // Offline-safe lead creation with idempotency via temp_id
+  async createLeadOffline(data: { 
+    name: string; 
+    phone?: string; 
+    email?: string; 
+    address?: string; 
+    notes?: string; 
+    source?: string;
+    temp_id: string;  // Required for duplicate prevention
+  }) {
+    const response = await apiClient.post('/leads/offline', data);
+    return response.data;
+  }
+
   async updateLead(id: string, data: Partial<{ name: string; phone: string; email: string; address: string; notes: string; status: string }>) {
     const response = await apiClient.put(`/leads/${id}`, data);
+    return response.data;
+  }
+
+  // Offline-safe lead update with conflict detection
+  async updateLeadOffline(id: string, data: {
+    name?: string;
+    phone?: string;
+    email?: string;
+    address?: string;
+    notes?: string;
+    stage?: string;
+    temp_id: string;              // Required for tracking
+    offline_timestamp: string;    // When the edit was made offline
+  }) {
+    const response = await apiClient.put(`/leads/${id}/offline`, data);
     return response.data;
   }
 
