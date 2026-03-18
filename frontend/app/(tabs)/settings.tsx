@@ -11,6 +11,7 @@ import {
   Platform,
   Modal,
   TextInput,
+  Image,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -19,6 +20,8 @@ import { useAuth } from '../../src/contexts/AuthContext';
 import { api } from '../../src/services/api';
 import { format } from 'date-fns';
 import Constants from 'expo-constants';
+import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 
 // Constants - Use environment variable for base URL
 const BASE_URL = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL || 
