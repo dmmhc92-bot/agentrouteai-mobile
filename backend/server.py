@@ -1310,6 +1310,85 @@ async def get_user_profile_image(user_id: str, current_user: dict = Depends(get_
         logger.error(f"Error getting user profile image: {e}")
         raise HTTPException(status_code=500, detail="Failed to get profile image")
 
+class ProfileUpdate(BaseModel):
+    name: Optional[str] = None
+    phone: Optional[str] = None
+    profile_image: Optional[str] = None
+
+@api_router.put("/auth/profile")
+async def update_profile(profile_data: ProfileUpdate, current_user: dict = Depends(get_current_user)):
+    """Update user profile information"""
+    try:
+        update_fields = {}
+        
+        if profile_data.name is not None:
+            update_fields["name"] = profile_data.name
+        
+        if profile_data.phone is not None:
+            update_fields["phone"] = profile_data.phone
+        
+        if profile_data.profile_image is not None:
+            # Handle profile image update
+            if profile_data.profile_image == "":
+                # Empty string means remove the image
+                update_fields["profile_image"] = None
+            else:
+                update_fields["profile_image"] = profile_data.profile_image
+                update_fields["profile_image_updated_at"] = datetime.utcnow()
+        
+        if update_fields:
+            await db.users.update_one(
+                {"id": current_user["id"]},
+                {"$set": update_fields}
+            )
+            await log_activity(current_user["id"], "profile_updated", f"Updated fields: {list(update_fields.keys())}")
+        
+        # Fetch and return updated user
+        updated_user = await db.users.find_one({"id": current_user["id"]})
+        
+        # Get org info if connected
+        org_name = None
+        upline_name = None
+        if updated_user.get("organization_id"):
+            org = await db.organizations.find_one({"id": updated_user["organization_id"]})
+            if org:
+                org_name = org.get("name")
+        if updated_user.get("manager_id"):
+            manager = await db.users.find_one({"id": updated_user["manager_id"]})
+            if manager:
+                upline_name = manager.get("name")
+        elif updated_user.get("admin_id"):
+            admin = await db.users.find_one({"id": updated_user["admin_id"]})
+            if admin:
+                upline_name = admin.get("name")
+        
+        return UserResponse(
+            id=updated_user["id"],
+            name=updated_user["name"],
+            email=updated_user["email"],
+            role=updated_user.get("role", "agent"),
+            manager_id=updated_user.get("manager_id"),
+            admin_id=updated_user.get("admin_id"),
+            organization_id=updated_user.get("organization_id"),
+            subscription_status=updated_user.get("subscription_status", "trial"),
+            created_at=updated_user["created_at"],
+            last_login=updated_user.get("last_login"),
+            phone=updated_user.get("phone"),
+            territory=updated_user.get("territory"),
+            commission_rate=updated_user.get("commission_rate", 0.6),
+            is_active=updated_user.get("is_active", True),
+            approval_status=updated_user.get("approval_status", "approved"),
+            account_mode=updated_user.get("account_mode", "solo"),
+            organization_name=org_name,
+            upline_name=upline_name,
+            joined_team_at=updated_user.get("joined_team_at"),
+            profile_image=updated_user.get("profile_image")
+        )
+    
+    except Exception as e:
+        logger.error(f"Error updating profile: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update profile")
+
 @api_router.delete("/auth/account")
 async def delete_account(current_user: dict = Depends(get_current_user)):
     await db.users.update_one({"id": current_user["id"]}, {"$set": {"deleted_at": datetime.utcnow()}})
