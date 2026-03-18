@@ -13,7 +13,7 @@ from PIL import Image, ImageDraw
 import io
 
 # Configuration
-BASE_URL = "https://profile-photo-upload-2.preview.emergentagent.com/api"
+BASE_URL = "https://agentroute-app-store.preview.emergentagent.com/api"
 
 # Test credentials as specified in the review request
 TEST_AGENT = {

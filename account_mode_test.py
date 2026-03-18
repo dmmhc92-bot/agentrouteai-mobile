@@ -30,7 +30,7 @@ from datetime import datetime
 from typing import Dict, Any, Optional
 
 # Configuration
-BASE_URL = "https://profile-photo-upload-2.preview.emergentagent.com/api"
+BASE_URL = "https://agentroute-app-store.preview.emergentagent.com/api"
 TIMEOUT = 30
 
 # Test Credentials

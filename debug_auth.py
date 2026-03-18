@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import requests
 
-BASE_URL = "https://profile-photo-upload-2.preview.emergentagent.com/api"
+BASE_URL = "https://agentroute-app-store.preview.emergentagent.com/api"
 
 # Test without auth
 response = requests.get(f"{BASE_URL}/auth/me", headers={})

@@ -25,7 +25,7 @@ import time
 import sys
 
 # Test Configuration
-BASE_URL = "https://profile-photo-upload-2.preview.emergentagent.com/api"
+BASE_URL = "https://agentroute-app-store.preview.emergentagent.com/api"
 
 # Test Credentials from review request
 TEST_CREDENTIALS = {

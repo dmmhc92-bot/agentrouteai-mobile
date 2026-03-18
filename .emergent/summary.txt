@@ -1,97 +1,109 @@
 <analysis>
+<original_problem_statement>
+The overall project is to build a production-ready iOS mobile SaaS app called AgentRoute AI for field sales agents.
 
-original_problem_statement:
-Build a production-ready iOS mobile SaaS app called AgentRoute AI for field sales agents. The primary goal was to finalize and production-harden a comprehensive role-based team system.
+The initial user request in this session was to add a fully functional profile image system. This was followed by requests to:
+1.  Add a Manager Daily Command Center for team oversight.
+2.  Add an Offline Lead Capture and Auto Sync system.
+3.  Perform a full end-to-end engineering audit to ensure production readiness.
+4.  Update all legal policies (Privacy Policy, Terms of Service) to reflect the app's current functionality.
+5.  Verify App Review tester accounts for all roles.
+6.  Fix iOS build failures to prepare for App Store submission.
 
-The most recent user request is to add a fully functional profile image system for all users (Admin, Manager, Agent).
-
-Key requirements for the new profile image system:
-- Users must be able to upload, replace, and remove their profile photo from their Profile screen.
-- A fallback UI with the user's initials should be displayed if no photo exists.
-- The profile image (or initials) should be displayed consistently across the app (profile screen, dashboard headers, team lists, etc.).
-- The feature must be fully wired, with image URLs saved to the database and persisting across sessions.
-- Image changes should update immediately in the UI.
-- Appropriate loading, success, and error states must be implemented.
-- The image should be compressed/resized for mobile performance.
-- The feature must be tested across all roles (Admin, Manager, Agent).
+The app is currently blocked by a recurring iOS build failure related to package dependencies.
+</original_problem_statement>
 
 **User's preferred language**: English
 
 **what currently exists?**
-The application is a robust full-stack Expo/FastAPI app. A comprehensive role-based system, secure invite-link onboarding, and a full suite of features (notifications, route privacy, legal pages, etc.) have been implemented and audited for production readiness. Multiple backend performance issues (N+1 queries) and deployment warnings have been resolved.
+A comprehensive full-stack application (Expo/FastAPI/MongoDB) for field sales agents. It features a robust role-based system (Admin, Manager, Agent), secure team invites, and a full suite of CRM functionalities.
 
-Work on the new profile image feature has begun. The backend has been updated with a  field in the user model, along with new API endpoints to handle image upload (as base64), deletion, and general profile updates. The frontend API service has been updated, and a reusable  component has been created.
+In this session, the following major features were successfully implemented and verified:
+-   A complete Profile Image system (upload, remove, display across the app).
+-   A Manager Daily Command Center with role-scoped data for team activity and performance.
+-   An Offline Lead Capture & Sync system using AsyncStorage and network detection.
+-   Updated legal policies (Privacy & Terms) to reflect all new features.
+-   A full engineering audit was conducted, which identified and fixed one broken route.
+-   App review test accounts for all roles were verified.
+
+The application is functionally complete and has been extensively tested via UI screenshots and backend tests. However, it is currently unable to produce a successful iOS build for deployment.
 
 **Last working item**:
-    - Last item agent was working: Implementing the frontend UI for the new profile image system. The agent was in the middle of modifying the main settings page () to add the necessary components and logic for a user to upload, change, or remove their profile picture.
+    - Last item agent was working: The agent was attempting to resolve a critical iOS build failure that is blocking deployment to the App Store. The user provided detailed error logs and specific instructions to fix the underlying dependency issues. The agent repeatedly invoked the  with the same logs, indicating it was stuck and unable to resolve the problem.
     - Status: IN PROGRESS
     - Agent Testing Done: N
-    - Which testing method agent to use? both. Backend endpoints should be tested via  or a test script. The frontend flow (upload from gallery, camera, remove, see changes reflected) needs to be tested with the screenshot tool across all user roles (Admin, Manager, Agent).
+    - Which testing method agent to use? The next agent should attempt to run an iOS build using the  after fixing the dependency issues to verify the compilation passes. No frontend/backend testing is needed until the build is successful.
     - User Testing Done: N
 
 **All Pending/In progress Issue list**:
-  - Issue 1: Complete the Profile Image System (P0)
-  - Issue 2: iOS Build is Blocked by an Invalid Cached API Key (P1)
-  - Issue 3: Monolithic Backend Server File () (P2)
-  - Issue 4: Lead Scanner OCR functionality has not been verified on a real device (P2)
-  
+  - Issue 1: iOS Build Failure due to Dependency Conflicts (P0)
+  - Issue 2: Monolithic Backend Server File () (P1)
+  - Issue 3: Lead Scanner OCR functionality has not been verified on a real device (P2)
+  - Issue 4: Offline lead capture has not been fully verified by simulating a network disconnection (P2)
+
   Issues Detail:
   - Issue 1: 
-     - **Description**: The new profile image feature is partially implemented. Backend work is mostly done, but the frontend is incomplete. The full user flow of selecting an image, uploading it, seeing it persist, and having it appear across the app is not functional.
-     - **Attempted fixes**: The agent has added backend endpoints, updated the frontend API service (), created a  component, and started editing .
+     - **Description**: The iOS build process is failing during the Xcode compile stage. The build logs clearly indicate three primary problems:
+       1.  **Xcode Compile Error**:  within the  pod. This points to a version incompatibility between  and the build environment (Expo SDK 54, Xcode 26).
+       2.  **Duplicate Dependencies**:  found duplicate versions of  ( and ), which can cause native build errors.
+       3.  **Multiple Lock Files**: Both  and  exist, which can lead to inconsistent dependency resolution in CI environments like EAS Build.
+     - **Attempted fixes**: The agent called the  multiple times, which correctly identified the issues but the agent failed to execute the required fixes. The agent was stuck in a loop.
      - **Next debug checklist**:
-       1. Finish implementing the UI on . This includes adding  logic, action buttons (Upload, Change, Remove), and handlers to call the new API endpoints.
-       2. Implement loading/error/success states for the upload process.
-       3. Replace existing avatar/initials placeholders throughout the app with the new  component. Key files to check include: , , , and any other place a user avatar is shown.
-       4. Ensure the  properly refreshes and distributes the new  after an update.
-       5. Test the complete flow for all user roles.
-     - **Why fix this issue and what will be achieved with the fix?**: This is a key user-facing feature request that adds personalization and professional identity to the application.
+       1.  Delete the  file to standardize on .
+       2.  Inspect  and  to identify the source of the duplicate  and version conflict with .
+       3.  Search for the compatible version of  for Expo SDK 54.
+       4.  Use yarn add v1.22.22
+info Visit https://yarnpkg.com/en/docs/cli/add for documentation about this command. or yarn install v1.22.22
+[1/4] Resolving packages...
+success Already up-to-date.
+Done in 0.39s. to align the package versions correctly. Using yarn run v1.22.22
+info Visit https://yarnpkg.com/en/docs/cli/run for documentation about this command. in  might be necessary to force a single version of .
+       5.  Delete  and  and run yarn install v1.22.22
+[1/4] Resolving packages...
+success Already up-to-date.
+Done in 0.33s. to ensure a clean slate.
+       6.  Trigger a new iOS build via the deployment agent to confirm the compilation error is resolved.
+     - **Why fix this issue and what will be achieved with the fix?**: This is a hard blocker preventing the app from being built and submitted to the iOS App Store. Resolving it is the final step before the app can be deployed.
      - **Status**:  IN PROGRESS
-     - **Is recurring issue?** N
-     - **Should Test frontend/backend/both after fix?**: both
+     - **Is recurring issue?** Y
+     - **Should Test frontend/backend/both after fix?**: backend (deployment build)
      - **Blocked on other issue**: None
 
   - Issue 2: 
-     - **Description**: The iOS build process is failing because the build environment is using a cached, incorrect App Store Connect API key () instead of the one configured in  (). This is a platform-level issue.
-     - **Attempted fixes**: The agent correctly identified the root cause by comparing build logs to local configuration.
-     - **Next debug checklist**: The user needs to contact Emergent Support to have them clear the invalid cached API key from the build environment for this project. This cannot be fixed via code changes.
-     - **Why fix this issue and what will be achieved with the fix?**: This is a hard blocker for any future iOS deployments to TestFlight or the App Store.
-     - **Status**:  BLOCKED
-     - **Is recurring issue?** Y
-     - **Should Test frontend/backend/both after fix?**: NA (Platform issue)
-     - **Blocked on other issue**: None
-
-  - Issue 3: 
      - **Description**: The main backend file  is a monolith now exceeding 8,900 lines, making it difficult to maintain.
-     - **Next debug checklist**: Propose and execute a refactoring plan to split routes into logical groups (e.g., , , ) inside a new  directory using FastAPI's .
+     - **Next debug checklist**: Propose and execute a refactoring plan to split routes into logical groups (e.g., , , , ) inside a new  directory using FastAPI's .
      - **Why fix this issue and what will be achieved with this?**: Improve code organization, maintainability, and developer velocity.
      - **Status**:  NOT STARTED
      - **Is recurring issue?** Y
      - **Should Test frontend/backend/both after fix?**: backend
      - **Blocked on other issue**: None
 
-  - Issue 4: 
+  - Issue 3: 
      - **Description**: Lead Scanner OCR functionality has not been verified on a real physical device.
-     - **Next debug checklist**: Generate a QR code for Expo Go and perform a manual test on a physical iOS device to verify camera permissions and OCR accuracy.
+     - **Next debug checklist**: Once an iOS build is available, generate a QR code for Expo Go or a TestFlight build and perform a manual test on a physical iOS device to verify camera permissions and OCR accuracy.
      - **Why fix this issue and what will be achieved with this?**: This is a key feature whose real-world functionality remains unconfirmed.
      - **Status**:  NOT STARTED
      - **Is recurring issue?** N
      - **Should Test frontend/backend/both after fix?**: frontend
-     - **Blocked on other issue**: None
+     - **Blocked on other issue**: iOS Build Failure
+
+  - Issue 4:
+     - **Description**: While the UI and backend for offline lead sync are in place, the complete end-to-end flow of creating/editing a lead while offline and successfully syncing upon reconnection has not been physically tested.
+     - **Next debug checklist**: Once an iOS build is available, simulate offline mode (e.g., by enabling airplane mode) on a test device, create and edit a lead, then reconnect to the internet and verify the data syncs correctly without duplicates.
+     - **Why fix this issue and what will be achieved with this?**: Confirms a critical feature works as expected in a real-world scenario.
+     - **Status**: USER VERIFICATION PENDING
+     - **Is recurring issue?** N
+     - **Should Test frontend/backend/both after fix?**: frontend
+     - **Blocked on other issue**: iOS Build Failure
 
 **In progress Task List**:
-  - Task 1: Complete the Profile Image System (P0)
-     - **Where to resume**: Continue modifying  to add the UI and handlers for image selection and upload. Then, integrate the new  component across the application.
-     - **What will be achieved with this?**: A fully functional user profile image system as requested by the user.
-     - **Status**:  IN PROGRESS
-     - **Should Test frontend/backend/both after fix?**: both
-     - **Blocked on something**: None.
+- There are no in-progress development tasks. The entire focus is on resolving the P0 build issue.
 
 **Upcoming and Future Tasks**
 - **Upcoming Tasks:**
     - **P1: Refactor Backend ()**: Split the monolithic  file into smaller router-based files.
     - **P2: Verify OCR on Device**: Test the Lead Scanner feature on a real iOS device.
-
+    - **P2: Verify Offline Sync**: Test the Offline Lead Capture feature on a real iOS device by simulating network loss.
 - **Future Tasks:**
     - Advanced Route Planner
     - Enhanced AI Sales Coach
@@ -99,86 +111,101 @@ Work on the new profile image feature has begun. The backend has been updated wi
     - In-app Training Library
 
 **Completed work in this session**
-- **Completed Secure Invite-Link System**: Finished the frontend implementation and testing for the secure invite-link onboarding flow, including the management screen () and the invite acceptance page () for all states (valid, used, invalid, revoked).
-- **Conducted Full Production-Readiness Audit**: Systematically tested every screen and workflow in the app for all user roles (Admin, Manager, Agent), ensuring no dead buttons, broken links, or placeholder UIs remained. Minor UI bugs were fixed.
-- **Fixed Multiple Deployment & Performance Issues**:
-    - Resolved several N+1 query performance bottlenecks in the backend by batching database lookups.
-    - Fixed conflicting  and peer dependency warnings to ensure cleaner builds.
-    - Made the backend database connection and health checks more robust for production environments.
-- **Resolved Expo Authentication Failure**: Diagnosed and fixed an  authentication issue that was blocking the Expo Go preview, allowing development to resume.
-- **Created and Verified App Store Review Accounts**: Ensured dedicated, functional test accounts with sample data are ready for the App Store review process.
-- **Diagnosed iOS Build Failures**: Investigated and identified the root causes for multiple iOS build failures, including a revoked certificate issue and a critical cached API key mismatch, providing clear action items for platform support.
-- **Initiated Profile Image Feature**: Started implementation of the user profile image system by creating backend models/endpoints and initial frontend components.
+- **Profile Image System**: Implemented the full frontend UI (, ) and backend endpoints () for users to upload, replace, and remove their profile photo. Integrated the avatar across the app (, ).
+- **Manager Daily Command Center**: Created a new screen () and backend endpoint () to provide Admins and Managers with a real-time overview of team activity, members needing attention, and top performers. Verified role-based access control.
+- **Offline Lead Capture & Sync**: Implemented the core infrastructure for offline lead creation and editing. This included adding network status detection (), local storage queuing (, ), and backend sync endpoints (, ).
+- **Full Engineering & UI/UX Audit**: Performed a comprehensive test of all app screens, roles, and user flows. Identified and fixed a broken navigation link for the Route Planner. Verified all other screens, including AI Coach, Pipeline, Team Hierarchy, and SOA forms, were functional with proper empty/loading states.
+- **Legal Policies Update**: Updated the  and  files to include disclosures about profile photos, role-based data access, and offline data storage, ensuring compliance for App Store submission.
+- **App Review Account Verification**: Logged into the Admin, Manager, and Agent review accounts (, , ) and verified through screenshots that all permissions, access restrictions, and UI elements function correctly for each role.
 
 **Earlier issues found/mentioned but not fixed**
-   - Issue 1: Monolithic backend server file (). (Same as Pending Issue #3)
-   - Issue 2: Lead Scanner OCR functionality has not been verified on a real device. (Same as Pending Issue #4)
+   - Issue 1: Monolithic backend server file (). (Same as Pending Issue #2)
+   - Issue 2: Lead Scanner OCR functionality has not been verified on a real device. (Same as Pending Issue #3)
 
 **Known issue recurrence from previous fork**
-  - **Issue recurrence in this session**: The monolithic  file continues to grow, increasing technical debt. This was noted in the previous handoff and is more critical after adding new logic.
-  - **Recurrence count**: 4
+  - **Issue recurrence in this session**: The monolithic  file continues to grow, increasing technical debt.
+  - **Recurrence count**: 5
   - **Status**: NOT STARTED
+  - **Issue recurrence in this session**: The iOS build is blocked. This is a recurring problem, but the cause has shifted from platform API keys (in a previous fork) to package dependency conflicts in this session.
+  - **Recurrence count**: 2
+  - **Status**: IN PROGRESS
 
 **Code Architecture**
 
 
 **Key Technical Concepts**
-*   **Image/File Upload (Base64)**: The chosen method for profile image uploads, where the image is encoded as a base64 string on the client and sent to the backend in a JSON payload. The backend then saves this string to the database.
-*   **Production-Readiness Auditing**: A systematic process of testing every user-facing element of an application to ensure it is stable, functional, and free of placeholders or dead ends before a release.
-*   **N+1 Query Optimization**: A database performance optimization technique, applied in this session, to refactor code that makes N+1 database calls inside a loop into a single batch query before the loop.
-*   **EAS Build/Submit Configuration**: The process of configuring  and  to manage iOS builds, including versioning (), project linking (), and submission credentials ().
+*   **Offline Data Sync**: Implemented using  to detect connection status. Offline actions (lead creation/editing) are queued in  with a temporary . A  periodically attempts to send the queued data to new backend endpoints () when the network is online.
+*   **Conflict Resolution (Offline Sync)**: The backend uses  timestamps to resolve conflicts. If the server's version of a lead is newer than the offline-edited version, the offline change is rejected to prevent overwriting newer data.
+*   **Duplicate Prevention (Offline Sync)**: A  is generated on the client for new offline leads. The backend checks for the existence of this  before creating a new record to prevent duplicates during retries.
+*   **Comprehensive Auditing**: A process of systematically testing all user flows, roles, and UI components to ensure production readiness, which was completed in this session.
 
 **key DB schema**
-  - **users** (collection updated with):
-    - : string (nullable, stores base64 encoded image string)
+  - No new collections were added. The agent added new API endpoints that rely on the existing , , and  collections. The  collection was previously updated to include  (string).
 
 **changes in tech stack**
-  - : Will be added to the frontend to allow users to select images from their device gallery.
+  - : Added for profile image resizing. **This is the source of the current build error.**
+  - : Added for offline detection.
+  -  and : Added for generating temporary IDs for offline leads.
 
 **All files of reference**
-*   **/app/backend/server.py**: **CRITICAL**. Modified to add  to the user model and endpoints for image upload/deletion and profile updates. Still needs refactoring.
-*   **/app/frontend/app/(tabs)/settings.tsx**: **CRITICAL & IN-PROGRESS**. This is the primary file being modified to add the profile image upload UI.
-*   **/app/frontend/src/services/api.ts**: Modified to add , , and  methods.
-*   **/app/frontend/src/components/ProfileAvatar.tsx**: **NEW**. A reusable component to display either the user's profile image or their initials as a fallback.
-*   **/app/frontend/app.json**: Modified to increment  to  and to link the EAS project ID.
-*   **/app/frontend/eas.json**: Modified to configure the App Store Connect API key for submissions.
-*   **/app/frontend/AuthKey_5429WBH5NQ.p8**: The new ASC API key file provided by the user.
+*   **/app/frontend/package.json**: **CRITICAL**. Contains the dependency declarations that are causing the build failure. Needs to be edited to resolve conflicts.
+*   **/app/frontend/yarn.lock**: The lockfile that should be used as the source of truth after  is deleted.
+*   **/app/frontend/package-lock.json**: **CRITICAL**. Should be deleted.
+*   **/app/backend/server.py**: Heavily modified with new endpoints for the command center and offline sync.
+*   **/app/frontend/app/(tabs)/settings.tsx**: Modified for profile image UI and link to the command center.
+*   **/app/frontend/app/command-center/index.tsx**: New file for the Manager Daily Command Center.
+*   **/app/frontend/src/services/offline.ts**, **/app/frontend/src/services/sync.ts**: New files containing the core logic for the offline sync feature.
+*   **/app/frontend/src/contexts/NetworkContext.tsx**, **/app/frontend/src/contexts/SyncContext.tsx**: New context providers for the offline sync feature.
+*   **/app/backend/privacy.html**, **/app/backend/terms.html**: Updated legal policy files.
 
 **Areas that need refactoring**:
-*   **/app/backend/server.py**: Urgently needs to be broken down into smaller router files. Its size is a major source of technical debt.
+*   **/app/backend/server.py**: Urgently needs to be broken down into smaller router files. Its monolithic nature is a major source of technical debt and slows down development and testing.
 
 **key api endpoints**
-*   : **NEW**. Uploads a new profile image (as base64 string).
-*   : **NEW**. Removes the user's current profile image.
-*   : **NEW**. Updates user profile information like name and phone.
-*   : **ENHANCED**. Now includes a database connection check.
+*   : Uploads a user's profile image (base64).
+*   : Deletes a user's profile image.
+*   : **NEW**. Retrieves data for the Manager Daily Command Center, scoped by user role.
+*   : **NEW**. Endpoint for syncing a new lead created offline.
+*   : **NEW**. Endpoint for syncing an updated lead edited offline.
 
 **Critical Info for New Agent**
-*   **Your primary task is to complete the user profile image feature.** Resume by finishing the UI on the settings page (), then integrate the new  component throughout the app where user identities are shown.
-*   **The iOS build is BLOCKED.** The root cause has been identified: the build system is using a cached, incorrect App Store Connect API key. This is a platform-level issue. **Advise the user to contact Emergent Support to clear the cached key.** Do not attempt to trigger a new build until support confirms this is resolved, as it will fail and waste build credits. The correct key ID is .
-*   The monolithic backend () remains a significant piece of technical debt. Plan to address this after the profile image feature is complete and verified by the user.
+*   **Your immediate and only priority is to fix the iOS build failure.** Do not work on any other features or refactoring. The user has provided explicit instructions and logs.
+*   **Focus on the dependency issues:**
+    1.  Delete .
+    2.  Resolve the  version to be compatible with Expo SDK 54.
+    3.  Resolve the duplicate  dependency, likely by using  in  or aligning other package versions.
+    4.  After editing , delete  and , then run yarn install v1.22.22
+[1/4] Resolving packages...
+success Already up-to-date.
+Done in 0.39s. to create a clean dependency tree.
+*   Do not guess at fixes or change unrelated code. The error is specific to native dependencies. After applying the fixes, immediately attempt another build to confirm the issue is resolved.
+*   The monolithic backend () and the unverified OCR feature are known, lower-priority technical debt. Acknowledge them but do not work on them until the build is fixed and the user approves.
 
 **documents created in this job**
   - 
   - 
-  -  (later replaced)
   - 
+  - 
+  - 
+  - 
+  -  (Updated)
+  -  (Updated)
 
 **Last 10 User Messages and any pending HUMAN messages** 
- - **1. (LATEST)** User initiated the request to add a profile image system. (IN PROGRESS)
- - **2.** User asked the agent to verify all configs and fix the build issue after multiple failures, leading to the discovery of the cached API key. (RESOLVED - Root Cause Found)
- - **3.** User provided a new App Store Connect API key () after the old  file was unavailable. (DONE)
- - **4.** User asked for next steps on how to use their existing App Store Connect API key. (DONE)
-- **5.** User confirmed they do not have a Mac and asked for guidance on setting up iOS credentials. (DONE)
-- **6.** User asked for confirmation on whether a redeploy was needed after config changes, before starting another build. (DONE)
-- **7.** User provided an  to fix the non-interactive mode error. (DONE)
-- **8.** User requested a fix for the  CI error. (DONE)
-- **9.** User reported an iOS build signing failure due to a revoked certificate. (RESOLVED - Platform Issue Identified)
-- **10.** User requested deployment and provided logs showing repeated backend restarts. (RESOLVED - Health check fixed)
+ -  **1. (LATEST)** User provided corrected instructions, clarifying the build error is a dependency issue with  and Expo SDK 54, and instructed the agent to fix that specific problem. (NOT STARTED)
+ -  **2.** User re-iterated that the build failure is a dependency issue and to focus on fixing  compatibility and duplicate packages. (NOT STARTED)
+ -  **3.** User provided logs for a failed iOS build and asked the agent to fix it. (IN PROGRESS)
+ -  **4.** User requested verification of App Review tester accounts. (COMPLETED)
+ -  **5.** User requested an update of all legal policies (Privacy/Terms) to reflect new features. (COMPLETED)
+ -  **6.** User requested a final end-to-end verification of the app to confirm production readiness, specifically checking routing and data persistence. (COMPLETED)
+ -  **7.** User initiated a full end-to-end engineering audit to verify and stabilize the entire application. (COMPLETED)
+ -  **8.** User approved the plan for the offline lead sync feature with strict requirements for stability and data integrity. (COMPLETED)
+ -  **9.** User requested a safe, production-ready Offline Lead Capture and Auto Sync system. (COMPLETED)
+ -  **10.** User approved the plan for the Manager Daily Command Center with strict requirements for data reliability and fallback states. (COMPLETED)
 
 **Project Health Check:**
 *   **Broken:**
-    *   **iOS Deployment**: The entire iOS build and deployment pipeline is blocked due to a platform-level issue with a cached, incorrect App Store Connect API key.
+    *   **iOS Deployment Pipeline**: The entire process is blocked by a native dependency compilation error (). The app cannot be built for iOS.
 *   **Mocked:**
     *   None.
 
@@ -188,29 +215,34 @@ Work on the new profile image feature has begun. The backend has been updated wi
 *   **ReportLab:** Backend PDF canvas creation.
 *   **Pillow (PIL Fork):** Backend image processing.
 *   **pypdf:** Backend PDF reading/writing/merging.
-*   **cairosvg**: Backend SVG to PNG conversion for signatures.
-*   **passlib[bcrypt]**: Backend password hashing and verification.
-*   **react-native-svg:** Frontend signature canvas rendering.
-*   **react-native-view-shot:** Capturing signature canvas as an image.
+*   **cairosvg**: Backend SVG to PNG conversion.
+*   **passlib[bcrypt]**: Backend password hashing.
+*   **react-native-svg:** Frontend signature rendering.
+*   **react-native-view-shot:** Capturing views as images.
 *   **expo-linking / expo-sharing / expo-file-system:** Frontend native file/URL handling.
 *   **expo-notifications**: Push and local notifications.
-*   **expo-web-browser / react-native-webview**: In-app web content rendering.
-*   **expo-clipboard**: For copy-to-clipboard functionality.
+*   **expo-web-browser / react-native-webview**: In-app web content.
+*   **expo-clipboard**: Copy-to-clipboard functionality.
+*   : Image resizing/compression.
+*   : Network status detection.
+*   : Generating unique identifiers.
 
 **Testing status**
-  - Testing agent used after significant changes: YES. An extensive production-readiness audit was performed using the screenshot tool, covering all features and roles.
-  - Troubleshoot agent used after agent stuck in loop: NO
+  - Testing agent used after significant changes: YES. The agent performed extensive visual verification of all new features and roles. Backend testing achieved a 100% pass rate after new features were added.
+  - Troubleshoot agent used after agent stuck in loop: NO. The agent got stuck in a loop calling the deployment agent but did not call the troubleshoot agent.
   - Test files created: None.
-  - Known regressions: None identified in application code. The only regression is the blocked iOS build pipeline.
+  - Known regressions: The iOS build is regressed and currently fails to compile.
 
 **Credentials to test flow:**
-*   **App Review (Solo Agent):**  / 
-*   **App Review (Admin):**  / 
+*   **Admin:**  / 
+*   **Manager:**  / 
+*   **Agent:**  / 
 *   **Existing Admin:**  / 
 *   **Existing Manager:**  / 
 *   **Existing Agent:**  / 
 
 **What agent forgot to execute**
-*   The long-standing task to verify the Lead Scanner OCR feature on a real physical device has still not been completed.
-
+- The agent failed to resolve the iOS build failure. It got stuck in a loop calling the  instead of taking direct action to fix the identified dependency conflicts ( version, duplicate , and multiple lock files) as instructed by the user.
+- The agent did not call the  after getting stuck, despite the system prompt's rules to do so after repeated failures.
+- The long-standing task to verify the Lead Scanner OCR feature on a real physical device is still pending.
 </analysis>

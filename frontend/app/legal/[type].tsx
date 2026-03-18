@@ -22,7 +22,7 @@ if (Platform.OS !== 'web') {
 
 const BASE_URL = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL || 
                  process.env.EXPO_PUBLIC_BACKEND_URL || 
-                 'https://profile-photo-upload-2.preview.emergentagent.com';
+                 'https://agentroute-app-store.preview.emergentagent.com';
 
 export default function LegalScreen() {
   const router = useRouter();
