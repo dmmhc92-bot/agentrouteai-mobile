@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../../src/services/api';
 import { useAuth } from '../../src/contexts/AuthContext';
+import ProfileAvatar from '../../src/components/ProfileAvatar';
 
 interface User {
   id: string;
@@ -29,6 +30,7 @@ interface User {
   approval_status?: string;
   created_at: string;
   last_login?: string;
+  profile_image?: string;
 }
 
 interface Invitation {
@@ -245,13 +247,12 @@ export default function TeamManagementScreen() {
       }}
       activeOpacity={isAdmin ? 0.7 : 1}
     >
-      <View style={[styles.memberAvatar, { backgroundColor: ROLE_COLORS[member.role] || '#64748B' }]}>
-        <Ionicons
-          name={member.role === 'admin' ? 'shield' : member.role === 'manager' ? 'people' : 'person'}
-          size={20}
-          color="#FFFFFF"
-        />
-      </View>
+      <ProfileAvatar 
+        name={member.name} 
+        profileImage={member.profile_image}
+        size={40}
+        style={styles.memberAvatarWrapper}
+      />
       <View style={styles.memberInfo}>
         <View style={styles.memberNameRow}>
           <Text style={styles.memberName}>{member.name}</Text>
@@ -685,6 +686,9 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     justifyContent: 'center',
     alignItems: 'center',
+    marginRight: 12,
+  },
+  memberAvatarWrapper: {
     marginRight: 12,
   },
   memberInfo: {

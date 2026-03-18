@@ -1,229 +1,186 @@
 <analysis>
 
 original_problem_statement:
-Build a production-ready iOS mobile SaaS app called AgentRoute AI for field sales agents.
+Build a production-ready iOS mobile SaaS app called AgentRoute AI for field sales agents. The primary goal was to finalize and production-harden a comprehensive role-based team system.
 
-The primary goal is to finalize and production-harden a comprehensive role-based team system. This includes a secure invite-link onboarding flow, strict role-based permissions (Admin, Manager, Agent), and flexible account modes (Solo vs. Hierarchy). The system must be fully wired, with no placeholder functionality, and all user-facing actions must be operational.
+The most recent user request is to add a fully functional profile image system for all users (Admin, Manager, Agent).
 
-Key requirements from the user include:
-- **Invite-Link Onboarding**: Replace the previous token-based system with a secure, single-use, expiring link system for joining teams. The flow must handle both new and existing users seamlessly.
-- **Role Hierarchy & Permissions**: Enforce strict backend permissions for Admins (full org control), Managers (team-level control), and Agents (personal data only).
-- **New Onboarding Flow**: Users must be presented with a clear choice upon signup: Create Organization, Join Existing Team, or Continue as Solo Agent.
-- **Notifications System**: Implement a fully functional push and local notification system with user-configurable preferences.
-- **Route Visibility**: Add a new feature allowing agents to set privacy levels for their route data (Private, Summary, or Shared).
-- **Production Hardening**: Audit the entire application to ensure there are no dead-end buttons, placeholder UIs, or non-functional elements.
-- **App Store Review**: Create and provision dedicated test accounts with sample data for a smooth Apple App Store review process.
+Key requirements for the new profile image system:
+- Users must be able to upload, replace, and remove their profile photo from their Profile screen.
+- A fallback UI with the user's initials should be displayed if no photo exists.
+- The profile image (or initials) should be displayed consistently across the app (profile screen, dashboard headers, team lists, etc.).
+- The feature must be fully wired, with image URLs saved to the database and persisting across sessions.
+- Image changes should update immediately in the UI.
+- Appropriate loading, success, and error states must be implemented.
+- The image should be compressed/resized for mobile performance.
+- The feature must be tested across all roles (Admin, Manager, Agent).
 
 **User's preferred language**: English
 
 **what currently exists?**
-The application is a full-stack Expo/FastAPI app. The initial iOS deployment blockers (config errors, non-square icons, conflicting lock files) have been resolved.
+The application is a robust full-stack Expo/FastAPI app. A comprehensive role-based system, secure invite-link onboarding, and a full suite of features (notifications, route privacy, legal pages, etc.) have been implemented and audited for production readiness. Multiple backend performance issues (N+1 queries) and deployment warnings have been resolved.
 
-A significant amount of work has been done to implement the new role-based system. This includes:
-- A new three-option onboarding screen ().
-- Backend logic for creating organizations, registering solo agents, and handling notifications.
-- A complete notification system on the frontend, including a preferences screen () and a context ().
-- A new Route Visibility feature with both backend endpoints and a frontend settings screen ().
-- Dynamic legal pages that render backend-hosted HTML in a WebView/iframe.
-- Dedicated test accounts for App Store Review, pre-populated with sample data.
-
-The most recent work involved pivoting from a token-based invitation system to a more secure invite-link-based system. The backend has been updated, and the frontend screens ( and ) have been created or rewritten to support this new flow, but are not yet fully wired.
+Work on the new profile image feature has begun. The backend has been updated with a  field in the user model, along with new API endpoints to handle image upload (as base64), deletion, and general profile updates. The frontend API service has been updated, and a reusable  component has been created.
 
 **Last working item**:
-    - Last item agent was working: Implementing the final, secure invite-link onboarding system as per the user's detailed instructions. The agent was in the middle of this task, having created the necessary backend logic and frontend screens, but had not yet completed the full end-to-end wiring and testing.
+    - Last item agent was working: Implementing the frontend UI for the new profile image system. The agent was in the middle of modifying the main settings page () to add the necessary components and logic for a user to upload, change, or remove their profile picture.
     - Status: IN PROGRESS
     - Agent Testing Done: N
-    - Which testing method agent to use? both. The backend logic needs verification via the backend testing agent, and the complete user flow from link click to dashboard must be tested on the frontend, likely with manual testing using the screenshot tool to follow the multi-step process.
+    - Which testing method agent to use? both. Backend endpoints should be tested via  or a test script. The frontend flow (upload from gallery, camera, remove, see changes reflected) needs to be tested with the screenshot tool across all user roles (Admin, Manager, Agent).
     - User Testing Done: N
 
 **All Pending/In progress Issue list**:
-  - Issue 1: The secure invite-link onboarding system is incomplete. (P0)
-  - Issue 2: The backend server file () is a monolith. (P2)
-  - Issue 3: Potential N+1 database query in . (P2)
-  - Issue 4: Lead Scanner OCR functionality has not been verified on a real device. (P2)
+  - Issue 1: Complete the Profile Image System (P0)
+  - Issue 2: iOS Build is Blocked by an Invalid Cached API Key (P1)
+  - Issue 3: Monolithic Backend Server File () (P2)
+  - Issue 4: Lead Scanner OCR functionality has not been verified on a real device (P2)
   
   Issues Detail:
   - Issue 1: 
-     - **Description**: The new invite-link system is the primary user-facing feature for team creation and is currently half-implemented. The backend endpoints and frontend screens exist but are not fully connected. The complete flow—from an admin creating a link to a new user signing up and joining the team—is not functional.
-     - **Attempted fixes**: The agent has created the backend endpoints, updated the API service, created the  management screen, and rewritten the  accept screen.
-     - **Next debug checklist**: 
-       1. Fully implement the UI and logic for  to allow Admins/Managers to create, list, copy, and revoke invite links.
-       2. Ensure the UI correctly enforces that Managers can only create Agent invites.
-       3. Fully wire the  screen to handle all states: loading, invalid token, new user signup flow, existing user sign-in flow, and successful join.
-       4. Perform the complete 14-point end-to-end test outlined by the user (in message #369) to verify all success and failure paths.
-     - **Why fix this issue and what will be achieved with the fix?**: This is the core mechanism for user onboarding into teams. Completing it is critical for the app's primary functionality and is a hard blocker for the next deployment.
+     - **Description**: The new profile image feature is partially implemented. Backend work is mostly done, but the frontend is incomplete. The full user flow of selecting an image, uploading it, seeing it persist, and having it appear across the app is not functional.
+     - **Attempted fixes**: The agent has added backend endpoints, updated the frontend API service (), created a  component, and started editing .
+     - **Next debug checklist**:
+       1. Finish implementing the UI on . This includes adding  logic, action buttons (Upload, Change, Remove), and handlers to call the new API endpoints.
+       2. Implement loading/error/success states for the upload process.
+       3. Replace existing avatar/initials placeholders throughout the app with the new  component. Key files to check include: , , , and any other place a user avatar is shown.
+       4. Ensure the  properly refreshes and distributes the new  after an update.
+       5. Test the complete flow for all user roles.
+     - **Why fix this issue and what will be achieved with the fix?**: This is a key user-facing feature request that adds personalization and professional identity to the application.
      - **Status**:  IN PROGRESS
      - **Is recurring issue?** N
      - **Should Test frontend/backend/both after fix?**: both
-     - **Blocked on other issue**: None.
+     - **Blocked on other issue**: None
 
   - Issue 2: 
-     - **Description**: The backend file  is a monolith exceeding 8,500 lines, making it difficult to maintain and debug.
+     - **Description**: The iOS build process is failing because the build environment is using a cached, incorrect App Store Connect API key () instead of the one configured in  (). This is a platform-level issue.
+     - **Attempted fixes**: The agent correctly identified the root cause by comparing build logs to local configuration.
+     - **Next debug checklist**: The user needs to contact Emergent Support to have them clear the invalid cached API key from the build environment for this project. This cannot be fixed via code changes.
+     - **Why fix this issue and what will be achieved with the fix?**: This is a hard blocker for any future iOS deployments to TestFlight or the App Store.
+     - **Status**:  BLOCKED
+     - **Is recurring issue?** Y
+     - **Should Test frontend/backend/both after fix?**: NA (Platform issue)
+     - **Blocked on other issue**: None
+
+  - Issue 3: 
+     - **Description**: The main backend file  is a monolith now exceeding 8,900 lines, making it difficult to maintain.
      - **Next debug checklist**: Propose and execute a refactoring plan to split routes into logical groups (e.g., , , ) inside a new  directory using FastAPI's .
-     - **Why fix this issue and what will be achieved with this?**: Improve code organization, maintainability, and reduce the risk of introducing bugs during future development.
+     - **Why fix this issue and what will be achieved with this?**: Improve code organization, maintainability, and developer velocity.
      - **Status**:  NOT STARTED
      - **Is recurring issue?** Y
      - **Should Test frontend/backend/both after fix?**: backend
      - **Blocked on other issue**: None
 
-  - Issue 3: 
-     - **Description**: A potential N+1 query issue exists at  where  is called inside a loop. This has not been addressed.
-     - **Next debug checklist**: Refactor the code to fetch all required geocodes in a single batch query (e.g., using the  operator) before the loop.
-     - **Why fix this issue and what will be achieved with this?**: Improve database performance and application scalability, especially for users with many leads.
-     - **Status**:  NOT STARTED
-     - **Is recurring issue?** N
-     - **Should Test frontend/backend/both after fix?**: backend
-     - **Blocked on other issue**: None
-
   - Issue 4: 
-     - **Description**: Lead Scanner OCR functionality has not been verified on a real device.
-     - **Next debug checklist**: Generate a QR code for Expo Go and perform a manual test on a physical iOS device to verify camera permissions and OCR accuracy with a real business card.
-     - **Why fix this issue and what will be achieved with this?**: This is a key feature whose end-to-end functionality remains unconfirmed in a real-world scenario.
+     - **Description**: Lead Scanner OCR functionality has not been verified on a real physical device.
+     - **Next debug checklist**: Generate a QR code for Expo Go and perform a manual test on a physical iOS device to verify camera permissions and OCR accuracy.
+     - **Why fix this issue and what will be achieved with this?**: This is a key feature whose real-world functionality remains unconfirmed.
      - **Status**:  NOT STARTED
      - **Is recurring issue?** N
      - **Should Test frontend/backend/both after fix?**: frontend
      - **Blocked on other issue**: None
 
 **In progress Task List**:
-  - Task 1: Complete the secure invite-link onboarding system. (P0)
-     - **Where to resume**: The primary focus should be on the frontend implementation. Wire up the  and  screens to the backend. The logic for creating, listing, and revoking invites, as well as the full user journey for accepting an invite, needs to be completed.
-     - **What will be achieved with this?**: A fully functional, secure, and user-friendly system for growing teams within the application, which is the core of the user's recent requests.
+  - Task 1: Complete the Profile Image System (P0)
+     - **Where to resume**: Continue modifying  to add the UI and handlers for image selection and upload. Then, integrate the new  component across the application.
+     - **What will be achieved with this?**: A fully functional user profile image system as requested by the user.
      - **Status**:  IN PROGRESS
      - **Should Test frontend/backend/both after fix?**: both
      - **Blocked on something**: None.
 
 **Upcoming and Future Tasks**
 - **Upcoming Tasks:**
-    - **P1: Refactor Backend ()**: Execute the plan to split the monolithic  file into smaller router-based files.
-    - **P2: Optimize N+1 Query**: Batch the  lookup to improve performance.
+    - **P1: Refactor Backend ()**: Split the monolithic  file into smaller router-based files.
     - **P2: Verify OCR on Device**: Test the Lead Scanner feature on a real iOS device.
 
 - **Future Tasks:**
     - Advanced Route Planner
     - Enhanced AI Sales Coach
     - Underwriting & Commission Tracking Dashboards
-    - Agent Productivity Tools (beyond basic notifications)
     - In-app Training Library
 
 **Completed work in this session**
-- **Fixed iOS Deployment Blockers**: Resolved build failures by removing the  key from , resizing app icons to be square, and deleting the conflicting .
-- **Implemented New Onboarding Flow**: Created a new signup/onboarding screen that offers users the choice to Create Organization, Join Existing Team, or Continue as Solo Agent.
-- **Implemented Full Notification System**: Added backend endpoints, frontend context/hooks, and a Notification Preferences UI for managing push and local notifications.
-- **Implemented Route Visibility Permissions**: Added a new feature allowing users to control the privacy of their route data.
-- **Implemented Dynamic Legal Pages**: Created a system to display legal documents (Terms, Privacy Policy) from the backend within a WebView/iframe, allowing updates without an app release.
-- **Created App Store Review Accounts**: Provisioned two dedicated test accounts (one admin, one solo agent) and populated them with sample data to facilitate the App Store review process.
-- **Initiated Invite-Link System**: Began the migration from a manual token system to a secure, link-based invitation flow by creating the necessary backend logic and frontend screens.
+- **Completed Secure Invite-Link System**: Finished the frontend implementation and testing for the secure invite-link onboarding flow, including the management screen () and the invite acceptance page () for all states (valid, used, invalid, revoked).
+- **Conducted Full Production-Readiness Audit**: Systematically tested every screen and workflow in the app for all user roles (Admin, Manager, Agent), ensuring no dead buttons, broken links, or placeholder UIs remained. Minor UI bugs were fixed.
+- **Fixed Multiple Deployment & Performance Issues**:
+    - Resolved several N+1 query performance bottlenecks in the backend by batching database lookups.
+    - Fixed conflicting  and peer dependency warnings to ensure cleaner builds.
+    - Made the backend database connection and health checks more robust for production environments.
+- **Resolved Expo Authentication Failure**: Diagnosed and fixed an  authentication issue that was blocking the Expo Go preview, allowing development to resume.
+- **Created and Verified App Store Review Accounts**: Ensured dedicated, functional test accounts with sample data are ready for the App Store review process.
+- **Diagnosed iOS Build Failures**: Investigated and identified the root causes for multiple iOS build failures, including a revoked certificate issue and a critical cached API key mismatch, providing clear action items for platform support.
+- **Initiated Profile Image Feature**: Started implementation of the user profile image system by creating backend models/endpoints and initial frontend components.
 
 **Earlier issues found/mentioned but not fixed**
-   - **Issue 1**: Lead Scanner OCR functionality has not been verified on a real device. (Same as Pending Issue #4)
-     - Debug checklist: Generate a QR code for Expo Go and perform a manual test on a physical iOS device to verify camera permissions and OCR accuracy.
-     - Why to solve this issue and what will be achieved with this?: This is a key feature whose end-to-end functionality is unconfirmed.
-     - Should Test frontend/backend/both after fix: frontend
-     - Is recurring issue? N
-   - **Issue 2**: Monolithic backend server file (). (Same as Pending Issue #2)
-   - **Issue 3**: N+1 database query in . (Same as Pending Issue #3)
+   - Issue 1: Monolithic backend server file (). (Same as Pending Issue #3)
+   - Issue 2: Lead Scanner OCR functionality has not been verified on a real device. (Same as Pending Issue #4)
 
 **Known issue recurrence from previous fork**
-  - **Issue recurrence in this session**: The monolithic  file has grown significantly, increasing technical debt. This was noted in the previous handoff and has become more critical after adding extensive new backend logic for notifications, route visibility, and organizations.
-  - **Recurrence count**: 3
+  - **Issue recurrence in this session**: The monolithic  file continues to grow, increasing technical debt. This was noted in the previous handoff and is more critical after adding new logic.
+  - **Recurrence count**: 4
   - **Status**: NOT STARTED
 
 **Code Architecture**
-associatedDomains
+
 
 **Key Technical Concepts**
-*   **Invite-Link Onboarding**: A secure flow where users join teams via unique, single-use, expiring URLs instead of manually entering tokens. It handles both new signups and existing users.
-*   **Flexible Account Onboarding**: A crucial UX pattern implemented at signup, allowing users to self-select their initial path (start a team, join one, or go solo), which dictates their role and account setup.
-*   **Platform-Specific UI (WebView vs. iframe)**: A pattern used in  to render backend content, using WebView for native and an iframe for web previews to handle platform differences.
-*   **Local Notifications for Web Preview**: A testing/debugging technique implemented in the notification system to allow verification of notification logic in the web preview, where real push notifications are not supported.
-*   **Backend-Enforced RBAC**: The principle that all authorization checks for roles and permissions must happen on the server for every API request, never trusting client-side state.
+*   **Image/File Upload (Base64)**: The chosen method for profile image uploads, where the image is encoded as a base64 string on the client and sent to the backend in a JSON payload. The backend then saves this string to the database.
+*   **Production-Readiness Auditing**: A systematic process of testing every user-facing element of an application to ensure it is stable, functional, and free of placeholders or dead ends before a release.
+*   **N+1 Query Optimization**: A database performance optimization technique, applied in this session, to refactor code that makes N+1 database calls inside a loop into a single batch query before the loop.
+*   **EAS Build/Submit Configuration**: The process of configuring  and  to manage iOS builds, including versioning (), project linking (), and submission credentials ().
 
 **key DB schema**
-- **organizations** (collection):
-  - : ObjectId
-  - : string
-  - : ObjectId
-  - : Datetime
-- **users** (collection updated with):
-  - : ('admin' | 'manager' | 'agent')
-  - : ('solo' | 'hierarchy')
-  - : ObjectId (nullable)
-  - : ('private' | 'summary' | 'shared')
-- **invitations** (collection updated for links):
-  - : (unique string for the link)
-  - : ObjectId
-  - : ('manager' | 'agent')
-  - : ('active' | 'used' | 'expired' | 'revoked')
-  - : Datetime
-  - : ObjectId
-- **notifications** (collection):
-  - : ObjectId
-  - : string
-  - : string
-  - : dict (for deep linking)
-  - : boolean
+  - **users** (collection updated with):
+    - : string (nullable, stores base64 encoded image string)
 
 **changes in tech stack**
-  - : Added for handling push and local notifications.
-  - : Added to support opening legal page links.  is used within the component.
+  - : Will be added to the frontend to allow users to select images from their device gallery.
 
 **All files of reference**
-*   **/app/backend/server.py**: **CRITICAL**. Heavily modified with new endpoints for organizations, notifications, route visibility, admin recovery, and invite links. Needs refactoring.
-*   **/app/frontend/app/(auth)/onboarding.tsx**: **NEW & CRITICAL**. The new entry point for user registration.
-*   **/app/frontend/app/invite/[token].tsx**: **CRITICAL**. Rewritten to handle the new link-based invitation flow. In progress.
-*   **/app/frontend/app/team-invitations/index.tsx**: **NEW & CRITICAL**. The management UI for invite links. In progress.
-*   **/app/frontend/src/contexts/AuthContext.tsx**: Heavily modified to support new onboarding and account creation logic.
-*   **/app/frontend/src/contexts/NotificationContext.tsx**: New context managing all notification logic.
-*   **/app/frontend/app/(tabs)/settings.tsx**: Heavily modified to serve as a hub for new features like notification preferences, route privacy, and team invitations.
-*   **/app/frontend/app/notifications/preferences.tsx**: New screen for users to manage their notification settings.
-*   **/app/frontend/app/route-settings/privacy.tsx**: New screen for users to manage their route visibility.
-*   **/app/frontend/app/legal/[type].tsx**: New screen to render legal documents from the backend.
-*   **/app/frontend/src/services/api.ts**: Heavily modified with numerous new API service methods.
+*   **/app/backend/server.py**: **CRITICAL**. Modified to add  to the user model and endpoints for image upload/deletion and profile updates. Still needs refactoring.
+*   **/app/frontend/app/(tabs)/settings.tsx**: **CRITICAL & IN-PROGRESS**. This is the primary file being modified to add the profile image upload UI.
+*   **/app/frontend/src/services/api.ts**: Modified to add , , and  methods.
+*   **/app/frontend/src/components/ProfileAvatar.tsx**: **NEW**. A reusable component to display either the user's profile image or their initials as a fallback.
+*   **/app/frontend/app.json**: Modified to increment  to  and to link the EAS project ID.
+*   **/app/frontend/eas.json**: Modified to configure the App Store Connect API key for submissions.
+*   **/app/frontend/AuthKey_5429WBH5NQ.p8**: The new ASC API key file provided by the user.
 
 **Areas that need refactoring**:
-*   **/app/backend/server.py**: Urgently needs to be broken down into smaller, manageable router files. Its size (8500+ lines) is a significant source of technical debt and risk.
+*   **/app/backend/server.py**: Urgently needs to be broken down into smaller router files. Its size is a major source of technical debt.
 
 **key api endpoints**
-*   : **NEW**. Creates a new organization and assigns the creator as admin.
-*   : **ENHANCED**. Core of the new invite-link system; handles joining a team for both new and existing users.
-*   , : **NEW**. Manage user notification preferences.
-*   : **NEW**. Send a test notification.
-*   , : **NEW**. Manage user route privacy settings.
-*   : **NEW**. Admin recovery endpoint.
-*   : **NEW**. Admin recovery endpoint.
+*   : **NEW**. Uploads a new profile image (as base64 string).
+*   : **NEW**. Removes the user's current profile image.
+*   : **NEW**. Updates user profile information like name and phone.
+*   : **ENHANCED**. Now includes a database connection check.
 
 **Critical Info for New Agent**
-*   **Your immediate and only priority is to complete the secure invite-link system.** The user's instructions in messages #350 and #369 are the absolute source of truth for this task. Do not work on any other features, bugs, or refactoring until this is done and fully tested.
-*   The task involves significant frontend work: wiring the  and  screens to the backend, handling all UI states (loading, error, success), and ensuring the user flow is seamless.
-*   After implementation, you must perform the rigorous 14-point end-to-end test checklist provided by the user to validate every aspect of the new system.
-*   The monolithic  is a known major issue, but do not address it until the invite-link system is complete and verified by the user.
+*   **Your primary task is to complete the user profile image feature.** Resume by finishing the UI on the settings page (), then integrate the new  component throughout the app where user identities are shown.
+*   **The iOS build is BLOCKED.** The root cause has been identified: the build system is using a cached, incorrect App Store Connect API key. This is a platform-level issue. **Advise the user to contact Emergent Support to clear the cached key.** Do not attempt to trigger a new build until support confirms this is resolved, as it will fail and waste build credits. The correct key ID is .
+*   The monolithic backend () remains a significant piece of technical debt. Plan to address this after the profile image feature is complete and verified by the user.
 
 **documents created in this job**
   - 
   - 
-  - 
-  - 
-  - 
-  - 
+  -  (later replaced)
   - 
 
 **Last 10 User Messages and any pending HUMAN messages** 
-- **1. (LATEST - PENDING)** User provided extremely detailed requirements to finalize the invite-link system, including end-to-end testing criteria, before any build is generated. (IN PROGRESS)
-- **2.** User requested to replace the manual token system with a secure invite-link system. (IN PROGRESS)
-- **3.** User requested a final production hardening audit of all features, ensuring no dead buttons or placeholder flows. (DONE)
-- **4.** User asked for final clarification on role flows and requested the creation of a dedicated App Store Review test account with sample data. (DONE)
-- **5.** User requested the implementation of a new Route Visibility permission setting and a final verification of all systems. (DONE)
-- **6.** User requested a complete functional verification of the entire role-based system, including push notifications, onboarding, and legal docs. (DONE)
-- **7.** User approved the agent's plan and provided specific implementation details for notifications, legal docs, and task priority. (DONE)
-- **8.** User provided a massive, comprehensive feature request to build the entire role-based team system, including onboarding, token generation, RBAC, notifications, and legal updates. (DONE)
-- **9.** User provided very specific, non-negotiable instructions to fix the three iOS deployment blockers. (DONE)
-- **10.** User provided the logs from a failed deployment, initiating the work in this session. (DONE)
+ - **1. (LATEST)** User initiated the request to add a profile image system. (IN PROGRESS)
+ - **2.** User asked the agent to verify all configs and fix the build issue after multiple failures, leading to the discovery of the cached API key. (RESOLVED - Root Cause Found)
+ - **3.** User provided a new App Store Connect API key () after the old  file was unavailable. (DONE)
+ - **4.** User asked for next steps on how to use their existing App Store Connect API key. (DONE)
+- **5.** User confirmed they do not have a Mac and asked for guidance on setting up iOS credentials. (DONE)
+- **6.** User asked for confirmation on whether a redeploy was needed after config changes, before starting another build. (DONE)
+- **7.** User provided an  to fix the non-interactive mode error. (DONE)
+- **8.** User requested a fix for the  CI error. (DONE)
+- **9.** User reported an iOS build signing failure due to a revoked certificate. (RESOLVED - Platform Issue Identified)
+- **10.** User requested deployment and provided logs showing repeated backend restarts. (RESOLVED - Health check fixed)
 
 **Project Health Check:**
 *   **Broken:**
-    - The core user invitation and team-joining functionality is in a half-implemented state due to the pivot from tokens to links. This is a critical blocker.
+    *   **iOS Deployment**: The entire iOS build and deployment pipeline is blocked due to a platform-level issue with a cached, incorrect App Store Connect API key.
 *   **Mocked:**
-    - None.
+    *   None.
 
 **3rd Party Integrations**
 *   **Gemini Pro Vision:** OCR. Uses Emergent LLM Key.
@@ -236,23 +193,24 @@ associatedDomains
 *   **react-native-svg:** Frontend signature canvas rendering.
 *   **react-native-view-shot:** Capturing signature canvas as an image.
 *   **expo-linking / expo-sharing / expo-file-system:** Frontend native file/URL handling.
-*   **expo-notifications**: NEW. Push and local notifications.
-*   **expo-web-browser / react-native-webview**: NEW. In-app web content rendering.
+*   **expo-notifications**: Push and local notifications.
+*   **expo-web-browser / react-native-webview**: In-app web content rendering.
+*   **expo-clipboard**: For copy-to-clipboard functionality.
 
 **Testing status**
-  - Testing agent used after significant changes: YES. The backend testing agent was used multiple times to verify new endpoints for organizations, notifications, route visibility, and admin tools. All recent backend tests passed.
+  - Testing agent used after significant changes: YES. An extensive production-readiness audit was performed using the screenshot tool, covering all features and roles.
   - Troubleshoot agent used after agent stuck in loop: NO
-  - Test files created: None. Test cases were added to .
-  - Known regressions: None identified.
+  - Test files created: None.
+  - Known regressions: None identified in application code. The only regression is the blocked iOS build pipeline.
 
 **Credentials to test flow:**
-*   **App Review (Solo Agent):**  /  (has sample data)
+*   **App Review (Solo Agent):**  / 
 *   **App Review (Admin):**  / 
 *   **Existing Admin:**  / 
 *   **Existing Manager:**  / 
 *   **Existing Agent:**  / 
 
 **What agent forgot to execute**
-*   The task from the original handoff to verify the Lead Scanner OCR feature on a real physical device has been consistently overlooked throughout this entire session.
+*   The long-standing task to verify the Lead Scanner OCR feature on a real physical device has still not been completed.
 
 </analysis>

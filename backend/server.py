@@ -1931,7 +1931,8 @@ async def get_users(current_user: dict = Depends(require_manager_or_admin)):
             "is_active": user.get("is_active", True),
             "approval_status": user.get("approval_status", "approved"),
             "created_at": user["created_at"],
-            "last_login": user.get("last_login")
+            "last_login": user.get("last_login"),
+            "profile_image": user.get("profile_image")
         })
     
     return result

@@ -26,7 +26,7 @@ import * as ImageManipulator from 'expo-image-manipulator';
 // Constants - Use environment variable for base URL
 const BASE_URL = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL || 
                  process.env.EXPO_PUBLIC_BACKEND_URL || 
-                 'https://agentroute-sales.preview.emergentagent.com';
+                 'https://profile-photo-upload-2.preview.emergentagent.com';
 const PRIVACY_POLICY_URL = `${BASE_URL}/api/privacy`;
 const TERMS_OF_SERVICE_URL = `${BASE_URL}/api/terms`;
 const SUPPORT_EMAIL = 'agentrouteai@gmail.com';
@@ -377,11 +377,32 @@ export default function SettingsScreen() {
         {/* Profile Section */}
         <View style={styles.section}>
           <View style={styles.profileCard}>
-            <View style={styles.profileAvatar}>
-              <Text style={styles.profileInitial}>
-                {user?.name?.charAt(0).toUpperCase() || 'U'}
-              </Text>
-            </View>
+            <TouchableOpacity 
+              style={styles.profileAvatarContainer}
+              onPress={handleProfileImagePress}
+              disabled={isUploadingImage}
+            >
+              {isUploadingImage ? (
+                <View style={styles.profileAvatar}>
+                  <ActivityIndicator color="#FFFFFF" size="small" />
+                </View>
+              ) : user?.profile_image ? (
+                <Image 
+                  source={{ uri: user.profile_image }} 
+                  style={styles.profileImage}
+                  resizeMode="cover"
+                />
+              ) : (
+                <View style={styles.profileAvatar}>
+                  <Text style={styles.profileInitial}>
+                    {user?.name?.charAt(0).toUpperCase() || 'U'}
+                  </Text>
+                </View>
+              )}
+              <View style={styles.editBadge}>
+                <Ionicons name="camera" size={12} color="#FFFFFF" />
+              </View>
+            </TouchableOpacity>
             <View style={styles.profileInfo}>
               <Text style={styles.profileName}>{user?.name}</Text>
               <Text style={styles.profileEmail}>{user?.email}</Text>
@@ -778,6 +799,59 @@ export default function SettingsScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Profile Image Options Modal */}
+      <Modal
+        visible={showImageOptions}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowImageOptions(false)}
+      >
+        <TouchableOpacity 
+          style={styles.imageOptionsOverlay}
+          activeOpacity={1}
+          onPress={() => setShowImageOptions(false)}
+        >
+          <View style={styles.imageOptionsContent}>
+            <View style={styles.imageOptionsHeader}>
+              <Text style={styles.imageOptionsTitle}>Profile Photo</Text>
+              <TouchableOpacity onPress={() => setShowImageOptions(false)}>
+                <Ionicons name="close" size={24} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity style={styles.imageOption} onPress={takePhoto}>
+              <View style={styles.imageOptionIcon}>
+                <Ionicons name="camera" size={24} color="#3B82F6" />
+              </View>
+              <Text style={styles.imageOptionText}>Take Photo</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.imageOption} onPress={pickImage}>
+              <View style={styles.imageOptionIcon}>
+                <Ionicons name="images" size={24} color="#3B82F6" />
+              </View>
+              <Text style={styles.imageOptionText}>Choose from Gallery</Text>
+            </TouchableOpacity>
+
+            {user?.profile_image && (
+              <TouchableOpacity style={[styles.imageOption, styles.imageOptionRemove]} onPress={removeProfileImage}>
+                <View style={[styles.imageOptionIcon, styles.imageOptionIconRemove]}>
+                  <Ionicons name="trash" size={24} color="#EF4444" />
+                </View>
+                <Text style={[styles.imageOptionText, styles.imageOptionTextRemove]}>Remove Photo</Text>
+              </TouchableOpacity>
+            )}
+
+            <TouchableOpacity 
+              style={styles.imageOptionCancel} 
+              onPress={() => setShowImageOptions(false)}
+            >
+              <Text style={styles.imageOptionCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
@@ -846,18 +920,39 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 16,
   },
+  profileAvatarContainer: {
+    position: 'relative',
+    marginRight: 16,
+  },
   profileAvatar: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 70,
+    height: 70,
+    borderRadius: 35,
     backgroundColor: '#3B82F6',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 16,
+  },
+  profileImage: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+  },
+  editBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    backgroundColor: '#3B82F6',
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#1E293B',
   },
   profileInitial: {
     color: '#FFFFFF',
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: '600',
   },
   profileInfo: {
@@ -1241,6 +1336,72 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   leaveConfirmButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  // Image Options Modal styles
+  imageOptionsOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'flex-end',
+  },
+  imageOptionsContent: {
+    backgroundColor: '#1E293B',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    paddingBottom: Platform.OS === 'ios' ? 40 : 24,
+  },
+  imageOptionsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  imageOptionsTitle: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontWeight: '600',
+  },
+  imageOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#334155',
+  },
+  imageOptionIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#3B82F620',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  imageOptionIconRemove: {
+    backgroundColor: '#EF444420',
+  },
+  imageOptionText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  imageOptionRemove: {
+    borderBottomWidth: 0,
+  },
+  imageOptionTextRemove: {
+    color: '#EF4444',
+  },
+  imageOptionCancel: {
+    backgroundColor: '#334155',
+    borderRadius: 12,
+    paddingVertical: 16,
+    alignItems: 'center',
+    marginTop: 16,
+  },
+  imageOptionCancelText: {
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',

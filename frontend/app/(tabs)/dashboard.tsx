@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { api } from '../../src/services/api';
 import { format, parseISO, isToday, isTomorrow } from 'date-fns';
+import ProfileAvatar from '../../src/components/ProfileAvatar';
 
 interface Lead {
   id: string;
@@ -149,29 +150,41 @@ export default function DashboardScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#3B82F6" />}
       >
         <View style={styles.header}>
-          <View>
-            <Text style={styles.greeting}>Welcome back,</Text>
-            <Text style={styles.userName}>{user?.name || 'Agent'}</Text>
-            <View style={styles.roleModeBadges}>
-              <View style={[styles.roleBadge, { backgroundColor: getRoleBadgeColor() }]}>
-                <Ionicons 
-                  name={isAdmin ? 'shield' : isManager ? 'people' : 'person'} 
-                  size={12} 
-                  color="#FFFFFF" 
-                />
-                <Text style={styles.roleBadgeText}>
-                  {(user?.role || 'agent').charAt(0).toUpperCase() + (user?.role || 'agent').slice(1)}
-                </Text>
-              </View>
-              <View style={[styles.modeBadge, { backgroundColor: isConnectedMode ? '#22C55E20' : '#64748B20' }]}>
-                <Ionicons 
-                  name={isConnectedMode ? 'link' : 'person-circle'} 
-                  size={12} 
-                  color={isConnectedMode ? '#22C55E' : '#64748B'} 
-                />
-                <Text style={[styles.modeBadgeText, { color: isConnectedMode ? '#22C55E' : '#64748B' }]}>
-                  {isConnectedMode ? 'Team' : 'Solo'}
-                </Text>
+          <View style={styles.headerLeft}>
+            <TouchableOpacity 
+              style={styles.avatarButton}
+              onPress={() => router.push('/(tabs)/settings')}
+            >
+              <ProfileAvatar 
+                name={user?.name || 'Agent'} 
+                profileImage={user?.profile_image}
+                size={48}
+              />
+            </TouchableOpacity>
+            <View style={styles.headerTextContainer}>
+              <Text style={styles.greeting}>Welcome back,</Text>
+              <Text style={styles.userName}>{user?.name || 'Agent'}</Text>
+              <View style={styles.roleModeBadges}>
+                <View style={[styles.roleBadge, { backgroundColor: getRoleBadgeColor() }]}>
+                  <Ionicons 
+                    name={isAdmin ? 'shield' : isManager ? 'people' : 'person'} 
+                    size={12} 
+                    color="#FFFFFF" 
+                  />
+                  <Text style={styles.roleBadgeText}>
+                    {(user?.role || 'agent').charAt(0).toUpperCase() + (user?.role || 'agent').slice(1)}
+                  </Text>
+                </View>
+                <View style={[styles.modeBadge, { backgroundColor: isConnectedMode ? '#22C55E20' : '#64748B20' }]}>
+                  <Ionicons 
+                    name={isConnectedMode ? 'link' : 'person-circle'} 
+                    size={12} 
+                    color={isConnectedMode ? '#22C55E' : '#64748B'} 
+                  />
+                  <Text style={[styles.modeBadgeText, { color: isConnectedMode ? '#22C55E' : '#64748B' }]}>
+                    {isConnectedMode ? 'Team' : 'Solo'}
+                  </Text>
+                </View>
               </View>
             </View>
           </View>
@@ -474,6 +487,17 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: 20,
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  avatarButton: {
+    marginRight: 12,
+  },
+  headerTextContainer: {
+    flex: 1,
   },
   greeting: {
     fontSize: 14,

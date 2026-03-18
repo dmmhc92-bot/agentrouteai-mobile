@@ -10,7 +10,7 @@ import sys
 from datetime import datetime
 
 # Configuration
-BACKEND_URL = "https://agentroute-sales.preview.emergentagent.com/api"
+BACKEND_URL = "https://profile-photo-upload-2.preview.emergentagent.com/api"
 
 # Test credentials
 TEST_CREDENTIALS = {

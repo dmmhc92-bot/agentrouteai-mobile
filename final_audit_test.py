@@ -21,7 +21,7 @@ from datetime import datetime
 import time
 
 # Backend URL from frontend/.env
-BASE_URL = "https://agentroute-sales.preview.emergentagent.com/api"
+BASE_URL = "https://profile-photo-upload-2.preview.emergentagent.com/api"
 
 # Test Credentials
 TEST_CREDENTIALS = {
