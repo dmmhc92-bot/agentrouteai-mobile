@@ -49,4 +49,4 @@ __tests__/
 .idea/
 
 # Files with non-ASCII characters (corrupted files)
-*[^a-zA-Z0-9._/-]*
+# Allow @ symbols for iOS resolution suffixes like @2x, @3x

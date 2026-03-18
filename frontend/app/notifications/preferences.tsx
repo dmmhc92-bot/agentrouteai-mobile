@@ -1,3 +1,8 @@
+/**
+ * Notification Preferences Screen - Stub version without push notifications
+ * Push notifications are disabled in this build.
+ */
+
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -8,13 +13,10 @@ import {
   Switch,
   Alert,
   ActivityIndicator,
-  Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import * as Notifications from 'expo-notifications';
-import * as Device from 'expo-device';
 import { useNotifications } from '../../src/contexts/NotificationContext';
 
 interface PreferenceItemProps {
@@ -56,34 +58,18 @@ export default function NotificationPreferencesScreen() {
     preferences, 
     updatePreferences, 
     loadPreferences,
-    registerForPushNotifications,
-    sendTestNotification,
-    pushToken 
   } = useNotifications();
   
   const [isLoading, setIsLoading] = useState(false);
-  const [isSendingTest, setIsSendingTest] = useState(false);
   const [localPrefs, setLocalPrefs] = useState(preferences);
-  const [permissionStatus, setPermissionStatus] = useState<string>('unknown');
-  const isPhysicalDevice = Device.isDevice;
 
   useEffect(() => {
     loadPreferences();
-    checkPermissionStatus();
   }, []);
 
   useEffect(() => {
     setLocalPrefs(preferences);
   }, [preferences]);
-
-  const checkPermissionStatus = async () => {
-    try {
-      const { status } = await Notifications.getPermissionsAsync();
-      setPermissionStatus(status);
-    } catch (error) {
-      console.log('Error checking permission status:', error);
-    }
-  };
 
   const handleToggle = async (key: keyof typeof preferences, value: boolean) => {
     const newPrefs = { ...localPrefs, [key]: value };
@@ -98,258 +84,102 @@ export default function NotificationPreferencesScreen() {
     }
   };
 
-  const handleEnablePush = async () => {
-    if (!isPhysicalDevice) {
-      Alert.alert(
-        'Physical Device Required',
-        'Push notifications require a physical iOS or Android device. They cannot be enabled in the web preview or simulator.\n\nTo test notifications:\n1. Download Expo Go on your device\n2. Scan the QR code\n3. Enable notifications when prompted',
-        [{ text: 'OK' }]
-      );
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      await registerForPushNotifications();
-      await checkPermissionStatus();
-      
-      if (pushToken) {
-        Alert.alert('Success', 'Push notifications enabled successfully!');
-      } else {
-        const { status } = await Notifications.getPermissionsAsync();
-        if (status === 'denied') {
-          Alert.alert(
-            'Permission Denied',
-            'Notification permission was denied. Please enable notifications in your device settings:\n\nSettings → AgentRoute AI → Notifications',
-            [{ text: 'OK' }]
-          );
-        }
-      }
-    } catch (error) {
-      Alert.alert('Error', 'Failed to enable push notifications. Please try again.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleSendTestNotification = async () => {
-    setIsSendingTest(true);
-    try {
-      // Always create a backend notification record
-      await sendTestNotification();
-      
-      // If on physical device with permissions, also schedule a local notification
-      if (isPhysicalDevice && permissionStatus === 'granted') {
-        await Notifications.scheduleNotificationAsync({
-          content: {
-            title: 'Test Notification 🔔',
-            body: 'This is a test notification from AgentRoute AI. Tap to open the app.',
-            data: { screen: 'dashboard' },
-            sound: true,
-          },
-          trigger: { seconds: 1 },
-        });
-        Alert.alert('Test Sent', 'A test notification will appear in 1 second. Check your notification center.');
-      } else {
-        Alert.alert(
-          'Notification Created',
-          'A test notification has been created in the system.\n\nNote: To see push notifications appear on your device, you need:\n1. A physical iOS/Android device\n2. Notification permissions enabled',
-          [{ text: 'OK' }]
-        );
-      }
-    } catch (error) {
-      Alert.alert('Error', 'Failed to send test notification');
-    } finally {
-      setIsSendingTest(false);
-    }
-  };
-
-  const getStatusText = () => {
-    if (!isPhysicalDevice) {
-      return { 
-        enabled: false, 
-        title: 'Not Available (Web/Simulator)', 
-        description: 'Push notifications require a physical device' 
-      };
-    }
-    if (pushToken) {
-      return { 
-        enabled: true, 
-        title: 'Enabled', 
-        description: 'You will receive push notifications' 
-      };
-    }
-    if (permissionStatus === 'denied') {
-      return { 
-        enabled: false, 
-        title: 'Permission Denied', 
-        description: 'Enable in device Settings → AgentRoute AI → Notifications' 
-      };
-    }
-    return { 
-      enabled: false, 
-      title: 'Disabled', 
-      description: 'Enable to receive notifications when app is closed' 
-    };
-  };
-
-  const statusInfo = getStatusText();
-
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+        <TouchableOpacity 
+          style={styles.backButton} 
+          onPress={() => router.back()}
+        >
           <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Notifications</Text>
+        <Text style={styles.headerTitle}>Notification Settings</Text>
         <View style={styles.headerRight} />
       </View>
 
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-        {/* Push Notification Status */}
+      <ScrollView 
+        style={styles.content}
+        contentContainerStyle={styles.contentContainer}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Push Notifications Status */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Push Notifications</Text>
           <View style={styles.pushStatusCard}>
             <View style={styles.pushStatusHeader}>
-              <View style={[
-                styles.statusIndicator, 
-                { backgroundColor: statusInfo.enabled ? '#22C55E' : '#EF4444' }
-              ]} />
-              <View style={styles.pushStatusInfo}>
-                <Text style={styles.pushStatusTitle}>
-                  {statusInfo.title}
-                </Text>
-                <Text style={styles.pushStatusDescription}>
-                  {statusInfo.description}
-                </Text>
-              </View>
+              <View style={[styles.statusIndicator, styles.statusDisabled]} />
+              <Text style={styles.pushStatusTitle}>Push Notifications</Text>
             </View>
-            
-            {!statusInfo.enabled && (
-              <TouchableOpacity
-                style={[styles.enableButton, !isPhysicalDevice && styles.enableButtonDisabled]}
-                onPress={handleEnablePush}
-                disabled={isLoading}
-              >
-                {isLoading ? (
-                  <ActivityIndicator color="#FFFFFF" size="small" />
-                ) : (
-                  <>
-                    <Ionicons name="notifications" size={18} color="#FFFFFF" />
-                    <Text style={styles.enableButtonText}>
-                      {!isPhysicalDevice ? 'Requires Physical Device' : 'Enable Push Notifications'}
-                    </Text>
-                  </>
-                )}
-              </TouchableOpacity>
-            )}
+            <Text style={styles.pushStatusMessage}>
+              Push notifications are not available in this version.
+            </Text>
+            <Text style={styles.pushStatusSubtext}>
+              In-app notification preferences below will still be saved to your account.
+            </Text>
           </View>
         </View>
 
-        {/* Master Switch */}
+        {/* In-App Notification Preferences */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Master Control</Text>
-          <View style={styles.card}>
-            <PreferenceItem
-              icon="notifications"
-              iconColor="#3B82F6"
-              title="All Notifications"
-              description="Enable or disable all notification types"
-              value={localPrefs.push_enabled}
-              onValueChange={(value) => handleToggle('push_enabled', value)}
-            />
-          </View>
-        </View>
-
-        {/* Notification Categories */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Notification Categories</Text>
-          <View style={styles.card}>
+          <Text style={styles.sectionTitle}>In-App Notifications</Text>
+          <Text style={styles.sectionDescription}>
+            Configure which types of notifications you receive within the app
+          </Text>
+          
+          <View style={styles.preferencesCard}>
             <PreferenceItem
               icon="calendar"
-              iconColor="#22C55E"
+              iconColor="#3B82F6"
               title="Appointments"
               description="Reminders for upcoming appointments"
               value={localPrefs.appointments}
               onValueChange={(value) => handleToggle('appointments', value)}
-              disabled={!localPrefs.push_enabled}
             />
-            
-            <View style={styles.separator} />
             
             <PreferenceItem
               icon="alarm"
-              iconColor="#F59E0B"
-              title="Reminders"
-              description="Task and activity reminders"
+              iconColor="#8B5CF6"
+              title="Task Reminders"
+              description="Reminders for tasks and deadlines"
               value={localPrefs.reminders}
               onValueChange={(value) => handleToggle('reminders', value)}
-              disabled={!localPrefs.push_enabled}
             />
-            
-            <View style={styles.separator} />
             
             <PreferenceItem
               icon="refresh"
-              iconColor="#8B5CF6"
-              title="Follow-ups"
-              description="Lead follow-up reminders"
+              iconColor="#F59E0B"
+              title="Follow-up Alerts"
+              description="Notifications for lead follow-ups"
               value={localPrefs.follow_ups}
               onValueChange={(value) => handleToggle('follow_ups', value)}
-              disabled={!localPrefs.push_enabled}
             />
-            
-            <View style={styles.separator} />
             
             <PreferenceItem
               icon="people"
-              iconColor="#EC4899"
-              title="Team Alerts"
-              description="Team invitations and updates"
+              iconColor="#10B981"
+              title="Team Updates"
+              description="Activity from your team members"
               value={localPrefs.team_alerts}
               onValueChange={(value) => handleToggle('team_alerts', value)}
-              disabled={!localPrefs.push_enabled}
             />
-            
-            <View style={styles.separator} />
             
             <PreferenceItem
               icon="person-add"
-              iconColor="#06B6D4"
+              iconColor="#EC4899"
               title="Lead Alerts"
               description="New lead assignments and updates"
               value={localPrefs.lead_alerts}
               onValueChange={(value) => handleToggle('lead_alerts', value)}
-              disabled={!localPrefs.push_enabled}
             />
           </View>
         </View>
 
-        {/* Test Notification */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Testing</Text>
-          <TouchableOpacity
-            style={styles.testButton}
-            onPress={handleSendTestNotification}
-            disabled={isSendingTest}
-          >
-            {isSendingTest ? (
-              <ActivityIndicator color="#3B82F6" size="small" />
-            ) : (
-              <>
-                <Ionicons name="paper-plane" size={20} color="#3B82F6" />
-                <Text style={styles.testButtonText}>Send Test Notification</Text>
-              </>
-            )}
-          </TouchableOpacity>
-        </View>
-
-        {/* Info */}
+        {/* Info Section */}
         <View style={styles.infoSection}>
-          <Ionicons name="information-circle-outline" size={18} color="#64748B" />
+          <Ionicons name="information-circle-outline" size={20} color="#64748B" />
           <Text style={styles.infoText}>
-            Push notifications require your permission and may be affected by your device's Do Not Disturb settings.
+            These preferences control in-app notification behavior. Push notifications 
+            will be available in a future update.
           </Text>
         </View>
       </ScrollView>
@@ -367,13 +197,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1E293B',
   },
   backButton: {
-    width: 44,
-    height: 44,
+    width: 40,
+    height: 40,
     justifyContent: 'center',
-    alignItems: 'flex-start',
+    alignItems: 'center',
   },
   headerTitle: {
     fontSize: 18,
@@ -381,139 +213,117 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   headerRight: {
-    width: 44,
+    width: 40,
   },
-  scrollView: {
+  content: {
     flex: 1,
   },
-  scrollContent: {
-    paddingHorizontal: 16,
+  contentContainer: {
+    padding: 16,
     paddingBottom: 40,
   },
   section: {
     marginBottom: 24,
   },
   sectionTitle: {
-    fontSize: 13,
+    fontSize: 16,
     fontWeight: '600',
-    color: '#94A3B8',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 12,
+    color: '#FFFFFF',
+    marginBottom: 4,
   },
-  card: {
-    backgroundColor: '#1E293B',
-    borderRadius: 16,
-    overflow: 'hidden',
+  sectionDescription: {
+    fontSize: 14,
+    color: '#94A3B8',
+    marginBottom: 16,
   },
   pushStatusCard: {
     backgroundColor: '#1E293B',
-    borderRadius: 16,
+    borderRadius: 12,
     padding: 16,
+    borderWidth: 1,
+    borderColor: '#334155',
   },
   pushStatusHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginBottom: 8,
   },
   statusIndicator: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    marginRight: 12,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginRight: 8,
   },
-  pushStatusInfo: {
-    flex: 1,
+  statusDisabled: {
+    backgroundColor: '#64748B',
   },
   pushStatusTitle: {
     fontSize: 16,
     fontWeight: '600',
     color: '#FFFFFF',
   },
-  pushStatusDescription: {
-    fontSize: 13,
+  pushStatusMessage: {
+    fontSize: 14,
     color: '#94A3B8',
-    marginTop: 2,
+    marginBottom: 8,
   },
-  enableButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#3B82F6',
-    borderRadius: 10,
-    paddingVertical: 12,
-    marginTop: 16,
-    gap: 8,
+  pushStatusSubtext: {
+    fontSize: 13,
+    color: '#64748B',
   },
-  enableButtonDisabled: {
-    backgroundColor: '#475569',
-  },
-  enableButtonText: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '600',
+  preferencesCard: {
+    backgroundColor: '#1E293B',
+    borderRadius: 12,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#334155',
   },
   preferenceItem: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#334155',
   },
   preferenceDisabled: {
     opacity: 0.5,
   },
   preferenceIconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
   },
   preferenceContent: {
     flex: 1,
+    marginRight: 12,
   },
   preferenceTitle: {
-    fontSize: 16,
-    fontWeight: '500',
+    fontSize: 15,
+    fontWeight: '600',
     color: '#FFFFFF',
+    marginBottom: 2,
   },
   preferenceDescription: {
     fontSize: 13,
     color: '#94A3B8',
-    marginTop: 2,
-  },
-  separator: {
-    height: 1,
-    backgroundColor: '#334155',
-    marginLeft: 72,
-  },
-  testButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#1E293B',
-    borderRadius: 12,
-    paddingVertical: 16,
-    gap: 8,
-    borderWidth: 1,
-    borderColor: '#3B82F6',
-  },
-  testButtonText: {
-    color: '#3B82F6',
-    fontSize: 15,
-    fontWeight: '600',
   },
   infoSection: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     backgroundColor: '#1E293B',
-    borderRadius: 10,
-    padding: 12,
-    gap: 10,
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#334155',
   },
   infoText: {
     flex: 1,
-    color: '#64748B',
     fontSize: 13,
+    color: '#94A3B8',
+    marginLeft: 12,
     lineHeight: 18,
   },
 });

@@ -1,19 +1,12 @@
-import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
-import { Platform, AppState, AppStateStatus } from 'react-native';
-import * as Notifications from 'expo-notifications';
-import * as Device from 'expo-device';
-import { useRouter } from 'expo-router';
-import { api } from '../services/api';
-import { useAuth } from './AuthContext';
+/**
+ * NotificationContext - Stub version without push notifications
+ * Push notifications are disabled in this build.
+ * This provides the same interface but uses local-only notifications.
+ */
 
-// Configure how notifications appear when app is in foreground
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-  }),
-});
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { useAuth } from './AuthContext';
+import { api } from '../services/api';
 
 interface NotificationPreferences {
   appointments: boolean;
@@ -57,13 +50,12 @@ const defaultPreferences: NotificationPreferences = {
   follow_ups: true,
   team_alerts: true,
   lead_alerts: true,
-  push_enabled: true,
+  push_enabled: false, // Disabled - no push in this build
 };
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
-  const router = useRouter();
   const { user, token } = useAuth();
   
   const [pushToken, setPushToken] = useState<string | null>(null);
@@ -72,282 +64,103 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const [preferences, setPreferences] = useState<NotificationPreferences>(defaultPreferences);
   const [isLoading, setIsLoading] = useState(false);
 
-  const notificationListener = useRef<Notifications.Subscription>();
-  const responseListener = useRef<Notifications.Subscription>();
-  const appState = useRef(AppState.currentState);
+  // Load notifications when user changes
+  useEffect(() => {
+    if (user && token) {
+      loadNotifications();
+      loadUnreadCount();
+      loadPreferences();
+    }
+  }, [user, token]);
 
-  // Register for push notifications
+  // Push notifications disabled - this is a no-op
   const registerForPushNotifications = async () => {
-    if (!Device.isDevice) {
-      console.log('Must use physical device for push notifications');
-      return;
-    }
-
-    try {
-      // Check existing permissions
-      const { status: existingStatus } = await Notifications.getPermissionsAsync();
-      let finalStatus = existingStatus;
-
-      // Request permissions if not already granted
-      if (existingStatus !== 'granted') {
-        const { status } = await Notifications.requestPermissionsAsync();
-        finalStatus = status;
-      }
-
-      if (finalStatus !== 'granted') {
-        console.log('Failed to get push token for push notification!');
-        return;
-      }
-
-      // Get the token
-      const tokenData = await Notifications.getExpoPushTokenAsync({
-        projectId: 'agentroute-ai', // This should match your Expo project ID
-      });
-      
-      const expoPushToken = tokenData.data;
-      setPushToken(expoPushToken);
-
-      // Register token with backend
-      if (token) {
-        try {
-          await api.registerPushToken(expoPushToken, Platform.OS);
-          console.log('Push token registered with backend');
-        } catch (error) {
-          console.error('Failed to register push token with backend:', error);
-        }
-      }
-
-      // Android-specific notification channel
-      if (Platform.OS === 'android') {
-        await Notifications.setNotificationChannelAsync('default', {
-          name: 'default',
-          importance: Notifications.AndroidImportance.MAX,
-          vibrationPattern: [0, 250, 250, 250],
-          lightColor: '#3B82F6',
-        });
-      }
-    } catch (error) {
-      console.error('Error registering for push notifications:', error);
-    }
+    console.log('[Notifications] Push notifications disabled in this build');
   };
 
-  // Handle notification deep linking
-  const handleNotificationResponse = (response: Notifications.NotificationResponse) => {
-    const data = response.notification.request.content.data;
-    
-    if (!data || !data.screen) {
-      console.log('No deep link data in notification');
-      return;
-    }
-
-    // Navigate based on notification type
-    switch (data.screen) {
-      case 'calendar':
-        if (data.appointment_id) {
-          router.push(`/appointment/${data.appointment_id}` as any);
-        } else {
-          router.push('/(tabs)/calendar');
-        }
-        break;
-      
-      case 'lead_detail':
-        if (data.lead_id) {
-          router.push(`/lead/${data.lead_id}` as any);
-        } else {
-          router.push('/(tabs)/leads');
-        }
-        break;
-      
-      case 'settings_team':
-        router.push('/(tabs)/settings');
-        break;
-      
-      case 'dashboard':
-        router.push('/(tabs)/dashboard');
-        break;
-      
-      case 'task':
-        if (data.task_id) {
-          // Navigate to task or related lead
-          if (data.lead_id) {
-            router.push(`/lead/${data.lead_id}` as any);
-          }
-        }
-        break;
-      
-      default:
-        console.log('Unknown notification screen:', data.screen);
-    }
-
-    // Mark notification as read if we have an ID
-    if (data.notification_id) {
-      markAsRead(data.notification_id);
-    }
-  };
-
-  // Load notifications from backend
   const loadNotifications = async () => {
     if (!token) return;
     
     setIsLoading(true);
     try {
-      const data = await api.getNotifications(50, false);
-      setNotifications(data.notifications || []);
-      setUnreadCount(data.unread_count || 0);
+      const response = await api.getNotifications();
+      setNotifications(response.notifications || []);
     } catch (error) {
-      console.error('Failed to load notifications:', error);
+      console.warn('[Notifications] Failed to load notifications');
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Load just the unread count (for badge updates)
   const loadUnreadCount = async () => {
     if (!token) return;
     
     try {
-      const data = await api.getUnreadNotificationCount();
-      setUnreadCount(data.unread_count || 0);
-      
-      // Update badge
-      await Notifications.setBadgeCountAsync(data.unread_count || 0);
+      const response = await api.getUnreadNotificationCount();
+      setUnreadCount(response.count || 0);
     } catch (error) {
-      console.error('Failed to load unread count:', error);
+      console.warn('[Notifications] Failed to load unread count');
     }
   };
 
-  // Mark a notification as read
   const markAsRead = async (notificationId: string) => {
-    if (!token) return;
-    
     try {
-      const data = await api.markNotificationRead(notificationId);
-      
-      // Update local state
+      await api.markNotificationAsRead(notificationId);
       setNotifications(prev => 
         prev.map(n => n.id === notificationId ? { ...n, read: true } : n)
       );
-      setUnreadCount(data.unread_count || 0);
-      
-      // Update badge
-      await Notifications.setBadgeCountAsync(data.unread_count || 0);
+      setUnreadCount(prev => Math.max(0, prev - 1));
     } catch (error) {
-      console.error('Failed to mark notification as read:', error);
+      console.warn('[Notifications] Failed to mark as read');
     }
   };
 
-  // Mark all notifications as read
   const markAllAsRead = async () => {
-    if (!token) return;
-    
     try {
-      await api.markAllNotificationsRead();
-      
-      // Update local state
+      await api.markAllNotificationsAsRead();
       setNotifications(prev => prev.map(n => ({ ...n, read: true })));
       setUnreadCount(0);
-      
-      // Update badge
-      await Notifications.setBadgeCountAsync(0);
     } catch (error) {
-      console.error('Failed to mark all notifications as read:', error);
+      console.warn('[Notifications] Failed to mark all as read');
     }
   };
 
-  // Load preferences from backend
   const loadPreferences = async () => {
     if (!token) return;
     
     try {
-      const data = await api.getNotificationPreferences();
-      setPreferences(data.preferences || defaultPreferences);
+      const response = await api.getNotificationPreferences();
+      if (response) {
+        setPreferences({
+          ...defaultPreferences,
+          ...response,
+          push_enabled: false, // Always false - push disabled
+        });
+      }
     } catch (error) {
-      console.error('Failed to load notification preferences:', error);
+      console.warn('[Notifications] Failed to load preferences');
     }
   };
 
-  // Update preferences
   const updatePreferences = async (prefs: Partial<NotificationPreferences>) => {
-    if (!token) return;
-    
-    const newPrefs = { ...preferences, ...prefs };
-    
     try {
+      const newPrefs = { 
+        ...preferences, 
+        ...prefs,
+        push_enabled: false, // Always false - push disabled
+      };
       await api.updateNotificationPreferences(newPrefs);
       setPreferences(newPrefs);
     } catch (error) {
-      console.error('Failed to update notification preferences:', error);
+      console.warn('[Notifications] Failed to update preferences');
       throw error;
     }
   };
 
-  // Send test notification
+  // Test notification - no-op since push is disabled
   const sendTestNotification = async () => {
-    if (!token) return;
-    
-    try {
-      await api.sendTestNotification();
-      // Reload notifications after sending test
-      setTimeout(() => loadNotifications(), 1000);
-    } catch (error) {
-      console.error('Failed to send test notification:', error);
-      throw error;
-    }
+    console.log('[Notifications] Push notifications disabled - cannot send test');
   };
-
-  // Set up notification listeners
-  useEffect(() => {
-    // Listener for incoming notifications when app is in foreground
-    notificationListener.current = Notifications.addNotificationReceivedListener(notification => {
-      console.log('Notification received:', notification);
-      // Reload unread count when we receive a notification
-      loadUnreadCount();
-    });
-
-    // Listener for when user interacts with notification
-    responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
-      console.log('Notification response:', response);
-      handleNotificationResponse(response);
-    });
-
-    // Clean up
-    return () => {
-      if (notificationListener.current && typeof notificationListener.current.remove === 'function') {
-        notificationListener.current.remove();
-      }
-      if (responseListener.current && typeof responseListener.current.remove === 'function') {
-        responseListener.current.remove();
-      }
-    };
-  }, []);
-
-  // Handle app state changes to refresh unread count
-  useEffect(() => {
-    const subscription = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
-      if (
-        appState.current.match(/inactive|background/) &&
-        nextAppState === 'active' &&
-        token
-      ) {
-        // App came to foreground, refresh unread count
-        loadUnreadCount();
-      }
-      appState.current = nextAppState;
-    });
-
-    return () => {
-      subscription.remove();
-    };
-  }, [token]);
-
-  // Initial load when user logs in
-  useEffect(() => {
-    if (token && user) {
-      registerForPushNotifications();
-      loadNotifications();
-      loadPreferences();
-    }
-  }, [token, user]);
 
   return (
     <NotificationContext.Provider

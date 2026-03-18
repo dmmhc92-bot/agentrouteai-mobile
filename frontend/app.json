@@ -12,6 +12,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "app.emergent.agentrouteai2dd9b4e9",
       "buildNumber": "3",
+      "entitlements": {},
       "infoPlist": {
         "NSCameraUsageDescription": "Scan business cards to quickly add new leads",
         "NSPhotoLibraryUsageDescription": "Import business card photos to create leads",
@@ -52,7 +53,7 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/splash-icon.png",
+          "image": "./assets/images/splash-image.png",
           "imageWidth": 200,
           "resizeMode": "contain",
           "backgroundColor": "#0F172A"
