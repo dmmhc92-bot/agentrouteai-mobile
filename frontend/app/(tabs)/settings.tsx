@@ -35,11 +35,15 @@ const SUPPORT_SUBJECT = 'AgentRoute Support Request';
 export default function SettingsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { user, signOut, isAdmin, isManager, canInviteUsers, isSoloMode, isConnectedMode, teamInfo, joinTeam, leaveTeam, refreshUser } = useAuth();
+  const { user, signOut, isAdmin, isManager, canInviteUsers, isSoloMode, isConnectedMode, teamInfo, joinTeam, leaveTeam, refreshUser, updateProfile } = useAuth();
 
   const [subscription, setSubscription] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  
+  // Profile Image state
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [showImageOptions, setShowImageOptions] = useState(false);
   
   // Account Mode state
   const [showJoinModal, setShowJoinModal] = useState(false);
@@ -63,6 +67,124 @@ export default function SettingsScreen() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // Profile Image handlers
+  const handleProfileImagePress = () => {
+    setShowImageOptions(true);
+  };
+
+  const pickImage = async () => {
+    setShowImageOptions(false);
+    
+    try {
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      
+      if (!permissionResult.granted) {
+        Alert.alert('Permission Required', 'Please allow access to your photo library to upload a profile picture.');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        await uploadImage(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.error('Error picking image:', error);
+      Alert.alert('Error', 'Failed to pick image. Please try again.');
+    }
+  };
+
+  const takePhoto = async () => {
+    setShowImageOptions(false);
+    
+    try {
+      const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+      
+      if (!permissionResult.granted) {
+        Alert.alert('Permission Required', 'Please allow camera access to take a profile picture.');
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        await uploadImage(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.error('Error taking photo:', error);
+      Alert.alert('Error', 'Failed to take photo. Please try again.');
+    }
+  };
+
+  const uploadImage = async (uri: string) => {
+    setIsUploadingImage(true);
+    
+    try {
+      // Resize and compress image for mobile performance
+      const manipulated = await ImageManipulator.manipulateAsync(
+        uri,
+        [{ resize: { width: 400, height: 400 } }],
+        { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+      );
+
+      if (!manipulated.base64) {
+        throw new Error('Failed to process image');
+      }
+
+      // Upload via API
+      const imageData = `data:image/jpeg;base64,${manipulated.base64}`;
+      await api.uploadProfileImage(imageData);
+      
+      // Refresh user data to get updated profile_image
+      await refreshUser();
+      
+      Alert.alert('Success', 'Profile picture updated successfully!');
+    } catch (error: any) {
+      console.error('Error uploading image:', error);
+      Alert.alert('Error', error?.message || 'Failed to upload profile picture. Please try again.');
+    } finally {
+      setIsUploadingImage(false);
+    }
+  };
+
+  const removeProfileImage = async () => {
+    setShowImageOptions(false);
+    
+    Alert.alert(
+      'Remove Profile Picture',
+      'Are you sure you want to remove your profile picture?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            setIsUploadingImage(true);
+            try {
+              await api.deleteProfileImage();
+              await refreshUser();
+              Alert.alert('Success', 'Profile picture removed.');
+            } catch (error: any) {
+              console.error('Error removing image:', error);
+              Alert.alert('Error', 'Failed to remove profile picture. Please try again.');
+            } finally {
+              setIsUploadingImage(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleLogout = () => {
