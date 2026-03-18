@@ -145,6 +145,7 @@ class UserResponse(BaseModel):
     organization_name: Optional[str] = None
     upline_name: Optional[str] = None
     joined_team_at: Optional[datetime] = None
+    profile_image: Optional[str] = None  # Base64 encoded profile image
 
 class TokenResponse(BaseModel):
     access_token: str
