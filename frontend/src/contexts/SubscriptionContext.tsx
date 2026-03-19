@@ -4,7 +4,7 @@
  * Manages subscription state across the app using RevenueCat
  * 
  * Configuration:
- * - Bundle ID: app.emergent.agentrouteai2dd9b4e9
+ * - Bundle ID: com.agentrouteai.app
  * - Product ID: agentroute.monthly
  * - Entitlement: premium
  */
