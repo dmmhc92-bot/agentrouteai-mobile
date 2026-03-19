@@ -10,7 +10,7 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.agentrouteai.app",
+      "bundleIdentifier": "app.emergent.agentrouteai2dd9d4e9",
       "buildNumber": "12",
       "entitlements": {},
       "infoPlist": {
@@ -31,7 +31,7 @@
         "backgroundColor": "#0F172A"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.agentrouteai.app",
+      "package": "app.emergent.agentrouteai2dd9d4e9",
       "versionCode": 1,
       "permissions": [
         "CAMERA",

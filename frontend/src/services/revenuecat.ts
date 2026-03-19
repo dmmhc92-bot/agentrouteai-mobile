@@ -2,7 +2,7 @@
  * RevenueCat Service for AgentRoute AI CRM
  * 
  * Configuration:
- * - Bundle ID: com.agentrouteai.app
+ * - Bundle ID: app.emergent.agentrouteai2dd9d4e9
  * - Product ID: agentroute.monthly
  * - Subscription Group: AgentRoute premium
  * - Price: $30/month
@@ -18,7 +18,7 @@ import Purchases, {
 import { Platform } from 'react-native';
 
 // RevenueCat Configuration
-// Bundle ID: com.agentrouteai.app
+// Bundle ID: app.emergent.agentrouteai2dd9d4e9
 // Product ID: agentroute.monthly
 // Subscription Group: AgentRoute premium
 const REVENUECAT_API_KEY_IOS = 'appl_CQgM11NfsHsgSfUtCGgmiFpKEzw';
