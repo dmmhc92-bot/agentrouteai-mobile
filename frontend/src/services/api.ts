@@ -17,10 +17,15 @@ const getBackendUrl = (): string => {
     return envUrl;
   }
   
-  // Fallback to production URL
-  const fallbackUrl = 'https://app-store-ready-26.preview.emergentagent.com';
-  console.log('[API] Using fallback backend URL:', fallbackUrl);
-  return fallbackUrl;
+  // For web, try to use current origin
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    console.log('[API] Using window origin as backend URL:', window.location.origin);
+    return window.location.origin;
+  }
+  
+  // Final fallback - should not reach here in production
+  console.warn('[API] No backend URL configured, using empty string');
+  return '';
 };
 
 const BACKEND_URL = getBackendUrl();

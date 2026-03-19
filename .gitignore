@@ -80,15 +80,7 @@ agenthub/agents/youtube/db
 android-sdk/
 
 # Environment files (keep .env.example)
-.env
+# Note: frontend/.env and backend/.env are tracked for deployment
 .env.local
 .env.production
 .env.*.local
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
