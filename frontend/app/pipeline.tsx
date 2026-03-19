@@ -19,7 +19,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../src/services/api';
 import { useAuth } from '../src/contexts/AuthContext';
-import { LinearGradient } from 'expo-linear-gradient';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -62,7 +61,8 @@ const COLORS = {
   background: '#0A0A0F',
   cardBackground: '#141419',
   cardBorder: '#1F1F28',
-  primary: '#D4AF37', // Gold accent
+  cardHover: '#1A1A22',
+  primary: '#D4AF37',
   primaryMuted: '#8B7355',
   text: '#FFFFFF',
   textSecondary: '#9CA3AF',
@@ -73,7 +73,7 @@ const COLORS = {
   info: '#3B82F6',
 };
 
-// Stage configuration with premium styling
+// Stage configuration
 const STAGE_CONFIG: Record<string, { color: string; icon: string; label: string; priority: number }> = {
   new_lead: { color: '#6B7280', icon: 'person-add', label: 'New Lead', priority: 1 },
   new: { color: '#6B7280', icon: 'person-add', label: 'New', priority: 1 },
@@ -129,19 +129,15 @@ export default function PipelineScreen() {
   const loadPipeline = useCallback(async () => {
     try {
       setLoadError(null);
-      console.log('[Pipeline] Loading pipeline data...', { teamView, userRole: user?.role, userId: user?.id });
-      
-      const data = await api.getPipeline(teamView);
-      console.log('[Pipeline] Data received:', { 
-        stagesCount: data?.stages?.length, 
-        totalCases: data?.summary?.total_cases 
-      });
+      console.log('[Pipeline] Loading...', { teamView, role: user?.role });
 
-      // Validate response structure
+      const data = await api.getPipeline(teamView);
+      console.log('[Pipeline] Data received:', { stages: data?.stages?.length, total: data?.summary?.total_cases });
+
       if (data && data.stages && Array.isArray(data.stages)) {
         setPipelineData(data);
       } else {
-        console.warn('[Pipeline] Invalid response structure, using empty state');
+        console.warn('[Pipeline] Invalid response');
         setPipelineData({
           stages: [],
           summary: { total_cases: 0, total_premium: 0, total_commission: 0, conversion_rate: 0 },
@@ -149,28 +145,18 @@ export default function PipelineScreen() {
         });
       }
     } catch (error: any) {
-      // Log error internally but DO NOT show popup
-      console.error('[Pipeline] Load failed:', {
-        message: error?.message,
-        status: error?.response?.status,
-        data: error?.response?.data,
-        url: error?.config?.url,
-        userRole: user?.role,
-      });
-
-      // Set empty state on error - no popup, no crash
+      console.error('[Pipeline] Load failed:', error?.message);
       setPipelineData({
         stages: [],
         summary: { total_cases: 0, total_premium: 0, total_commission: 0, conversion_rate: 0 },
         is_team_view: teamView,
       });
-
       setLoadError('Unable to load pipeline. Pull down to refresh.');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [teamView, user?.role, user?.id]);
+  }, [teamView, user?.role]);
 
   useEffect(() => {
     loadPipeline();
@@ -179,6 +165,19 @@ export default function PipelineScreen() {
   const onRefresh = () => {
     setRefreshing(true);
     loadPipeline();
+  };
+
+  const handleStagePress = (stage: PipelineStage) => {
+    // Toggle expand/collapse
+    if (expandedStage === stage.stage) {
+      setExpandedStage(null);
+    } else {
+      setExpandedStage(stage.stage);
+    }
+  };
+
+  const handleLeadPress = (lead: PipelineLead) => {
+    router.push(`/lead/${lead.id}`);
   };
 
   const handleMoveCase = (lead: PipelineLead, currentStage: string) => {
@@ -235,100 +234,129 @@ export default function PipelineScreen() {
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
-  // Get stages with cases (non-zero count)
-  const activeStages = pipelineData?.stages?.filter(s => s.count > 0) || [];
-  const emptyStages = pipelineData?.stages?.filter(s => s.count === 0) || [];
+  // Get all stages with data, sorted by priority
+  const getStagesWithData = () => {
+    if (!pipelineData?.stages) return [];
+    
+    // Create a map of stages from API data
+    const stageMap = new Map<string, PipelineStage>();
+    pipelineData.stages.forEach(s => stageMap.set(s.stage, s));
+    
+    // Return all stages in order, with count 0 for missing ones
+    return ALL_STAGES.map(stageKey => {
+      const existing = stageMap.get(stageKey);
+      if (existing) return existing;
+      
+      const config = STAGE_CONFIG[stageKey] || { label: stageKey };
+      return {
+        stage: stageKey,
+        label: config.label,
+        count: 0,
+        total_premium: 0,
+        total_commission: 0,
+        leads: [],
+      };
+    });
+  };
 
+  const allStages = getStagesWithData();
+  const stagesWithCases = allStages.filter(s => s.count > 0);
+  const stagesWithoutCases = allStages.filter(s => s.count === 0);
+
+  // Render individual lead card
   const renderLeadCard = (lead: PipelineLead, stage: PipelineStage) => {
-    const config = STAGE_CONFIG[stage.stage] || { color: '#6B7280', icon: 'help-circle', label: stage.label };
+    const config = STAGE_CONFIG[stage.stage] || { color: '#6B7280', icon: 'help-circle' };
 
     return (
       <TouchableOpacity
         key={lead.id}
         style={styles.leadCard}
-        onPress={() => router.push(`/lead/${lead.id}`)}
+        onPress={() => handleLeadPress(lead)}
         activeOpacity={0.7}
       >
-        <View style={styles.leadCardHeader}>
-          <View style={styles.leadInfo}>
+        <View style={styles.leadCardContent}>
+          <View style={styles.leadMainInfo}>
             <Text style={styles.leadName} numberOfLines={1}>{lead.name}</Text>
+            {lead.phone && (
+              <Text style={styles.leadPhone}>{lead.phone}</Text>
+            )}
             <Text style={styles.leadDate}>{formatDate(lead.created_date)}</Text>
           </View>
-          <TouchableOpacity
-            style={[styles.moveButton, { backgroundColor: config.color }]}
-            onPress={(e) => {
-              e.stopPropagation();
-              handleMoveCase(lead, stage.stage);
-            }}
-          >
-            <Ionicons name="arrow-forward" size={14} color="#FFFFFF" />
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.leadDetails}>
-          {lead.phone && (
-            <View style={styles.leadDetailRow}>
-              <Ionicons name="call-outline" size={12} color={COLORS.textMuted} />
-              <Text style={styles.leadDetailText}>{lead.phone}</Text>
-            </View>
-          )}
-          {lead.premium > 0 && (
-            <View style={styles.leadDetailRow}>
-              <Ionicons name="cash-outline" size={12} color={COLORS.primary} />
-              <Text style={[styles.leadDetailText, { color: COLORS.primary }]}>
-                {formatCurrency(lead.premium)}
-              </Text>
-            </View>
-          )}
-        </View>
-
-        {lead.underwriting_status && lead.underwriting_status !== 'not_submitted' && (
-          <View style={styles.leadStatus}>
-            <View style={[styles.statusBadge, { backgroundColor: `${config.color}20` }]}>
-              <Text style={[styles.statusText, { color: config.color }]}>
-                {lead.underwriting_status.replace(/_/g, ' ')}
-              </Text>
-            </View>
+          
+          <View style={styles.leadActions}>
+            {lead.premium > 0 && (
+              <Text style={styles.leadPremium}>{formatCurrency(lead.premium)}</Text>
+            )}
+            <TouchableOpacity
+              style={[styles.moveButton, { backgroundColor: config.color }]}
+              onPress={(e) => {
+                e.stopPropagation();
+                handleMoveCase(lead, stage.stage);
+              }}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons name="arrow-forward" size={16} color="#FFFFFF" />
+            </TouchableOpacity>
           </View>
-        )}
+        </View>
       </TouchableOpacity>
     );
   };
 
-  const renderStageSection = (stage: PipelineStage) => {
-    const config = STAGE_CONFIG[stage.stage] || { color: '#6B7280', icon: 'help-circle', label: stage.label, priority: 99 };
+  // Render stage row - LARGE, TAPPABLE
+  const renderStageRow = (stage: PipelineStage, showEmpty: boolean = true) => {
+    const config = STAGE_CONFIG[stage.stage] || { color: '#6B7280', icon: 'help-circle', label: stage.label };
     const isExpanded = expandedStage === stage.stage;
+    const hasLeads = stage.count > 0;
+
+    // Don't show empty stages if showEmpty is false
+    if (!hasLeads && !showEmpty) return null;
 
     return (
-      <View key={stage.stage} style={styles.stageSection}>
+      <View key={stage.stage} style={styles.stageContainer}>
         <TouchableOpacity
-          style={styles.stageHeader}
-          onPress={() => setExpandedStage(isExpanded ? null : stage.stage)}
-          activeOpacity={0.7}
+          style={[
+            styles.stageRow,
+            hasLeads && styles.stageRowWithCases,
+            isExpanded && styles.stageRowExpanded,
+          ]}
+          onPress={() => handleStagePress(stage)}
+          activeOpacity={0.6}
         >
-          <View style={styles.stageHeaderLeft}>
-            <View style={[styles.stageIcon, { backgroundColor: `${config.color}20` }]}>
-              <Ionicons name={config.icon as any} size={18} color={config.color} />
-            </View>
-            <View style={styles.stageHeaderText}>
-              <Text style={styles.stageLabel}>{config.label}</Text>
-              <Text style={styles.stageCount}>{stage.count} {stage.count === 1 ? 'case' : 'cases'}</Text>
-            </View>
+          {/* Stage Icon */}
+          <View style={[styles.stageIconContainer, { backgroundColor: `${config.color}20` }]}>
+            <Ionicons name={config.icon as any} size={22} color={config.color} />
           </View>
-          <View style={styles.stageHeaderRight}>
+
+          {/* Stage Info */}
+          <View style={styles.stageInfo}>
+            <Text style={[styles.stageName, !hasLeads && styles.stageNameEmpty]}>
+              {config.label}
+            </Text>
+            <Text style={styles.stageCount}>
+              {hasLeads ? `${stage.count} ${stage.count === 1 ? 'case' : 'cases'}` : 'No cases'}
+            </Text>
+          </View>
+
+          {/* Right side - Premium & Chevron */}
+          <View style={styles.stageRight}>
             {stage.total_premium > 0 && (
-              <Text style={styles.stagePremium}>{formatCurrency(stage.total_premium)}</Text>
+              <Text style={styles.stageTotalPremium}>{formatCurrency(stage.total_premium)}</Text>
             )}
-            <Ionicons
-              name={isExpanded ? 'chevron-up' : 'chevron-down'}
-              size={20}
-              color={COLORS.textMuted}
-            />
+            {hasLeads && (
+              <Ionicons
+                name={isExpanded ? 'chevron-up' : 'chevron-down'}
+                size={22}
+                color={COLORS.textMuted}
+                style={styles.chevron}
+              />
+            )}
           </View>
         </TouchableOpacity>
 
-        {isExpanded && stage.leads.length > 0 && (
-          <View style={styles.stageLeads}>
+        {/* Expanded Leads List */}
+        {isExpanded && hasLeads && (
+          <View style={styles.leadsContainer}>
             {stage.leads.map(lead => renderLeadCard(lead, stage))}
           </View>
         )}
@@ -347,37 +375,43 @@ export default function PipelineScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* Premium Header */}
+      {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+        <TouchableOpacity 
+          style={styles.backButton} 
+          onPress={() => router.back()}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
           <Ionicons name="arrow-back" size={24} color={COLORS.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Sales Pipeline</Text>
-        {canViewTeam && (
+        {canViewTeam ? (
           <TouchableOpacity
             style={[styles.teamToggle, teamView && styles.teamToggleActive]}
             onPress={() => {
               setTeamView(!teamView);
               setLoading(true);
             }}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
             <Ionicons
               name={teamView ? 'people' : 'person'}
-              size={18}
+              size={20}
               color={teamView ? COLORS.primary : COLORS.textMuted}
             />
           </TouchableOpacity>
+        ) : (
+          <View style={{ width: 44 }} />
         )}
-        {!canViewTeam && <View style={{ width: 40 }} />}
       </View>
 
       {/* Summary Stats */}
       <View style={styles.summaryContainer}>
         <View style={styles.summaryCard}>
           <Text style={styles.summaryValue}>{pipelineData?.summary?.total_cases || 0}</Text>
-          <Text style={styles.summaryLabel}>Total Cases</Text>
+          <Text style={styles.summaryLabel}>Cases</Text>
         </View>
-        <View style={[styles.summaryCard, styles.summaryCardGold]}>
+        <View style={[styles.summaryCard, styles.summaryCardHighlight]}>
           <Text style={[styles.summaryValue, { color: COLORS.primary }]}>
             {formatCurrency(pipelineData?.summary?.total_premium || 0)}
           </Text>
@@ -389,19 +423,15 @@ export default function PipelineScreen() {
           </Text>
           <Text style={styles.summaryLabel}>Commission</Text>
         </View>
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryValue}>{pipelineData?.summary?.conversion_rate || 0}%</Text>
-          <Text style={styles.summaryLabel}>Win Rate</Text>
-        </View>
       </View>
 
-      {/* Pipeline Content */}
+      {/* Pipeline Stages */}
       <ScrollView
-        style={styles.pipelineContainer}
-        contentContainerStyle={styles.pipelineContent}
+        style={styles.stagesScrollView}
+        contentContainerStyle={styles.stagesContent}
         refreshControl={
-          <RefreshControl 
-            refreshing={refreshing} 
+          <RefreshControl
+            refreshing={refreshing}
             onRefresh={onRefresh}
             tintColor={COLORS.primary}
           />
@@ -415,60 +445,60 @@ export default function PipelineScreen() {
           </View>
         )}
 
-        {activeStages.length > 0 ? (
+        {loadError ? (
+          <View style={styles.errorState}>
+            <Ionicons name="cloud-offline-outline" size={48} color={COLORS.textMuted} />
+            <Text style={styles.errorTitle}>Unable to Load Pipeline</Text>
+            <Text style={styles.errorText}>{loadError}</Text>
+            <TouchableOpacity
+              style={styles.retryButton}
+              onPress={() => {
+                setLoading(true);
+                loadPipeline();
+              }}
+            >
+              <Ionicons name="refresh" size={18} color="#0A0A0F" />
+              <Text style={styles.retryButtonText}>Retry</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
           <>
-            {/* Active stages with leads */}
-            {activeStages.map(renderStageSection)}
+            {/* Active Stages (with cases) */}
+            {stagesWithCases.length > 0 && (
+              <View style={styles.stagesSection}>
+                <Text style={styles.sectionTitle}>Active Stages</Text>
+                {stagesWithCases.map(stage => renderStageRow(stage))}
+              </View>
+            )}
 
-            {/* Collapsed empty stages */}
-            {emptyStages.length > 0 && (
-              <View style={styles.emptyStagesSection}>
-                <Text style={styles.emptyStagesTitle}>Other Stages</Text>
-                <View style={styles.emptyStagesGrid}>
-                  {emptyStages.slice(0, 8).map(stage => {
-                    const config = STAGE_CONFIG[stage.stage] || { color: '#6B7280', icon: 'help-circle', label: stage.label };
-                    return (
-                      <View key={stage.stage} style={styles.emptyStageChip}>
-                        <Ionicons name={config.icon as any} size={12} color={config.color} />
-                        <Text style={styles.emptyStageChipText}>{config.label}</Text>
-                      </View>
-                    );
-                  })}
+            {/* All Stages (show empty stages too) */}
+            {stagesWithoutCases.length > 0 && (
+              <View style={styles.stagesSection}>
+                <Text style={styles.sectionTitle}>All Stages</Text>
+                {stagesWithoutCases.map(stage => renderStageRow(stage, true))}
+              </View>
+            )}
+
+            {/* Empty State - No cases at all */}
+            {stagesWithCases.length === 0 && !loadError && (
+              <View style={styles.emptyState}>
+                <View style={styles.emptyStateIcon}>
+                  <Ionicons name="layers-outline" size={48} color={COLORS.primaryMuted} />
                 </View>
+                <Text style={styles.emptyStateTitle}>Your Pipeline is Empty</Text>
+                <Text style={styles.emptyStateText}>
+                  Add leads and move them through your sales stages to track your progress.
+                </Text>
+                <TouchableOpacity
+                  style={styles.addLeadButton}
+                  onPress={() => router.push('/lead/new')}
+                >
+                  <Ionicons name="add" size={20} color="#0A0A0F" />
+                  <Text style={styles.addLeadButtonText}>Add Your First Lead</Text>
+                </TouchableOpacity>
               </View>
             )}
           </>
-        ) : (
-          /* Premium Empty State */
-          <View style={styles.emptyState}>
-            <View style={styles.emptyStateIcon}>
-              <Ionicons name="layers-outline" size={48} color={COLORS.primaryMuted} />
-            </View>
-            <Text style={styles.emptyStateTitle}>
-              {loadError ? 'Unable to Load Pipeline' : 'Your Pipeline is Empty'}
-            </Text>
-            <Text style={styles.emptyStateText}>
-              {loadError
-                ? 'Please check your connection and try again.'
-                : 'Start adding leads and moving them through your sales pipeline to track your progress.'}
-            </Text>
-            <TouchableOpacity
-              style={styles.emptyStateButton}
-              onPress={() => {
-                if (loadError) {
-                  setLoading(true);
-                  loadPipeline();
-                } else {
-                  router.push('/lead/new');
-                }
-              }}
-            >
-              <Ionicons name={loadError ? 'refresh' : 'add'} size={18} color="#0A0A0F" />
-              <Text style={styles.emptyStateButtonText}>
-                {loadError ? 'Retry' : 'Add Your First Lead'}
-              </Text>
-            </TouchableOpacity>
-          </View>
         )}
 
         <View style={{ height: 100 }} />
@@ -488,7 +518,10 @@ export default function PipelineScreen() {
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Move Case</Text>
-              <TouchableOpacity onPress={() => setMoveModalVisible(false)}>
+              <TouchableOpacity 
+                onPress={() => setMoveModalVisible(false)}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
                 <Ionicons name="close" size={24} color={COLORS.textMuted} />
               </TouchableOpacity>
             </View>
@@ -497,8 +530,13 @@ export default function PipelineScreen() {
               <Text style={styles.modalSubtitle}>Moving: {selectedLead.name}</Text>
             )}
 
-            <Text style={styles.inputLabel}>Move to Stage</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.stageSelector}>
+            <Text style={styles.inputLabel}>Select Stage</Text>
+            <ScrollView 
+              horizontal 
+              showsHorizontalScrollIndicator={false} 
+              style={styles.stageSelector}
+              contentContainerStyle={styles.stageSelectorContent}
+            >
               {ALL_STAGES.map((stage) => {
                 const config = STAGE_CONFIG[stage] || { color: '#6B7280', label: stage };
                 const isSelected = selectedNewStage === stage;
@@ -529,7 +567,7 @@ export default function PipelineScreen() {
               style={styles.textInput}
               value={moveNotes}
               onChangeText={setMoveNotes}
-              placeholder="Add notes about this move..."
+              placeholder="Add notes..."
               placeholderTextColor={COLORS.textMuted}
               multiline
             />
@@ -558,15 +596,6 @@ export default function PipelineScreen() {
                 />
               </View>
             </View>
-
-            <Text style={styles.inputLabel}>Policy Type (Optional)</Text>
-            <TextInput
-              style={styles.textInput}
-              value={policyType}
-              onChangeText={setPolicyType}
-              placeholder="e.g., Medicare Advantage"
-              placeholderTextColor={COLORS.textMuted}
-            />
 
             <TouchableOpacity
               style={[styles.confirmButton, moving && styles.confirmButtonDisabled]}
@@ -610,13 +639,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 16,
+    paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.cardBorder,
   },
   backButton: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     justifyContent: 'center',
     alignItems: 'flex-start',
   },
@@ -624,12 +653,11 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     color: COLORS.text,
-    letterSpacing: 0.5,
   },
   teamToggle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: COLORS.cardBackground,
     justifyContent: 'center',
     alignItems: 'center',
@@ -642,20 +670,21 @@ const styles = StyleSheet.create({
   },
   summaryContainer: {
     flexDirection: 'row',
-    paddingHorizontal: 12,
+    paddingHorizontal: 16,
     paddingVertical: 16,
-    gap: 8,
+    gap: 10,
   },
   summaryCard: {
     flex: 1,
     backgroundColor: COLORS.cardBackground,
     borderRadius: 12,
-    padding: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 10,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: COLORS.cardBorder,
   },
-  summaryCardGold: {
+  summaryCardHighlight: {
     borderColor: `${COLORS.primary}40`,
   },
   summaryValue: {
@@ -665,15 +694,15 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   summaryLabel: {
-    fontSize: 10,
+    fontSize: 11,
     color: COLORS.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
-  pipelineContainer: {
+  stagesScrollView: {
     flex: 1,
   },
-  pipelineContent: {
+  stagesContent: {
     padding: 16,
   },
   teamBadge: {
@@ -692,188 +721,151 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: COLORS.primary,
   },
-  stageSection: {
+  stagesSection: {
+    marginBottom: 24,
+  },
+  sectionTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
     marginBottom: 12,
+  },
+  stageContainer: {
+    marginBottom: 8,
+  },
+  stageRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: COLORS.cardBackground,
-    borderRadius: 16,
+    borderRadius: 14,
+    padding: 16,
+    minHeight: 72,
     borderWidth: 1,
     borderColor: COLORS.cardBorder,
-    overflow: 'hidden',
   },
-  stageHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
+  stageRowWithCases: {
+    borderColor: COLORS.cardBorder,
   },
-  stageHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
+  stageRowExpanded: {
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+    borderBottomWidth: 0,
   },
-  stageIcon: {
-    width: 40,
-    height: 40,
+  stageIconContainer: {
+    width: 48,
+    height: 48,
     borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    marginRight: 14,
   },
-  stageHeaderText: {
+  stageInfo: {
     flex: 1,
   },
-  stageLabel: {
-    fontSize: 15,
+  stageName: {
+    fontSize: 16,
     fontWeight: '600',
     color: COLORS.text,
-    marginBottom: 2,
+    marginBottom: 4,
+  },
+  stageNameEmpty: {
+    color: COLORS.textSecondary,
   },
   stageCount: {
     fontSize: 13,
     color: COLORS.textMuted,
   },
-  stageHeaderRight: {
+  stageRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
   },
-  stagePremium: {
+  stageTotalPremium: {
     fontSize: 14,
     fontWeight: '600',
     color: COLORS.primary,
+    marginRight: 8,
   },
-  stageLeads: {
+  chevron: {
+    marginLeft: 4,
+  },
+  leadsContainer: {
+    backgroundColor: COLORS.cardBackground,
+    borderBottomLeftRadius: 14,
+    borderBottomRightRadius: 14,
+    borderWidth: 1,
+    borderTopWidth: 0,
+    borderColor: COLORS.cardBorder,
     padding: 12,
-    paddingTop: 0,
     gap: 8,
   },
   leadCard: {
     backgroundColor: COLORS.background,
-    borderRadius: 12,
+    borderRadius: 10,
     padding: 14,
     borderWidth: 1,
     borderColor: COLORS.cardBorder,
   },
-  leadCardHeader: {
+  leadCardContent: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 8,
   },
-  leadInfo: {
+  leadMainInfo: {
     flex: 1,
   },
   leadName: {
     fontSize: 15,
     fontWeight: '600',
     color: COLORS.text,
+    marginBottom: 3,
+  },
+  leadPhone: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
     marginBottom: 2,
   },
   leadDate: {
     fontSize: 12,
     color: COLORS.textMuted,
   },
+  leadActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  leadPremium: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.primary,
+  },
   moveButton: {
-    width: 32,
-    height: 32,
+    width: 36,
+    height: 36,
     borderRadius: 8,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  leadDetails: {
-    flexDirection: 'row',
-    gap: 16,
-  },
-  leadDetailRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  leadDetailText: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
-  },
-  leadStatus: {
-    marginTop: 10,
-  },
-  statusBadge: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  statusText: {
-    fontSize: 11,
-    fontWeight: '500',
-    textTransform: 'capitalize',
-  },
-  emptyStagesSection: {
-    marginTop: 24,
-    padding: 16,
-    backgroundColor: COLORS.cardBackground,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: COLORS.cardBorder,
-  },
-  emptyStagesTitle: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: COLORS.textMuted,
-    marginBottom: 12,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  emptyStagesGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  emptyStageChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    backgroundColor: COLORS.background,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: COLORS.cardBorder,
-  },
-  emptyStageChipText: {
-    fontSize: 12,
-    color: COLORS.textMuted,
-  },
-  emptyState: {
+  errorState: {
     alignItems: 'center',
     paddingVertical: 60,
     paddingHorizontal: 32,
   },
-  emptyStateIcon: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: COLORS.cardBackground,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: COLORS.cardBorder,
-  },
-  emptyStateTitle: {
-    fontSize: 20,
+  errorTitle: {
+    fontSize: 18,
     fontWeight: '600',
     color: COLORS.text,
-    marginBottom: 12,
-    textAlign: 'center',
+    marginTop: 16,
+    marginBottom: 8,
   },
-  emptyStateText: {
+  errorText: {
     fontSize: 14,
     color: COLORS.textMuted,
     textAlign: 'center',
-    lineHeight: 22,
-    marginBottom: 24,
+    marginBottom: 20,
   },
-  emptyStateButton: {
+  retryButton: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
@@ -882,14 +874,57 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 12,
   },
-  emptyStateButtonText: {
+  retryButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#0A0A0F',
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 40,
+    paddingHorizontal: 32,
+  },
+  emptyStateIcon: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    backgroundColor: COLORS.cardBackground,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+  },
+  emptyStateTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: COLORS.text,
+    marginBottom: 10,
+  },
+  emptyStateText: {
+    fontSize: 14,
+    color: COLORS.textMuted,
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 24,
+  },
+  addLeadButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: 12,
+  },
+  addLeadButtonText: {
     fontSize: 15,
     fontWeight: '600',
     color: '#0A0A0F',
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    backgroundColor: 'rgba(0, 0, 0, 0.85)',
     justifyContent: 'flex-end',
   },
   modalContent: {
@@ -897,7 +932,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 24,
-    maxHeight: '85%',
+    maxHeight: '80%',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -916,7 +951,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   inputLabel: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
     color: COLORS.textSecondary,
     marginBottom: 8,
@@ -924,16 +959,21 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   stageSelector: {
-    marginBottom: 20,
+    marginBottom: 16,
+  },
+  stageSelectorContent: {
+    paddingRight: 16,
   },
   stageSelectorItem: {
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingVertical: 12,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: COLORS.cardBorder,
     marginRight: 8,
     backgroundColor: COLORS.background,
+    minHeight: 44,
+    justifyContent: 'center',
   },
   stageSelectorText: {
     fontSize: 13,
@@ -967,6 +1007,7 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderRadius: 12,
     marginTop: 8,
+    minHeight: 52,
   },
   confirmButtonDisabled: {
     opacity: 0.6,
