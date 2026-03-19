@@ -28,10 +28,22 @@ let ORIGINAL_FORM_CACHE = null;
 
 // Get the backend URL
 const getBackendUrl = () => {
-  const backendUrl = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL 
-    || process.env.EXPO_PUBLIC_BACKEND_URL 
-    || 'https://app-store-ready-26.preview.emergentagent.com';
-  return backendUrl;
+  // Try app.json extra config first (for production EAS builds)
+  const extraUrl = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL;
+  if (extraUrl) return extraUrl;
+  
+  // Try environment variable (for development)
+  const envUrl = process.env.EXPO_PUBLIC_BACKEND_URL;
+  if (envUrl) return envUrl;
+  
+  // For web, use current origin
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return window.location.origin;
+  }
+  
+  // No fallback - must be configured
+  console.warn('[PDFGenerator] No backend URL configured');
+  return '';
 };
 
 interface SOAFormData {

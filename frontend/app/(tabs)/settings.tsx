@@ -26,9 +26,17 @@ import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 
 // Constants - Use environment variable for base URL
-const BASE_URL = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL || 
-                 process.env.EXPO_PUBLIC_BACKEND_URL || 
-                 'https://app-store-ready-26.preview.emergentagent.com';
+const getBaseUrl = () => {
+  const extraUrl = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL;
+  if (extraUrl) return extraUrl;
+  const envUrl = process.env.EXPO_PUBLIC_BACKEND_URL;
+  if (envUrl) return envUrl;
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return window.location.origin;
+  }
+  return '';
+};
+const BASE_URL = getBaseUrl();
 const PRIVACY_POLICY_URL = `${BASE_URL}/api/privacy`;
 const TERMS_OF_SERVICE_URL = `${BASE_URL}/api/terms`;
 const SUPPORT_EMAIL = 'agentrouteai@gmail.com';

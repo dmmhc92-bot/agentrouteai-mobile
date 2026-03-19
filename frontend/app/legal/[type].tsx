@@ -20,9 +20,17 @@ if (Platform.OS !== 'web') {
   WebView = require('react-native-webview').WebView;
 }
 
-const BASE_URL = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL || 
-                 process.env.EXPO_PUBLIC_BACKEND_URL || 
-                 'https://app-store-ready-26.preview.emergentagent.com';
+const getBaseUrl = () => {
+  const extraUrl = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL;
+  if (extraUrl) return extraUrl;
+  const envUrl = process.env.EXPO_PUBLIC_BACKEND_URL;
+  if (envUrl) return envUrl;
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return window.location.origin;
+  }
+  return '';
+};
+const BASE_URL = getBaseUrl();
 
 export default function LegalScreen() {
   const router = useRouter();
