@@ -6948,6 +6948,154 @@ async def get_terms_short():
     """Short URL alias for Terms of Service"""
     return await get_terms_of_service_html()
 
+# Support page for App Store
+@api_router.get("/support", response_class=HTMLResponse)
+async def get_support_page():
+    """Support page for App Store Connect metadata"""
+    html_content = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Support - AgentRoute AI</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: #0F172A;
+            color: #E2E8F0;
+            padding: 20px;
+            max-width: 800px;
+            margin: 0 auto;
+            line-height: 1.6;
+        }
+        h1 { color: #3B82F6; font-size: 28px; margin-bottom: 10px; }
+        h2 { color: #94A3B8; font-size: 20px; margin-top: 30px; margin-bottom: 15px; border-bottom: 1px solid #334155; padding-bottom: 8px; }
+        h3 { color: #94A3B8; font-size: 16px; margin-top: 20px; margin-bottom: 10px; }
+        p, li { color: #CBD5E1; margin-bottom: 10px; }
+        ul { padding-left: 20px; }
+        a { color: #3B82F6; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        .contact-card {
+            background: #1E293B;
+            padding: 25px;
+            border-radius: 12px;
+            margin: 20px 0;
+            border-left: 4px solid #3B82F6;
+        }
+        .contact-card h3 {
+            margin-top: 0;
+            color: #3B82F6;
+        }
+        .faq-item {
+            background: #1E293B;
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin: 10px 0;
+        }
+        .faq-question {
+            color: #F8FAFC;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        .response-time {
+            background: #22C55E;
+            color: #0F172A;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            display: inline-block;
+            margin-left: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>AgentRoute AI Support</h1>
+    <p>We're here to help you succeed with AgentRoute AI. Below you'll find ways to get support and answers to common questions.</p>
+    
+    <div class="contact-card">
+        <h3>Contact Support <span class="response-time">Response within 24 hours</span></h3>
+        <p><strong>Email:</strong> <a href="mailto:agentrouteai@gmail.com">agentrouteai@gmail.com</a></p>
+        <p>For the fastest response, please include:</p>
+        <ul>
+            <li>Your account email address</li>
+            <li>Device type and iOS version</li>
+            <li>Description of the issue or question</li>
+            <li>Screenshots if applicable</li>
+        </ul>
+    </div>
+    
+    <h2>Frequently Asked Questions</h2>
+    
+    <div class="faq-item">
+        <p class="faq-question">How do I reset my password?</p>
+        <p>Tap "Forgot Password" on the login screen and enter your email address. You'll receive a password reset link within minutes.</p>
+    </div>
+    
+    <div class="faq-item">
+        <p class="faq-question">How do I delete my account?</p>
+        <p>Go to Settings > scroll to the bottom > tap "Delete Account". This will permanently delete your account and all associated data.</p>
+    </div>
+    
+    <div class="faq-item">
+        <p class="faq-question">How do I cancel my subscription?</p>
+        <p>Subscriptions are managed through the App Store. Go to your iPhone Settings > Apple ID > Subscriptions > AgentRoute AI > Cancel Subscription.</p>
+    </div>
+    
+    <div class="faq-item">
+        <p class="faq-question">How does offline mode work?</p>
+        <p>AgentRoute AI saves your work locally when you're offline. When you reconnect to the internet, your data automatically syncs to the cloud. Look for the sync indicator in the app to see pending uploads.</p>
+    </div>
+    
+    <div class="faq-item">
+        <p class="faq-question">Can I use AgentRoute AI on multiple devices?</p>
+        <p>Yes! Sign in with the same account on any device. Your data syncs across all devices in real-time.</p>
+    </div>
+    
+    <div class="faq-item">
+        <p class="faq-question">How do I scan a business card?</p>
+        <p>From the Dashboard, tap "Scan Card". Point your camera at the business card and tap capture. The AI will automatically extract contact information.</p>
+    </div>
+    
+    <div class="faq-item">
+        <p class="faq-question">How do I join my team/agency?</p>
+        <p>Ask your Admin or Manager for an invitation link or code. Go to Settings > Account Mode > "Join Team / Connect to Upline" and enter the invitation details.</p>
+    </div>
+    
+    <h2>Technical Requirements</h2>
+    <ul>
+        <li>iOS 13.0 or later</li>
+        <li>iPhone, iPad, or iPod touch</li>
+        <li>Internet connection required for sync (offline mode available)</li>
+        <li>Camera access required for business card scanning</li>
+    </ul>
+    
+    <h2>Additional Resources</h2>
+    <ul>
+        <li><a href="/api/privacy">Privacy Policy</a></li>
+        <li><a href="/api/terms">Terms of Service</a></li>
+    </ul>
+    
+    <div class="contact-card" style="margin-top: 40px; border-left-color: #F59E0B;">
+        <h3 style="color: #F59E0B;">Report a Bug or Issue</h3>
+        <p>Found a bug or experiencing technical issues? Please email us at <a href="mailto:agentrouteai@gmail.com">agentrouteai@gmail.com</a> with:</p>
+        <ul>
+            <li>Steps to reproduce the issue</li>
+            <li>What you expected to happen</li>
+            <li>What actually happened</li>
+            <li>Screenshots or screen recordings if possible</li>
+        </ul>
+    </div>
+    
+    <p style="margin-top: 40px; color: #64748B; font-size: 14px; text-align: center;">
+        © 2026 AgentRoute AI. All rights reserved.
+    </p>
+</body>
+</html>
+    """
+    return HTMLResponse(content=html_content)
+
 # ==================== AGENCY COMMAND CENTER ====================
 
 class AgencyCommandCenterSummary(BaseModel):
