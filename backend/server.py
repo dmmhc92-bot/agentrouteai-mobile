@@ -2997,6 +2997,15 @@ async def get_pipeline(team_view: bool = False, current_user: dict = Depends(get
     total_commission = 0
     total_cases = len(all_leads)
     
+    # Batch-fetch all agent names to avoid N+1 query problem
+    agents_lookup = {}
+    if is_team_view:
+        agent_ids = list(set([l.get("created_by_user") for l in all_leads if l.get("created_by_user")]))
+        if agent_ids:
+            agents_cursor = db.users.find({"id": {"$in": agent_ids}}, {"id": 1, "name": 1})
+            async for agent in agents_cursor:
+                agents_lookup[agent["id"]] = agent.get("name", "Unknown")
+    
     for stage_value in LeadStage:
         stage_leads = [l for l in all_leads if l.get("stage") == stage_value.value]
         stage_premium = 0
@@ -3009,11 +3018,10 @@ async def get_pipeline(team_view: bool = False, current_user: dict = Depends(get
             stage_premium += prod_info["premium"]
             stage_commission += prod_info["commission"]
             
-            # Get agent name if team view
+            # Get agent name from batch-fetched lookup
             agent_name = None
             if is_team_view:
-                agent = await db.users.find_one({"id": lead.get("created_by_user")}, {"name": 1})
-                agent_name = agent.get("name") if agent else "Unknown"
+                agent_name = agents_lookup.get(lead.get("created_by_user"), "Unknown")
             
             formatted_leads.append({
                 "id": lead_id,
