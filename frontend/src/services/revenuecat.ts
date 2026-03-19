@@ -18,11 +18,13 @@ import Purchases, {
 import { Platform } from 'react-native';
 
 // RevenueCat Configuration
-// IMPORTANT: Replace with your actual RevenueCat API keys
-const REVENUECAT_API_KEY_IOS = 'appl_YOUR_REVENUECAT_IOS_API_KEY'; // Get from RevenueCat dashboard
-const REVENUECAT_API_KEY_ANDROID = 'goog_YOUR_REVENUECAT_ANDROID_API_KEY'; // Get from RevenueCat dashboard
+// Bundle ID: app.emergent.agentrouteai2dd9b4e9
+// Product ID: agentroute.monthly
+// Subscription Group: AgentRoute premium
+const REVENUECAT_API_KEY_IOS = 'appl_CQgM11NfsHsgSfUtCGgmiFpKEzw';
+const REVENUECAT_API_KEY_ANDROID = 'goog_YOUR_REVENUECAT_ANDROID_API_KEY'; // Configure when needed
 
-// Entitlement and Product IDs
+// Entitlement and Product IDs - DO NOT CHANGE
 export const ENTITLEMENT_ID = 'premium';
 export const PRODUCT_ID = 'agentroute.monthly';
 export const OFFERING_ID = 'default';
@@ -58,7 +60,7 @@ class RevenueCatService {
       // Get the appropriate API key based on platform
       const apiKey = Platform.OS === 'ios' ? REVENUECAT_API_KEY_IOS : REVENUECAT_API_KEY_ANDROID;
 
-      if (apiKey.includes('YOUR_REVENUECAT')) {
+      if (!apiKey || apiKey.includes('YOUR_REVENUECAT')) {
         console.warn('[RevenueCat] API key not configured. Please add your RevenueCat API key.');
         // Return true to allow app to function without subscription
         return false;
