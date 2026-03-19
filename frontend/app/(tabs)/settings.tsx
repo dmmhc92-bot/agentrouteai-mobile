@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -19,6 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { useAppLock } from '../../src/contexts/AppLockContext';
+import { useSubscription } from '../../src/contexts/SubscriptionContext';
 import { api } from '../../src/services/api';
 import Constants from 'expo-constants';
 import * as ImagePicker from 'expo-image-picker';
@@ -44,11 +45,17 @@ export default function SettingsScreen() {
     enableAppLock, 
     disableAppLock 
   } = useAppLock();
+  const {
+    isPremium,
+    isLoading: isSubscriptionLoading,
+    subscriptionStatus,
+    monthlyPackage,
+    restorePurchases,
+  } = useSubscription();
 
-  // Subscription functionality disabled for App Store review
-  // All users have free access during review period
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   const [isTogglingAppLock, setIsTogglingAppLock] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(false);
   
   // Profile Image state
   const [isUploadingImage, setIsUploadingImage] = useState(false);
@@ -250,17 +257,54 @@ export default function SettingsScreen() {
     }
   };
 
-  // Subscription actions disabled for App Store review
-  // Apple IAP integration coming in future update
-  const handleSubscribe = async () => {
-    // Disabled for App Store submission - no action taken
-    console.log('[Subscription] Purchase disabled for review build');
+  // Subscription actions - Real Apple IAP with RevenueCat
+  const handleSubscribe = () => {
+    // Navigate to subscription/paywall screen
+    router.push('/subscription');
   };
 
   const handleRestore = async () => {
-    // Disabled for App Store submission - no action taken
-    console.log('[Subscription] Restore disabled for review build');
+    setIsRestoring(true);
+    try {
+      await restorePurchases();
+    } finally {
+      setIsRestoring(false);
+    }
   };
+
+  // Get subscription display info
+  const getSubscriptionDisplay = () => {
+    if (isSubscriptionLoading) {
+      return {
+        planName: 'Loading...',
+        status: 'LOADING',
+        statusColor: '#64748B',
+        description: 'Checking subscription status...',
+      };
+    }
+    
+    if (isPremium) {
+      return {
+        planName: 'Premium',
+        status: 'ACTIVE',
+        statusColor: '#22C55E',
+        description: subscriptionStatus?.expirationDate 
+          ? `Renews ${new Date(subscriptionStatus.expirationDate).toLocaleDateString()}`
+          : 'Full access to all premium features',
+      };
+    }
+    
+    // Get price from package if available
+    const priceString = monthlyPackage?.product?.priceString || '$29.99/month';
+    return {
+      planName: 'Free',
+      status: 'UPGRADE',
+      statusColor: '#3B82F6',
+      description: `Upgrade to Premium for ${priceString}`,
+    };
+  };
+
+  const subscriptionDisplay = getSubscriptionDisplay();
 
   // Privacy Policy - Opens in-app WebView
   const handlePrivacyPolicy = () => {
@@ -421,29 +465,67 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        {/* Subscription Section - Safe for App Store Review */}
+        {/* Subscription Section - Real Apple IAP */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Subscription</Text>
-          <View style={styles.subscriptionCard}>
+          <TouchableOpacity 
+            style={styles.subscriptionCard}
+            onPress={!isPremium ? handleSubscribe : undefined}
+            activeOpacity={isPremium ? 1 : 0.7}
+          >
             <View style={styles.subscriptionHeader}>
-              <View>
-                <Text style={styles.subscriptionPlan}>Free Access</Text>
+              <View style={styles.subscriptionInfo}>
+                <View style={styles.subscriptionTitleRow}>
+                  <Ionicons 
+                    name={isPremium ? "star" : "star-outline"} 
+                    size={20} 
+                    color={isPremium ? "#F59E0B" : "#3B82F6"} 
+                    style={styles.subscriptionIcon}
+                  />
+                  <Text style={styles.subscriptionPlan}>{subscriptionDisplay.planName}</Text>
+                </View>
                 <View
                   style={[
                     styles.subscriptionBadge,
-                    { backgroundColor: '#22C55E20' },
+                    { backgroundColor: `${subscriptionDisplay.statusColor}20` },
                   ]}
                 >
-                  <Text style={[styles.subscriptionStatus, { color: '#22C55E' }]}>
-                    ACTIVE
+                  <Text style={[styles.subscriptionStatus, { color: subscriptionDisplay.statusColor }]}>
+                    {subscriptionDisplay.status}
                   </Text>
                 </View>
               </View>
+              {!isPremium && (
+                <Ionicons name="chevron-forward" size={20} color="#64748B" />
+              )}
             </View>
             <Text style={styles.trialExpires}>
-              Full access to all features included
+              {subscriptionDisplay.description}
             </Text>
-          </View>
+            
+            {/* Upgrade/Manage Button */}
+            {!isPremium && (
+              <TouchableOpacity 
+                style={styles.upgradeButton}
+                onPress={handleSubscribe}
+              >
+                <Text style={styles.upgradeButtonText}>Upgrade to Premium</Text>
+              </TouchableOpacity>
+            )}
+            
+            {/* Restore Purchases Button */}
+            <TouchableOpacity 
+              style={styles.restoreButton}
+              onPress={handleRestore}
+              disabled={isRestoring}
+            >
+              {isRestoring ? (
+                <ActivityIndicator size="small" color="#3B82F6" />
+              ) : (
+                <Text style={styles.restoreButtonText}>Restore Purchases</Text>
+              )}
+            </TouchableOpacity>
+          </TouchableOpacity>
         </View>
 
         {/* Team Management Section - Only for Admin/Manager */}
@@ -1003,14 +1085,24 @@ const styles = StyleSheet.create({
   subscriptionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     marginBottom: 12,
+  },
+  subscriptionInfo: {
+    flex: 1,
+  },
+  subscriptionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  subscriptionIcon: {
+    marginRight: 8,
   },
   subscriptionPlan: {
     color: '#FFFFFF',
     fontSize: 18,
     fontWeight: '600',
-    marginBottom: 8,
   },
   subscriptionBadge: {
     alignSelf: 'flex-start',
@@ -1031,6 +1123,18 @@ const styles = StyleSheet.create({
     color: '#94A3B8',
     fontSize: 13,
     marginBottom: 16,
+  },
+  upgradeButton: {
+    backgroundColor: '#3B82F6',
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  upgradeButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
   },
   subscribeButton: {
     backgroundColor: '#3B82F6',
