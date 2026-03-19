@@ -145,31 +145,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       const storedToken = await storage.getItem('auth_token');
       
-      if (storedToken) {
-        setToken(storedToken);
-        api.setAuthToken(storedToken);
-        
-        if (hasNetwork) {
-          // Online: try to fetch fresh user data
+      // Only proceed if we have a stored token
+      if (!storedToken) {
+        // No token - user is not signed in, this is expected
+        setIsLoading(false);
+        return;
+      }
+      
+      setToken(storedToken);
+      api.setAuthToken(storedToken);
+      
+      if (hasNetwork) {
+        // Online: try to fetch fresh user data
+        try {
+          const userData = await api.getMe();
+          setUser(userData);
+          setIsOffline(false);
+          
+          // Load account mode info
           try {
-            const userData = await api.getMe();
-            setUser(userData);
-            setIsOffline(false);
-            
-            // Load account mode info
-            try {
-              const modeData = await api.getAccountMode();
-              if (modeData.team_info) {
-                setTeamInfo(modeData.team_info);
-              }
-              // Cache the fresh data for offline use
-              cacheUserData(userData, modeData.team_info || null);
-            } catch (e) {
-              // Account mode endpoint may not exist for older backends
+            const modeData = await api.getAccountMode();
+            if (modeData.team_info) {
+              setTeamInfo(modeData.team_info);
             }
-          } catch (error) {
-            // API failed even with network - use cached data
-            console.warn('[Auth] API failed, loading cached data');
+            // Cache the fresh data for offline use
+            cacheUserData(userData, modeData.team_info || null);
+          } catch (e) {
+            // Account mode endpoint may not exist for older backends
+          }
+        } catch (error: any) {
+          // Check if this is a 401 unauthorized - means token is invalid/expired
+          const status = error?.response?.status;
+          if (status === 401 || status === 403) {
+            // Token is invalid or expired - this is expected for logged-out users
+            // Silently clear the token and continue as logged-out
+            await storage.removeItem('auth_token');
+            setToken(null);
+            setUser(null);
+            api.setAuthToken(null);
+            // Don't log this as an error - it's expected behavior
+          } else {
+            // Other API errors - try cached data
+            console.log('[Auth] API unavailable, loading cached data');
             const cached = await loadCachedUserData();
             if (cached.user) {
               setUser(cached.user);
@@ -181,23 +198,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               setToken(null);
             }
           }
-        } else {
-          // Offline: load cached user data
-          console.log('[Auth] Offline mode - loading cached data');
-          const cached = await loadCachedUserData();
-          if (cached.user) {
-            setUser(cached.user);
-            setTeamInfo(cached.teamInfo);
-            setIsOffline(true);
-          }
-          // Don't clear token if offline - keep session for when online
         }
+      } else {
+        // Offline: load cached user data
+        console.log('[Auth] Offline mode - loading cached data');
+        const cached = await loadCachedUserData();
+        if (cached.user) {
+          setUser(cached.user);
+          setTeamInfo(cached.teamInfo);
+          setIsOffline(true);
+        }
+        // Don't clear token if offline - keep session for when online
       }
     } catch (error) {
-      console.warn('[Auth] Load error:', error);
-      // On any error, try to load cached data
+      // Silently handle any unexpected errors during auth bootstrap
+      // Don't log errors for auth state - it's normal for users to not be signed in
       try {
         const cached = await loadCachedUserData();
+        if (cached.user) {
+          setUser(cached.user);
+          setTeamInfo(cached.teamInfo);
+          setIsOffline(true);
+        }
+      } catch (e) {
+        // Ignore cache errors
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
         if (cached.user) {
           setUser(cached.user);
           setTeamInfo(cached.teamInfo);

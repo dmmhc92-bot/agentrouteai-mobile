@@ -104,16 +104,24 @@ apiClient.interceptors.response.use(
     return response;
   },
   (error) => {
-    // Log detailed error info for debugging
-    console.error('[API Error]', {
-      url: error.config?.url,
-      method: error.config?.method,
-      status: error.response?.status,
-      statusText: error.response?.statusText,
-      data: error.response?.data,
-      message: error.message,
-      hasAuthHeader: !!error.config?.headers?.Authorization,
-    });
+    // Don't log 401 errors for auth endpoints - they're expected for logged-out users
+    const isAuthEndpoint = error.config?.url?.includes('/auth/');
+    const is401 = error.response?.status === 401;
+    
+    if (is401 && isAuthEndpoint) {
+      // Silently reject - this is expected behavior for expired/invalid tokens
+      return Promise.reject(error);
+    }
+    
+    // Log other errors for debugging (but not in production for 401s)
+    if (!is401) {
+      console.warn('[API Error]', {
+        url: error.config?.url,
+        method: error.config?.method,
+        status: error.response?.status,
+        message: error.message,
+      });
+    }
     return Promise.reject(error);
   }
 );
@@ -130,10 +138,6 @@ class ApiService {
         if (this.authToken) {
           config.headers.Authorization = `Bearer ${this.authToken}`;
         }
-        // Log outgoing requests for debugging
-        console.log('[API Request]', config.method?.toUpperCase(), config.url, {
-          hasAuth: !!this.authToken,
-        });
         return config;
       },
       (error) => {
