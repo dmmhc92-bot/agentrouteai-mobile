@@ -130,9 +130,24 @@ def get_auth_headers(token):
     """Get authorization headers"""
     return {"Authorization": f"Bearer {token}"}
 
+def test_health_check(results):
+    """Test Backend Health Check as specified in review request"""
+    log_header("1. HEALTH CHECK")
+    
+    # Test GET /api/health (should be public - no auth required)
+    response = make_request("GET", "/health")
+    if response and response.status_code == 200:
+        data = response.json()
+        status = data.get("status", "unknown")
+        results.add_result("GET /api/health (backend health)", True, f"Backend status: {status}")
+        log_success("✅ Backend is healthy")
+    else:
+        results.add_result("GET /api/health (backend health)", False, f"Status: {response.status_code if response else 'No response'}")
+        log_error("❌ Backend health check failed")
+
 def test_authentication_flow(results):
     """Test Authentication Flow as specified in review request"""
-    log_header("1. AUTHENTICATION FLOW")
+    log_header("2. AUTHENTICATION FLOW")
     
     # Test all three specified login credentials
     admin_token, admin_user = login_user(ADMIN_CREDENTIALS, "Admin")
@@ -193,7 +208,7 @@ def test_authentication_flow(results):
 
 def test_core_crm_functionality(token, results):
     """Test Core CRM Functionality as specified in review request"""
-    log_header("2. CORE CRM FUNCTIONALITY")
+    log_header("3. CORE CRM FUNCTIONALITY")
     
     if not token:
         results.add_result("Core CRM Tests", False, "No valid token for testing")
@@ -253,7 +268,7 @@ def test_core_crm_functionality(token, results):
 
 def test_settings_endpoints(token, results):
     """Test Settings-related Endpoints as specified in review request"""
-    log_header("3. SETTINGS-RELATED ENDPOINTS")
+    log_header("4. SUBSCRIPTION & LEGAL ENDPOINTS")
     
     if not token:
         results.add_result("Settings Tests", False, "No valid token for testing")
@@ -300,7 +315,7 @@ def test_settings_endpoints(token, results):
 
 def test_key_features(token, results):
     """Test Key Features as specified in review request"""
-    log_header("4. KEY FEATURES")
+    log_header("5. AI COACH FEATURE")
     
     if not token:
         results.add_result("Key Features Tests", False, "No valid token for testing")
@@ -326,7 +341,7 @@ def test_key_features(token, results):
 
 def check_subscription_errors_summary(results):
     """Check for any subscription-related issues across all tests"""
-    log_header("5. SUBSCRIPTION ERROR VERIFICATION")
+    log_header("6. SUBSCRIPTION ERROR VERIFICATION")
     
     # This is a summary check - the actual validation happens in individual tests
     subscription_error_detected = False
@@ -344,12 +359,15 @@ def main():
     """Run App Store Review Readiness Tests"""
     log_header("AGENTROUTE AI - APP STORE REVIEW READINESS TESTING")
     log_info(f"Test URL: {BASE_URL.replace('/api', '')}")
-    log_info("Focus: Authentication, Core CRM, Settings, Key Features")
+    log_info("Focus: Health, Authentication, Core CRM, Settings, AI Features")
     log_info("Critical requirement: No subscription-related error messages")
     
     results = TestResults()
     
-    # 1. Authentication Flow
+    # 1. Health Check
+    test_health_check(results)
+    
+    # 2. Authentication Flow
     admin_token, manager_token, agent_token = test_authentication_flow(results)
     
     # Use admin token for remaining tests (fallback to manager, then agent)
@@ -360,16 +378,16 @@ def main():
         results.print_summary()
         return
     
-    # 2. Core CRM Functionality  
+    # 3. Core CRM Functionality  
     test_core_crm_functionality(primary_token, results)
     
-    # 3. Settings-related Endpoints
+    # 4. Settings-related Endpoints
     test_settings_endpoints(primary_token, results)
     
-    # 4. Key Features
+    # 5. Key Features
     test_key_features(primary_token, results)
     
-    # 5. Subscription Error Summary
+    # 6. Subscription Error Summary
     check_subscription_errors_summary(results)
     
     # Print final results
