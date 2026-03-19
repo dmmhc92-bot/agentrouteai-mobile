@@ -2,7 +2,7 @@
  * Subscription/Paywall Screen for AgentRoute AI CRM
  * 
  * Real Apple Subscription Implementation:
- * - Bundle ID: app.emergent.agentrouteai2dd9d4e9
+ * - Bundle ID: app.emergent.agentrouteai2dd9b4e9
  * - Product ID: agentroute.monthly
  * - Price: $30/month (loaded from App Store)
  * - Subscription Group: AgentRoute premium
