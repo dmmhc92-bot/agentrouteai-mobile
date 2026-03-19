@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -12,15 +12,12 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
-  Dimensions,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../src/services/api';
 import { useAuth } from '../src/contexts/AuthContext';
-
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 interface PipelineLead {
   id: string;
@@ -56,12 +53,10 @@ interface PipelineData {
   is_team_view: boolean;
 }
 
-// Premium color scheme
 const COLORS = {
   background: '#0A0A0F',
   cardBackground: '#141419',
   cardBorder: '#1F1F28',
-  cardHover: '#1A1A22',
   primary: '#D4AF37',
   primaryMuted: '#8B7355',
   text: '#FFFFFF',
@@ -70,29 +65,27 @@ const COLORS = {
   success: '#10B981',
   warning: '#F59E0B',
   error: '#EF4444',
-  info: '#3B82F6',
 };
 
-// Stage configuration
-const STAGE_CONFIG: Record<string, { color: string; icon: string; label: string; priority: number }> = {
-  new_lead: { color: '#6B7280', icon: 'person-add', label: 'New Lead', priority: 1 },
-  new: { color: '#6B7280', icon: 'person-add', label: 'New', priority: 1 },
-  contacted: { color: '#3B82F6', icon: 'chatbubble', label: 'Contacted', priority: 2 },
-  follow_up: { color: '#F59E0B', icon: 'time', label: 'Follow Up', priority: 3 },
-  appointment_set: { color: '#8B5CF6', icon: 'calendar', label: 'Appointment Set', priority: 4 },
-  appointment_scheduled: { color: '#8B5CF6', icon: 'calendar', label: 'Appointment Set', priority: 4 },
-  soa_completed: { color: '#06B6D4', icon: 'document-text', label: 'SOA Completed', priority: 5 },
-  policy_submitted: { color: '#8B5CF6', icon: 'paper-plane', label: 'Policy Submitted', priority: 6 },
-  application_submitted: { color: '#8B5CF6', icon: 'paper-plane', label: 'Application Submitted', priority: 6 },
-  underwriting_review: { color: '#F59E0B', icon: 'hourglass', label: 'Underwriting', priority: 7 },
-  additional_requirements: { color: '#EF4444', icon: 'alert-circle', label: 'Requirements', priority: 8 },
-  approved: { color: '#10B981', icon: 'checkmark-circle', label: 'Approved', priority: 9 },
-  closed_won: { color: '#22C55E', icon: 'trophy', label: 'Closed Won', priority: 10 },
-  policy_issued: { color: '#06B6D4', icon: 'document', label: 'Policy Issued', priority: 11 },
-  policy_placed: { color: '#14B8A6', icon: 'checkmark-done', label: 'Policy Placed', priority: 12 },
-  commission_pending: { color: '#F97316', icon: 'cash', label: 'Commission Pending', priority: 13 },
-  commission_paid: { color: '#22C55E', icon: 'wallet', label: 'Commission Paid', priority: 14 },
-  closed_lost: { color: '#EF4444', icon: 'close-circle', label: 'Closed Lost', priority: 15 },
+const STAGE_CONFIG: Record<string, { color: string; icon: string; label: string }> = {
+  new_lead: { color: '#6B7280', icon: 'person-add', label: 'New Lead' },
+  new: { color: '#6B7280', icon: 'person-add', label: 'New' },
+  contacted: { color: '#3B82F6', icon: 'chatbubble', label: 'Contacted' },
+  follow_up: { color: '#F59E0B', icon: 'time', label: 'Follow Up' },
+  appointment_set: { color: '#8B5CF6', icon: 'calendar', label: 'Appointment Set' },
+  appointment_scheduled: { color: '#8B5CF6', icon: 'calendar', label: 'Appointment Set' },
+  soa_completed: { color: '#06B6D4', icon: 'document-text', label: 'SOA Completed' },
+  policy_submitted: { color: '#8B5CF6', icon: 'paper-plane', label: 'Policy Submitted' },
+  application_submitted: { color: '#8B5CF6', icon: 'paper-plane', label: 'Application Submitted' },
+  underwriting_review: { color: '#F59E0B', icon: 'hourglass', label: 'Underwriting' },
+  additional_requirements: { color: '#EF4444', icon: 'alert-circle', label: 'Requirements' },
+  approved: { color: '#10B981', icon: 'checkmark-circle', label: 'Approved' },
+  closed_won: { color: '#22C55E', icon: 'trophy', label: 'Closed Won' },
+  policy_issued: { color: '#06B6D4', icon: 'document', label: 'Policy Issued' },
+  policy_placed: { color: '#14B8A6', icon: 'checkmark-done', label: 'Policy Placed' },
+  commission_pending: { color: '#F97316', icon: 'cash', label: 'Commission Pending' },
+  commission_paid: { color: '#22C55E', icon: 'wallet', label: 'Commission Paid' },
+  closed_lost: { color: '#EF4444', icon: 'close-circle', label: 'Closed Lost' },
 };
 
 const ALL_STAGES = [
@@ -107,11 +100,17 @@ export default function PipelineScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
 
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  // ===== STATE MANAGEMENT (HARDENED) =====
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [pipelineData, setPipelineData] = useState<PipelineData | null>(null);
   const [teamView, setTeamView] = useState(false);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [hasError, setHasError] = useState(false);
+
+  // ===== REQUEST TRACKING (PREVENT RACE CONDITIONS) =====
+  const requestIdRef = useRef(0);
+  const isMountedRef = useRef(true);
+  const isLoadingRef = useRef(false);
 
   // Move modal state
   const [moveModalVisible, setMoveModalVisible] = useState(false);
@@ -124,55 +123,143 @@ export default function PipelineScreen() {
   const [moving, setMoving] = useState(false);
 
   const canViewTeam = user?.role === 'admin' || user?.role === 'manager';
+  const userRole = user?.role || 'agent';
+  const isAuthenticated = !!user?.id;
 
-  const loadPipeline = useCallback(async () => {
+  // ===== HARDENED FETCH FUNCTION =====
+  const fetchPipeline = useCallback(async (isRefresh: boolean = false) => {
+    // Prevent duplicate concurrent requests
+    if (isLoadingRef.current && !isRefresh) {
+      console.log('[Pipeline] Skipping duplicate request');
+      return;
+    }
+
+    // Generate unique request ID to handle race conditions
+    const currentRequestId = ++requestIdRef.current;
+    isLoadingRef.current = true;
+
+    console.log(`[Pipeline] Request #${currentRequestId} started`, { 
+      role: userRole, 
+      teamView, 
+      isRefresh,
+      hasExistingData: !!pipelineData 
+    });
+
     try {
-      setLoadError(null);
-      console.log('[Pipeline] Loading...', { teamView, role: user?.role });
-
       const data = await api.getPipeline(teamView);
-      console.log('[Pipeline] Data received:', { stages: data?.stages?.length, total: data?.summary?.total_cases });
 
+      // Check if this request is still the latest (race condition protection)
+      if (currentRequestId !== requestIdRef.current) {
+        console.log(`[Pipeline] Request #${currentRequestId} discarded (superseded by #${requestIdRef.current})`);
+        return;
+      }
+
+      // Check if component is still mounted
+      if (!isMountedRef.current) {
+        console.log(`[Pipeline] Request #${currentRequestId} discarded (unmounted)`);
+        return;
+      }
+
+      // Validate response
       if (data && data.stages && Array.isArray(data.stages)) {
-        setPipelineData(data);
-      } else {
-        console.warn('[Pipeline] Invalid response');
-        setPipelineData({
-          stages: [],
-          summary: { total_cases: 0, total_premium: 0, total_commission: 0, conversion_rate: 0 },
-          is_team_view: teamView,
+        console.log(`[Pipeline] Request #${currentRequestId} SUCCESS`, { 
+          stages: data.stages.length, 
+          total: data.summary?.total_cases 
         });
+        setPipelineData(data);
+        setHasError(false);
+      } else {
+        console.warn(`[Pipeline] Request #${currentRequestId} invalid response`);
+        // Only set empty state if we have no existing data
+        if (!pipelineData) {
+          setPipelineData({
+            stages: [],
+            summary: { total_cases: 0, total_premium: 0, total_commission: 0, conversion_rate: 0 },
+            is_team_view: teamView,
+          });
+        }
+        setHasError(false); // Empty is not an error
       }
     } catch (error: any) {
-      console.error('[Pipeline] Load failed:', error?.message);
-      setPipelineData({
-        stages: [],
-        summary: { total_cases: 0, total_premium: 0, total_commission: 0, conversion_rate: 0 },
-        is_team_view: teamView,
-      });
-      setLoadError('Unable to load pipeline. Pull down to refresh.');
+      console.error(`[Pipeline] Request #${currentRequestId} FAILED:`, error?.message);
+
+      // Check if this request is still the latest
+      if (currentRequestId !== requestIdRef.current) {
+        console.log(`[Pipeline] Failed request #${currentRequestId} ignored (superseded)`);
+        return;
+      }
+
+      if (!isMountedRef.current) return;
+
+      // CRITICAL: Do NOT overwrite existing valid data on refresh failure
+      if (isRefresh && pipelineData) {
+        console.log('[Pipeline] Refresh failed but keeping existing data');
+        // Just show a subtle error, don't wipe data
+        setHasError(false); // Keep showing data
+      } else {
+        // Initial load failed - show error state
+        setHasError(true);
+        if (!pipelineData) {
+          setPipelineData({
+            stages: [],
+            summary: { total_cases: 0, total_premium: 0, total_commission: 0, conversion_rate: 0 },
+            is_team_view: teamView,
+          });
+        }
+      }
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (isMountedRef.current && currentRequestId === requestIdRef.current) {
+        isLoadingRef.current = false;
+        setIsInitialLoad(false);
+        setIsRefreshing(false);
+      }
     }
-  }, [teamView, user?.role]);
+  }, [teamView, userRole, pipelineData]);
 
+  // ===== SINGLE MOUNT EFFECT (NO DUPLICATES) =====
   useEffect(() => {
-    loadPipeline();
-  }, [loadPipeline]);
+    isMountedRef.current = true;
+    
+    // Only fetch if authenticated
+    if (isAuthenticated) {
+      fetchPipeline(false);
+    }
 
-  const onRefresh = () => {
-    setRefreshing(true);
-    loadPipeline();
-  };
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, [isAuthenticated]); // Re-run when auth state changes
 
+  // ===== TEAM VIEW CHANGE HANDLER =====
+  useEffect(() => {
+    // Skip initial render
+    if (isInitialLoad) return;
+    
+    // Fetch when teamView changes
+    setIsInitialLoad(true);
+    fetchPipeline(false);
+  }, [teamView]);
+
+  // ===== REFRESH HANDLER (SINGLE TRIGGER) =====
+  const handleRefresh = useCallback(() => {
+    if (isLoadingRef.current) {
+      console.log('[Pipeline] Refresh skipped - already loading');
+      return;
+    }
+    setIsRefreshing(true);
+    fetchPipeline(true);
+  }, [fetchPipeline]);
+
+  // ===== RETRY HANDLER =====
+  const handleRetry = useCallback(() => {
+    setIsInitialLoad(true);
+    setHasError(false);
+    fetchPipeline(false);
+  }, [fetchPipeline]);
+
+  // ===== NAVIGATION HANDLERS =====
   const handleStagePress = (stage: PipelineStage) => {
-    // Navigate to stage detail screen
     router.push(`/stage/${stage.stage}`);
-  };
-
-  const handleLeadPress = (lead: PipelineLead) => {
-    router.push(`/lead/${lead.id}`);
   };
 
   const handleMoveCase = (lead: PipelineLead, currentStage: string) => {
@@ -204,7 +291,7 @@ export default function PipelineScreen() {
 
       await api.movePipelineCase(moveData);
       setMoveModalVisible(false);
-      loadPipeline();
+      fetchPipeline(true);
       Alert.alert('Success', 'Case moved successfully');
     } catch (error: any) {
       const message = error.response?.data?.detail || 'Failed to move case';
@@ -214,6 +301,7 @@ export default function PipelineScreen() {
     }
   };
 
+  // ===== HELPERS =====
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -223,21 +311,13 @@ export default function PipelineScreen() {
     }).format(amount);
   };
 
-  const formatDate = (dateString: string) => {
-    if (!dateString) return '';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  };
-
-  // Get all stages with data, sorted by priority
+  // ===== STAGE DATA PROCESSING =====
   const getStagesWithData = () => {
     if (!pipelineData?.stages) return [];
     
-    // Create a map of stages from API data
     const stageMap = new Map<string, PipelineStage>();
     pipelineData.stages.forEach(s => stageMap.set(s.stage, s));
     
-    // Return all stages in order, with count 0 for missing ones
     return ALL_STAGES.map(stageKey => {
       const existing = stageMap.get(stageKey);
       if (existing) return existing;
@@ -258,47 +338,7 @@ export default function PipelineScreen() {
   const stagesWithCases = allStages.filter(s => s.count > 0);
   const stagesWithoutCases = allStages.filter(s => s.count === 0);
 
-  // Render individual lead card
-  const renderLeadCard = (lead: PipelineLead, stage: PipelineStage) => {
-    const config = STAGE_CONFIG[stage.stage] || { color: '#6B7280', icon: 'help-circle' };
-
-    return (
-      <TouchableOpacity
-        key={lead.id}
-        style={styles.leadCard}
-        onPress={() => handleLeadPress(lead)}
-        activeOpacity={0.7}
-      >
-        <View style={styles.leadCardContent}>
-          <View style={styles.leadMainInfo}>
-            <Text style={styles.leadName} numberOfLines={1}>{lead.name}</Text>
-            {lead.phone && (
-              <Text style={styles.leadPhone}>{lead.phone}</Text>
-            )}
-            <Text style={styles.leadDate}>{formatDate(lead.created_date)}</Text>
-          </View>
-          
-          <View style={styles.leadActions}>
-            {lead.premium > 0 && (
-              <Text style={styles.leadPremium}>{formatCurrency(lead.premium)}</Text>
-            )}
-            <TouchableOpacity
-              style={[styles.moveButton, { backgroundColor: config.color }]}
-              onPress={(e) => {
-                e.stopPropagation();
-                handleMoveCase(lead, stage.stage);
-              }}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            >
-              <Ionicons name="arrow-forward" size={16} color="#FFFFFF" />
-            </TouchableOpacity>
-          </View>
-        </View>
-      </TouchableOpacity>
-    );
-  };
-
-  // Render stage row - LARGE, TAPPABLE - navigates to stage detail
+  // ===== RENDER STAGE ROW =====
   const renderStageRow = (stage: PipelineStage) => {
     const config = STAGE_CONFIG[stage.stage] || { color: '#6B7280', icon: 'help-circle', label: stage.label };
     const hasLeads = stage.count > 0;
@@ -310,12 +350,10 @@ export default function PipelineScreen() {
         onPress={() => handleStagePress(stage)}
         activeOpacity={0.6}
       >
-        {/* Stage Icon */}
         <View style={[styles.stageIconContainer, { backgroundColor: `${config.color}20` }]}>
           <Ionicons name={config.icon as any} size={22} color={config.color} />
         </View>
 
-        {/* Stage Info */}
         <View style={styles.stageInfo}>
           <Text style={[styles.stageName, !hasLeads && styles.stageNameEmpty]}>
             {config.label}
@@ -325,7 +363,6 @@ export default function PipelineScreen() {
           </Text>
         </View>
 
-        {/* Right side - Premium & Chevron */}
         <View style={styles.stageRight}>
           {stage.total_premium > 0 && (
             <Text style={styles.stageTotalPremium}>{formatCurrency(stage.total_premium)}</Text>
@@ -336,7 +373,8 @@ export default function PipelineScreen() {
     );
   };
 
-  if (loading) {
+  // ===== LOADING STATE (INITIAL ONLY) =====
+  if (isInitialLoad && !pipelineData) {
     return (
       <View style={[styles.loadingContainer, { paddingTop: insets.top }]}>
         <ActivityIndicator size="large" color={COLORS.primary} />
@@ -349,8 +387,8 @@ export default function PipelineScreen() {
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity 
-          style={styles.backButton} 
+        <TouchableOpacity
+          style={styles.backButton}
           onPress={() => router.back()}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
@@ -360,10 +398,7 @@ export default function PipelineScreen() {
         {canViewTeam ? (
           <TouchableOpacity
             style={[styles.teamToggle, teamView && styles.teamToggleActive]}
-            onPress={() => {
-              setTeamView(!teamView);
-              setLoading(true);
-            }}
+            onPress={() => setTeamView(!teamView)}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
             <Ionicons
@@ -403,8 +438,8 @@ export default function PipelineScreen() {
         contentContainerStyle={styles.stagesContent}
         refreshControl={
           <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
             tintColor={COLORS.primary}
           />
         }
@@ -417,25 +452,20 @@ export default function PipelineScreen() {
           </View>
         )}
 
-        {loadError ? (
+        {/* Error state - only shown if NO data AND error */}
+        {hasError && (!pipelineData || pipelineData.summary.total_cases === 0) ? (
           <View style={styles.errorState}>
             <Ionicons name="cloud-offline-outline" size={48} color={COLORS.textMuted} />
             <Text style={styles.errorTitle}>Unable to Load Pipeline</Text>
-            <Text style={styles.errorText}>{loadError}</Text>
-            <TouchableOpacity
-              style={styles.retryButton}
-              onPress={() => {
-                setLoading(true);
-                loadPipeline();
-              }}
-            >
+            <Text style={styles.errorText}>Please check your connection and try again.</Text>
+            <TouchableOpacity style={styles.retryButton} onPress={handleRetry}>
               <Ionicons name="refresh" size={18} color="#0A0A0F" />
               <Text style={styles.retryButtonText}>Retry</Text>
             </TouchableOpacity>
           </View>
         ) : (
           <>
-            {/* Active Stages (with cases) */}
+            {/* Active Stages */}
             {stagesWithCases.length > 0 && (
               <View style={styles.stagesSection}>
                 <Text style={styles.sectionTitle}>Active Stages</Text>
@@ -443,7 +473,7 @@ export default function PipelineScreen() {
               </View>
             )}
 
-            {/* All Stages (show empty stages too) */}
+            {/* All Stages */}
             {stagesWithoutCases.length > 0 && (
               <View style={styles.stagesSection}>
                 <Text style={styles.sectionTitle}>All Stages</Text>
@@ -451,20 +481,17 @@ export default function PipelineScreen() {
               </View>
             )}
 
-            {/* Empty State - No cases at all */}
-            {stagesWithCases.length === 0 && !loadError && (
+            {/* Empty State - valid empty (not error) */}
+            {stagesWithCases.length === 0 && !hasError && (
               <View style={styles.emptyState}>
                 <View style={styles.emptyStateIcon}>
                   <Ionicons name="layers-outline" size={48} color={COLORS.primaryMuted} />
                 </View>
                 <Text style={styles.emptyStateTitle}>Your Pipeline is Empty</Text>
                 <Text style={styles.emptyStateText}>
-                  Add leads and move them through your sales stages to track your progress.
+                  Add leads and move them through stages to track your progress.
                 </Text>
-                <TouchableOpacity
-                  style={styles.addLeadButton}
-                  onPress={() => router.push('/lead/new')}
-                >
+                <TouchableOpacity style={styles.addLeadButton} onPress={() => router.push('/lead/new')}>
                   <Ionicons name="add" size={20} color="#0A0A0F" />
                   <Text style={styles.addLeadButtonText}>Add Your First Lead</Text>
                 </TouchableOpacity>
@@ -490,10 +517,7 @@ export default function PipelineScreen() {
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Move Case</Text>
-              <TouchableOpacity 
-                onPress={() => setMoveModalVisible(false)}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
+              <TouchableOpacity onPress={() => setMoveModalVisible(false)}>
                 <Ionicons name="close" size={24} color={COLORS.textMuted} />
               </TouchableOpacity>
             </View>
@@ -503,12 +527,7 @@ export default function PipelineScreen() {
             )}
 
             <Text style={styles.inputLabel}>Select Stage</Text>
-            <ScrollView 
-              horizontal 
-              showsHorizontalScrollIndicator={false} 
-              style={styles.stageSelector}
-              contentContainerStyle={styles.stageSelectorContent}
-            >
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.stageSelector}>
               {ALL_STAGES.map((stage) => {
                 const config = STAGE_CONFIG[stage] || { color: '#6B7280', label: stage };
                 const isSelected = selectedNewStage === stage;
@@ -521,12 +540,7 @@ export default function PipelineScreen() {
                     ]}
                     onPress={() => setSelectedNewStage(stage)}
                   >
-                    <Text
-                      style={[
-                        styles.stageSelectorText,
-                        isSelected && { color: '#FFFFFF' },
-                      ]}
-                    >
+                    <Text style={[styles.stageSelectorText, isSelected && { color: '#FFFFFF' }]}>
                       {config.label}
                     </Text>
                   </TouchableOpacity>
@@ -704,9 +718,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     marginBottom: 12,
   },
-  stageContainer: {
-    marginBottom: 8,
-  },
   stageRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -714,16 +725,12 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     padding: 16,
     minHeight: 72,
+    marginBottom: 8,
     borderWidth: 1,
     borderColor: COLORS.cardBorder,
   },
   stageRowWithCases: {
     borderColor: COLORS.cardBorder,
-  },
-  stageRowExpanded: {
-    borderBottomLeftRadius: 0,
-    borderBottomRightRadius: 0,
-    borderBottomWidth: 0,
   },
   stageIconContainer: {
     width: 48,
@@ -758,66 +765,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: COLORS.primary,
     marginRight: 8,
-  },
-  chevron: {
-    marginLeft: 4,
-  },
-  leadsContainer: {
-    backgroundColor: COLORS.cardBackground,
-    borderBottomLeftRadius: 14,
-    borderBottomRightRadius: 14,
-    borderWidth: 1,
-    borderTopWidth: 0,
-    borderColor: COLORS.cardBorder,
-    padding: 12,
-    gap: 8,
-  },
-  leadCard: {
-    backgroundColor: COLORS.background,
-    borderRadius: 10,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: COLORS.cardBorder,
-  },
-  leadCardContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  leadMainInfo: {
-    flex: 1,
-  },
-  leadName: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: COLORS.text,
-    marginBottom: 3,
-  },
-  leadPhone: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
-    marginBottom: 2,
-  },
-  leadDate: {
-    fontSize: 12,
-    color: COLORS.textMuted,
-  },
-  leadActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  leadPremium: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: COLORS.primary,
-  },
-  moveButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   errorState: {
     alignItems: 'center',
@@ -932,9 +879,6 @@ const styles = StyleSheet.create({
   },
   stageSelector: {
     marginBottom: 16,
-  },
-  stageSelectorContent: {
-    paddingRight: 16,
   },
   stageSelectorItem: {
     paddingHorizontal: 16,
