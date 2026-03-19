@@ -10,7 +10,7 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.agentrouteai.app",
+      "bundleIdentifier": "app.emergent.agentrouteai2dd9b4e9",
       "buildNumber": "5",
       "entitlements": {},
       "infoPlist": {
