@@ -116,13 +116,43 @@ export default function PipelineScreen() {
 
   const canViewTeam = user?.role === 'admin' || user?.role === 'manager';
 
+  const [loadError, setLoadError] = useState<string | null>(null);
+
   const loadPipeline = useCallback(async () => {
     try {
+      setLoadError(null);
       const data = await api.getPipeline(teamView);
-      setPipelineData(data);
-    } catch (error) {
-      console.error('Failed to load pipeline:', error);
-      Alert.alert('Error', 'Failed to load pipeline data');
+      
+      // Validate response structure
+      if (data && data.stages && Array.isArray(data.stages)) {
+        setPipelineData(data);
+      } else {
+        // Invalid response structure - set empty state
+        console.warn('[Pipeline] Invalid response structure, using empty state');
+        setPipelineData({
+          stages: [],
+          summary: { total_cases: 0, total_premium: 0, total_commission: 0, conversion_rate: 0 },
+          is_team_view: teamView,
+        });
+      }
+    } catch (error: any) {
+      // Log error internally but DO NOT show popup
+      console.error('[Pipeline] Load failed:', {
+        message: error?.message,
+        status: error?.response?.status,
+        data: error?.response?.data,
+        url: error?.config?.url,
+      });
+      
+      // Set empty state on error - no popup, no crash
+      setPipelineData({
+        stages: [],
+        summary: { total_cases: 0, total_premium: 0, total_commission: 0, conversion_rate: 0 },
+        is_team_view: teamView,
+      });
+      
+      // Store error for potential display in UI (not popup)
+      setLoadError('Unable to load pipeline. Pull down to refresh.');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -347,17 +377,35 @@ export default function PipelineScreen() {
         ) : (
           <View style={styles.emptyState}>
             <Ionicons name="funnel-outline" size={64} color="#64748B" />
-            <Text style={styles.emptyStateTitle}>No Pipeline Data</Text>
-            <Text style={styles.emptyStateText}>
-              Your pipeline will populate as you create leads and appointments.
+            <Text style={styles.emptyStateTitle}>
+              {loadError ? 'Unable to Load Pipeline' : 'No Pipeline Data'}
             </Text>
-            <TouchableOpacity 
-              style={styles.emptyStateButton}
-              onPress={() => router.push('/lead/new')}
-            >
-              <Ionicons name="add" size={20} color="#FFFFFF" />
-              <Text style={styles.emptyStateButtonText}>Add Your First Lead</Text>
-            </TouchableOpacity>
+            <Text style={styles.emptyStateText}>
+              {loadError 
+                ? loadError 
+                : 'Your pipeline will populate as you create leads and appointments.'}
+            </Text>
+            {!loadError && (
+              <TouchableOpacity 
+                style={styles.emptyStateButton}
+                onPress={() => router.push('/lead/new')}
+              >
+                <Ionicons name="add" size={20} color="#FFFFFF" />
+                <Text style={styles.emptyStateButtonText}>Add Your First Lead</Text>
+              </TouchableOpacity>
+            )}
+            {loadError && (
+              <TouchableOpacity 
+                style={styles.emptyStateButton}
+                onPress={() => {
+                  setLoading(true);
+                  loadPipeline();
+                }}
+              >
+                <Ionicons name="refresh" size={20} color="#FFFFFF" />
+                <Text style={styles.emptyStateButtonText}>Retry</Text>
+              </TouchableOpacity>
+            )}
           </View>
         )}
       </ScrollView>

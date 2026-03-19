@@ -11,7 +11,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "app.emergent.agentrouteai2dd9b4e9",
-      "buildNumber": "6",
+      "buildNumber": "7",
       "entitlements": {},
       "infoPlist": {
         "NSCameraUsageDescription": "Scan business cards to quickly add new leads",
