@@ -22,7 +22,7 @@ if (Platform.OS !== 'web') {
 
 const BASE_URL = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL || 
                  process.env.EXPO_PUBLIC_BACKEND_URL || 
-                 'https://secure-app-lock.preview.emergentagent.com';
+                 'https://app-store-ready-26.preview.emergentagent.com';
 
 export default function LegalScreen() {
   const router = useRouter();

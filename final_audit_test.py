@@ -21,7 +21,7 @@ from datetime import datetime
 import time
 
 # Backend URL from frontend/.env
-BASE_URL = "https://secure-app-lock.preview.emergentagent.com/api"
+BASE_URL = "https://app-store-ready-26.preview.emergentagent.com/api"
 
 # Test Credentials
 TEST_CREDENTIALS = {

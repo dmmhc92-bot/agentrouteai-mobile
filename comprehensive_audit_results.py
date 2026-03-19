@@ -10,7 +10,7 @@ import sys
 from datetime import datetime
 
 # Configuration
-BACKEND_URL = "https://secure-app-lock.preview.emergentagent.com/api"
+BACKEND_URL = "https://app-store-ready-26.preview.emergentagent.com/api"
 
 # Test credentials
 TEST_CREDENTIALS = {

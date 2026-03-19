@@ -30,7 +30,7 @@ let ORIGINAL_FORM_CACHE = null;
 const getBackendUrl = () => {
   const backendUrl = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL 
     || process.env.EXPO_PUBLIC_BACKEND_URL 
-    || 'https://secure-app-lock.preview.emergentagent.com';
+    || 'https://app-store-ready-26.preview.emergentagent.com';
   return backendUrl;
 };
 

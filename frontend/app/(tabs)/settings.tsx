@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -20,7 +20,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { useAppLock } from '../../src/contexts/AppLockContext';
 import { api } from '../../src/services/api';
-import { format } from 'date-fns';
 import Constants from 'expo-constants';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -28,7 +27,7 @@ import * as ImageManipulator from 'expo-image-manipulator';
 // Constants - Use environment variable for base URL
 const BASE_URL = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL || 
                  process.env.EXPO_PUBLIC_BACKEND_URL || 
-                 'https://secure-app-lock.preview.emergentagent.com';
+                 'https://app-store-ready-26.preview.emergentagent.com';
 const PRIVACY_POLICY_URL = `${BASE_URL}/api/privacy`;
 const TERMS_OF_SERVICE_URL = `${BASE_URL}/api/terms`;
 const SUPPORT_EMAIL = 'agentrouteai@gmail.com';
@@ -46,8 +45,8 @@ export default function SettingsScreen() {
     disableAppLock 
   } = useAppLock();
 
-  const [subscription, setSubscription] = useState<any>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  // Subscription functionality disabled for App Store review
+  // All users have free access during review period
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   const [isTogglingAppLock, setIsTogglingAppLock] = useState(false);
   
@@ -63,21 +62,6 @@ export default function SettingsScreen() {
   const [isLeaving, setIsLeaving] = useState(false);
   const [inviteValidation, setInviteValidation] = useState<any>(null);
   const [isValidating, setIsValidating] = useState(false);
-
-  useEffect(() => {
-    loadSubscription();
-  }, []);
-
-  const loadSubscription = async () => {
-    try {
-      const data = await api.getSubscriptionStatus();
-      setSubscription(data);
-    } catch (error) {
-      console.log('Error loading subscription:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   // Profile Image handlers
   const handleProfileImagePress = () => {
@@ -266,23 +250,16 @@ export default function SettingsScreen() {
     }
   };
 
+  // Subscription actions disabled for App Store review
+  // Apple IAP integration coming in future update
   const handleSubscribe = async () => {
-    try {
-      await api.subscribe();
-      Alert.alert('Success', 'Subscription activated (mock)');
-      loadSubscription();
-    } catch (error) {
-      Alert.alert('Error', 'Failed to subscribe');
-    }
+    // Disabled for App Store submission - no action taken
+    console.log('[Subscription] Purchase disabled for review build');
   };
 
   const handleRestore = async () => {
-    try {
-      const result = await api.restorePurchases();
-      Alert.alert('Restore', result.message);
-    } catch (error) {
-      Alert.alert('Error', 'Failed to restore purchases');
-    }
+    // Disabled for App Store submission - no action taken
+    console.log('[Subscription] Restore disabled for review build');
   };
 
   // Privacy Policy - Opens in-app WebView
@@ -388,17 +365,6 @@ export default function SettingsScreen() {
     }
   };
 
-  const getSubscriptionBadgeColor = () => {
-    switch (subscription?.status) {
-      case 'active':
-        return '#22C55E';
-      case 'trial':
-        return '#3B82F6';
-      default:
-        return '#EF4444';
-    }
-  };
-
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
@@ -455,49 +421,28 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        {/* Subscription Section */}
+        {/* Subscription Section - Safe for App Store Review */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Subscription</Text>
           <View style={styles.subscriptionCard}>
-            {isLoading ? (
-              <ActivityIndicator color="#3B82F6" />
-            ) : (
-              <>
-                <View style={styles.subscriptionHeader}>
-                  <View>
-                    <Text style={styles.subscriptionPlan}>
-                      {subscription?.plan === 'monthly' ? 'Monthly Plan' : 'Free Trial'}
-                    </Text>
-                    <View
-                      style={[
-                        styles.subscriptionBadge,
-                        { backgroundColor: getSubscriptionBadgeColor() + '20' },
-                      ]}
-                    >
-                      <Text
-                        style={[styles.subscriptionStatus, { color: getSubscriptionBadgeColor() }]}
-                      >
-                        {subscription?.status?.toUpperCase()}
-                      </Text>
-                    </View>
-                  </View>
-                  <Text style={styles.subscriptionPrice}>$30/mo</Text>
-                </View>
-                {subscription?.is_trial && subscription?.expires_at && (
-                  <Text style={styles.trialExpires}>
-                    Trial expires: {format(new Date(subscription.expires_at), 'MMM d, yyyy')}
+            <View style={styles.subscriptionHeader}>
+              <View>
+                <Text style={styles.subscriptionPlan}>Free Access</Text>
+                <View
+                  style={[
+                    styles.subscriptionBadge,
+                    { backgroundColor: '#22C55E20' },
+                  ]}
+                >
+                  <Text style={[styles.subscriptionStatus, { color: '#22C55E' }]}>
+                    ACTIVE
                   </Text>
-                )}
-                {subscription?.status !== 'active' && (
-                  <TouchableOpacity style={styles.subscribeButton} onPress={handleSubscribe}>
-                    <Text style={styles.subscribeButtonText}>Subscribe Now</Text>
-                  </TouchableOpacity>
-                )}
-                <TouchableOpacity style={styles.restoreButton} onPress={handleRestore}>
-                  <Text style={styles.restoreButtonText}>Restore Purchases</Text>
-                </TouchableOpacity>
-              </>
-            )}
+                </View>
+              </View>
+            </View>
+            <Text style={styles.trialExpires}>
+              Full access to all features included
+            </Text>
           </View>
         </View>
 

@@ -13,7 +13,7 @@ from PIL import Image, ImageDraw
 import io
 
 # Configuration
-BASE_URL = "https://secure-app-lock.preview.emergentagent.com/api"
+BASE_URL = "https://app-store-ready-26.preview.emergentagent.com/api"
 
 # Test credentials as specified in the review request
 TEST_AGENT = {

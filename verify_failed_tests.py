@@ -6,7 +6,7 @@ import requests
 import json
 import time
 
-BACKEND_URL = "https://secure-app-lock.preview.emergentagent.com/api"
+BACKEND_URL = "https://app-store-ready-26.preview.emergentagent.com/api"
 TEST_CREDENTIALS = {
     "admin": {"email": "admin@agentroute.com", "password": "Admin123!"},
     "agent": {"email": "agent@agentroute.com", "password": "Agent123!"}

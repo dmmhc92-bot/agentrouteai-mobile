@@ -18,7 +18,7 @@ const getBackendUrl = (): string => {
   }
   
   // Fallback to production URL
-  const fallbackUrl = 'https://secure-app-lock.preview.emergentagent.com';
+  const fallbackUrl = 'https://app-store-ready-26.preview.emergentagent.com';
   console.log('[API] Using fallback backend URL:', fallbackUrl);
   return fallbackUrl;
 };
