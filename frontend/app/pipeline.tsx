@@ -12,12 +12,16 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  Dimensions,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../src/services/api';
 import { useAuth } from '../src/contexts/AuthContext';
+import { LinearGradient } from 'expo-linear-gradient';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 interface PipelineLead {
   id: string;
@@ -53,44 +57,49 @@ interface PipelineData {
   is_team_view: boolean;
 }
 
-// Stage colors, icons, and display labels
-const STAGE_CONFIG: Record<string, { color: string; icon: string; bgColor: string; label: string }> = {
-  new_lead: { color: '#6B7280', icon: 'person-add', bgColor: '#F3F4F6', label: 'New' },
-  new: { color: '#6B7280', icon: 'person-add', bgColor: '#F3F4F6', label: 'New' },
-  contacted: { color: '#3B82F6', icon: 'chatbubble', bgColor: '#EFF6FF', label: 'Contacted' },
-  follow_up: { color: '#F59E0B', icon: 'time', bgColor: '#FFFBEB', label: 'Follow Up' },
-  appointment_set: { color: '#3B82F6', icon: 'calendar', bgColor: '#EFF6FF', label: 'Appointment Set' },
-  appointment_scheduled: { color: '#3B82F6', icon: 'calendar', bgColor: '#EFF6FF', label: 'Appointment Set' },
-  soa_completed: { color: '#8B5CF6', icon: 'document-text', bgColor: '#F5F3FF', label: 'SOA Completed' },
-  policy_submitted: { color: '#8B5CF6', icon: 'document-text', bgColor: '#F5F3FF', label: 'Policy Submitted' },
-  application_submitted: { color: '#8B5CF6', icon: 'document-text', bgColor: '#F5F3FF', label: 'Policy Submitted' },
-  underwriting_review: { color: '#F59E0B', icon: 'hourglass', bgColor: '#FFFBEB', label: 'Underwriting Review' },
-  additional_requirements: { color: '#EF4444', icon: 'alert-circle', bgColor: '#FEF2F2', label: 'Additional Requirements' },
-  approved: { color: '#10B981', icon: 'checkmark-circle', bgColor: '#ECFDF5', label: 'Approved' },
-  closed_won: { color: '#22C55E', icon: 'trophy', bgColor: '#F0FDF4', label: 'Closed Won' },
-  policy_issued: { color: '#06B6D4', icon: 'document', bgColor: '#ECFEFF', label: 'Policy Issued' },
-  policy_placed: { color: '#14B8A6', icon: 'checkmark-done', bgColor: '#F0FDFA', label: 'Policy Placed' },
-  commission_pending: { color: '#F97316', icon: 'cash', bgColor: '#FFF7ED', label: 'Commission Pending' },
-  commission_paid: { color: '#22C55E', icon: 'wallet', bgColor: '#F0FDF4', label: 'Commission Paid' },
-  closed_lost: { color: '#EF4444', icon: 'close-circle', bgColor: '#FEF2F2', label: 'Closed Lost' },
+// Premium color scheme
+const COLORS = {
+  background: '#0A0A0F',
+  cardBackground: '#141419',
+  cardBorder: '#1F1F28',
+  primary: '#D4AF37', // Gold accent
+  primaryMuted: '#8B7355',
+  text: '#FFFFFF',
+  textSecondary: '#9CA3AF',
+  textMuted: '#6B7280',
+  success: '#10B981',
+  warning: '#F59E0B',
+  error: '#EF4444',
+  info: '#3B82F6',
+};
+
+// Stage configuration with premium styling
+const STAGE_CONFIG: Record<string, { color: string; icon: string; label: string; priority: number }> = {
+  new_lead: { color: '#6B7280', icon: 'person-add', label: 'New Lead', priority: 1 },
+  new: { color: '#6B7280', icon: 'person-add', label: 'New', priority: 1 },
+  contacted: { color: '#3B82F6', icon: 'chatbubble', label: 'Contacted', priority: 2 },
+  follow_up: { color: '#F59E0B', icon: 'time', label: 'Follow Up', priority: 3 },
+  appointment_set: { color: '#8B5CF6', icon: 'calendar', label: 'Appointment Set', priority: 4 },
+  appointment_scheduled: { color: '#8B5CF6', icon: 'calendar', label: 'Appointment Set', priority: 4 },
+  soa_completed: { color: '#06B6D4', icon: 'document-text', label: 'SOA Completed', priority: 5 },
+  policy_submitted: { color: '#8B5CF6', icon: 'paper-plane', label: 'Policy Submitted', priority: 6 },
+  application_submitted: { color: '#8B5CF6', icon: 'paper-plane', label: 'Application Submitted', priority: 6 },
+  underwriting_review: { color: '#F59E0B', icon: 'hourglass', label: 'Underwriting', priority: 7 },
+  additional_requirements: { color: '#EF4444', icon: 'alert-circle', label: 'Requirements', priority: 8 },
+  approved: { color: '#10B981', icon: 'checkmark-circle', label: 'Approved', priority: 9 },
+  closed_won: { color: '#22C55E', icon: 'trophy', label: 'Closed Won', priority: 10 },
+  policy_issued: { color: '#06B6D4', icon: 'document', label: 'Policy Issued', priority: 11 },
+  policy_placed: { color: '#14B8A6', icon: 'checkmark-done', label: 'Policy Placed', priority: 12 },
+  commission_pending: { color: '#F97316', icon: 'cash', label: 'Commission Pending', priority: 13 },
+  commission_paid: { color: '#22C55E', icon: 'wallet', label: 'Commission Paid', priority: 14 },
+  closed_lost: { color: '#EF4444', icon: 'close-circle', label: 'Closed Lost', priority: 15 },
 };
 
 const ALL_STAGES = [
-  'new_lead',
-  'contacted',
-  'follow_up',
-  'appointment_set',
-  'soa_completed',
-  'policy_submitted',
-  'underwriting_review',
-  'additional_requirements',
-  'approved',
-  'closed_won',
-  'policy_issued',
-  'policy_placed',
-  'commission_pending',
-  'commission_paid',
-  'closed_lost',
+  'new_lead', 'contacted', 'follow_up', 'appointment_set', 'soa_completed',
+  'policy_submitted', 'underwriting_review', 'additional_requirements',
+  'approved', 'closed_won', 'policy_issued', 'policy_placed',
+  'commission_pending', 'commission_paid', 'closed_lost',
 ];
 
 export default function PipelineScreen() {
@@ -103,7 +112,8 @@ export default function PipelineScreen() {
   const [pipelineData, setPipelineData] = useState<PipelineData | null>(null);
   const [teamView, setTeamView] = useState(false);
   const [expandedStage, setExpandedStage] = useState<string | null>(null);
-  
+  const [loadError, setLoadError] = useState<string | null>(null);
+
   // Move modal state
   const [moveModalVisible, setMoveModalVisible] = useState(false);
   const [selectedLead, setSelectedLead] = useState<PipelineLead | null>(null);
@@ -116,18 +126,21 @@ export default function PipelineScreen() {
 
   const canViewTeam = user?.role === 'admin' || user?.role === 'manager';
 
-  const [loadError, setLoadError] = useState<string | null>(null);
-
   const loadPipeline = useCallback(async () => {
     try {
       setLoadError(null);
-      const data = await api.getPipeline(teamView);
+      console.log('[Pipeline] Loading pipeline data...', { teamView, userRole: user?.role, userId: user?.id });
       
+      const data = await api.getPipeline(teamView);
+      console.log('[Pipeline] Data received:', { 
+        stagesCount: data?.stages?.length, 
+        totalCases: data?.summary?.total_cases 
+      });
+
       // Validate response structure
       if (data && data.stages && Array.isArray(data.stages)) {
         setPipelineData(data);
       } else {
-        // Invalid response structure - set empty state
         console.warn('[Pipeline] Invalid response structure, using empty state');
         setPipelineData({
           stages: [],
@@ -142,22 +155,22 @@ export default function PipelineScreen() {
         status: error?.response?.status,
         data: error?.response?.data,
         url: error?.config?.url,
+        userRole: user?.role,
       });
-      
+
       // Set empty state on error - no popup, no crash
       setPipelineData({
         stages: [],
         summary: { total_cases: 0, total_premium: 0, total_commission: 0, conversion_rate: 0 },
         is_team_view: teamView,
       });
-      
-      // Store error for potential display in UI (not popup)
+
       setLoadError('Unable to load pipeline. Pull down to refresh.');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [teamView]);
+  }, [teamView, user?.role, user?.id]);
 
   useEffect(() => {
     loadPipeline();
@@ -170,7 +183,6 @@ export default function PipelineScreen() {
 
   const handleMoveCase = (lead: PipelineLead, currentStage: string) => {
     setSelectedLead(lead);
-    // Find the next stage in the pipeline
     const currentIndex = ALL_STAGES.indexOf(currentStage);
     const nextStage = currentIndex < ALL_STAGES.length - 1 ? ALL_STAGES[currentIndex + 1] : currentStage;
     setSelectedNewStage(nextStage);
@@ -191,18 +203,10 @@ export default function PipelineScreen() {
         new_stage: selectedNewStage,
       };
 
-      if (moveNotes.trim()) {
-        moveData.notes = moveNotes.trim();
-      }
-      if (movePremium) {
-        moveData.premium = parseFloat(movePremium);
-      }
-      if (moveCommission) {
-        moveData.commission = parseFloat(moveCommission);
-      }
-      if (policyType.trim()) {
-        moveData.policy_type = policyType.trim();
-      }
+      if (moveNotes.trim()) moveData.notes = moveNotes.trim();
+      if (movePremium) moveData.premium = parseFloat(movePremium);
+      if (moveCommission) moveData.commission = parseFloat(moveCommission);
+      if (policyType.trim()) moveData.policy_type = policyType.trim();
 
       await api.movePipelineCase(moveData);
       setMoveModalVisible(false);
@@ -225,76 +229,107 @@ export default function PipelineScreen() {
     }).format(amount);
   };
 
-  const renderStageCard = (stage: PipelineStage) => {
-    const config = STAGE_CONFIG[stage.stage] || { color: '#6B7280', icon: 'help-circle', bgColor: '#F3F4F6' };
+  const formatDate = (dateString: string) => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
+
+  // Get stages with cases (non-zero count)
+  const activeStages = pipelineData?.stages?.filter(s => s.count > 0) || [];
+  const emptyStages = pipelineData?.stages?.filter(s => s.count === 0) || [];
+
+  const renderLeadCard = (lead: PipelineLead, stage: PipelineStage) => {
+    const config = STAGE_CONFIG[stage.stage] || { color: '#6B7280', icon: 'help-circle', label: stage.label };
+
+    return (
+      <TouchableOpacity
+        key={lead.id}
+        style={styles.leadCard}
+        onPress={() => router.push(`/lead/${lead.id}`)}
+        activeOpacity={0.7}
+      >
+        <View style={styles.leadCardHeader}>
+          <View style={styles.leadInfo}>
+            <Text style={styles.leadName} numberOfLines={1}>{lead.name}</Text>
+            <Text style={styles.leadDate}>{formatDate(lead.created_date)}</Text>
+          </View>
+          <TouchableOpacity
+            style={[styles.moveButton, { backgroundColor: config.color }]}
+            onPress={(e) => {
+              e.stopPropagation();
+              handleMoveCase(lead, stage.stage);
+            }}
+          >
+            <Ionicons name="arrow-forward" size={14} color="#FFFFFF" />
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.leadDetails}>
+          {lead.phone && (
+            <View style={styles.leadDetailRow}>
+              <Ionicons name="call-outline" size={12} color={COLORS.textMuted} />
+              <Text style={styles.leadDetailText}>{lead.phone}</Text>
+            </View>
+          )}
+          {lead.premium > 0 && (
+            <View style={styles.leadDetailRow}>
+              <Ionicons name="cash-outline" size={12} color={COLORS.primary} />
+              <Text style={[styles.leadDetailText, { color: COLORS.primary }]}>
+                {formatCurrency(lead.premium)}
+              </Text>
+            </View>
+          )}
+        </View>
+
+        {lead.underwriting_status && lead.underwriting_status !== 'not_submitted' && (
+          <View style={styles.leadStatus}>
+            <View style={[styles.statusBadge, { backgroundColor: `${config.color}20` }]}>
+              <Text style={[styles.statusText, { color: config.color }]}>
+                {lead.underwriting_status.replace(/_/g, ' ')}
+              </Text>
+            </View>
+          </View>
+        )}
+      </TouchableOpacity>
+    );
+  };
+
+  const renderStageSection = (stage: PipelineStage) => {
+    const config = STAGE_CONFIG[stage.stage] || { color: '#6B7280', icon: 'help-circle', label: stage.label, priority: 99 };
     const isExpanded = expandedStage === stage.stage;
 
     return (
-      <View key={stage.stage} style={styles.stageCard}>
+      <View key={stage.stage} style={styles.stageSection}>
         <TouchableOpacity
-          style={[styles.stageHeader, { backgroundColor: config.bgColor }]}
+          style={styles.stageHeader}
           onPress={() => setExpandedStage(isExpanded ? null : stage.stage)}
+          activeOpacity={0.7}
         >
           <View style={styles.stageHeaderLeft}>
-            <View style={[styles.stageIcon, { backgroundColor: config.color }]}>
-              <Ionicons name={config.icon as any} size={16} color="#FFFFFF" />
+            <View style={[styles.stageIcon, { backgroundColor: `${config.color}20` }]}>
+              <Ionicons name={config.icon as any} size={18} color={config.color} />
             </View>
-            <View style={styles.stageInfo}>
-              <Text style={styles.stageLabel}>{stage.label}</Text>
-              <Text style={styles.stageCount}>{stage.count} case{stage.count !== 1 ? 's' : ''}</Text>
+            <View style={styles.stageHeaderText}>
+              <Text style={styles.stageLabel}>{config.label}</Text>
+              <Text style={styles.stageCount}>{stage.count} {stage.count === 1 ? 'case' : 'cases'}</Text>
             </View>
           </View>
           <View style={styles.stageHeaderRight}>
             {stage.total_premium > 0 && (
-              <Text style={[styles.stagePremium, { color: config.color }]}>
-                {formatCurrency(stage.total_premium)}
-              </Text>
+              <Text style={styles.stagePremium}>{formatCurrency(stage.total_premium)}</Text>
             )}
             <Ionicons
               name={isExpanded ? 'chevron-up' : 'chevron-down'}
               size={20}
-              color="#64748B"
+              color={COLORS.textMuted}
             />
           </View>
         </TouchableOpacity>
 
         {isExpanded && stage.leads.length > 0 && (
-          <View style={styles.leadsContainer}>
-            {stage.leads.map((lead) => (
-              <TouchableOpacity
-                key={lead.id}
-                style={styles.leadCard}
-                onPress={() => router.push(`/lead/${lead.id}`)}
-              >
-                <View style={styles.leadInfo}>
-                  <Text style={styles.leadName}>{lead.name}</Text>
-                  {lead.agent_name && (
-                    <Text style={styles.leadAgent}>Agent: {lead.agent_name}</Text>
-                  )}
-                  {lead.policy_type && (
-                    <Text style={styles.leadPolicyType}>{lead.policy_type}</Text>
-                  )}
-                  {lead.premium > 0 && (
-                    <View style={styles.leadFinancials}>
-                      <Text style={styles.leadPremium}>Premium: {formatCurrency(lead.premium)}</Text>
-                      <Text style={styles.leadCommission}>Commission: {formatCurrency(lead.commission)}</Text>
-                    </View>
-                  )}
-                </View>
-                <TouchableOpacity
-                  style={[styles.moveButton, { backgroundColor: config.color }]}
-                  onPress={() => handleMoveCase(lead, stage.stage)}
-                >
-                  <Ionicons name="arrow-forward" size={16} color="#FFFFFF" />
-                </TouchableOpacity>
-              </TouchableOpacity>
-            ))}
-          </View>
-        )}
-
-        {isExpanded && stage.leads.length === 0 && (
-          <View style={styles.emptyStage}>
-            <Text style={styles.emptyStageText}>No cases in this stage</Text>
+          <View style={styles.stageLeads}>
+            {stage.leads.map(lead => renderLeadCard(lead, stage))}
           </View>
         )}
       </View>
@@ -304,7 +339,7 @@ export default function PipelineScreen() {
   if (loading) {
     return (
       <View style={[styles.loadingContainer, { paddingTop: insets.top }]}>
-        <ActivityIndicator size="large" color="#3B82F6" />
+        <ActivityIndicator size="large" color={COLORS.primary} />
         <Text style={styles.loadingText}>Loading pipeline...</Text>
       </View>
     );
@@ -312,10 +347,10 @@ export default function PipelineScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* Header */}
+      {/* Premium Header */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+          <Ionicons name="arrow-back" size={24} color={COLORS.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Sales Pipeline</Text>
         {canViewTeam && (
@@ -329,85 +364,114 @@ export default function PipelineScreen() {
             <Ionicons
               name={teamView ? 'people' : 'person'}
               size={18}
-              color={teamView ? '#FFFFFF' : '#94A3B8'}
+              color={teamView ? COLORS.primary : COLORS.textMuted}
             />
           </TouchableOpacity>
         )}
+        {!canViewTeam && <View style={{ width: 40 }} />}
       </View>
 
       {/* Summary Stats */}
-      {pipelineData && (
-        <View style={styles.summaryContainer}>
-          <View style={styles.summaryCard}>
-            <Text style={styles.summaryValue}>{pipelineData.summary.total_cases}</Text>
-            <Text style={styles.summaryLabel}>Total Cases</Text>
-          </View>
-          <View style={styles.summaryCard}>
-            <Text style={styles.summaryValue}>{formatCurrency(pipelineData.summary.total_premium)}</Text>
-            <Text style={styles.summaryLabel}>Premium</Text>
-          </View>
-          <View style={styles.summaryCard}>
-            <Text style={styles.summaryValue}>{formatCurrency(pipelineData.summary.total_commission)}</Text>
-            <Text style={styles.summaryLabel}>Commission</Text>
-          </View>
-          <View style={styles.summaryCard}>
-            <Text style={styles.summaryValue}>{pipelineData.summary.conversion_rate}%</Text>
-            <Text style={styles.summaryLabel}>Win Rate</Text>
-          </View>
+      <View style={styles.summaryContainer}>
+        <View style={styles.summaryCard}>
+          <Text style={styles.summaryValue}>{pipelineData?.summary?.total_cases || 0}</Text>
+          <Text style={styles.summaryLabel}>Total Cases</Text>
         </View>
-      )}
+        <View style={[styles.summaryCard, styles.summaryCardGold]}>
+          <Text style={[styles.summaryValue, { color: COLORS.primary }]}>
+            {formatCurrency(pipelineData?.summary?.total_premium || 0)}
+          </Text>
+          <Text style={styles.summaryLabel}>Premium</Text>
+        </View>
+        <View style={styles.summaryCard}>
+          <Text style={[styles.summaryValue, { color: COLORS.success }]}>
+            {formatCurrency(pipelineData?.summary?.total_commission || 0)}
+          </Text>
+          <Text style={styles.summaryLabel}>Commission</Text>
+        </View>
+        <View style={styles.summaryCard}>
+          <Text style={styles.summaryValue}>{pipelineData?.summary?.conversion_rate || 0}%</Text>
+          <Text style={styles.summaryLabel}>Win Rate</Text>
+        </View>
+      </View>
 
-      {/* Pipeline Stages */}
+      {/* Pipeline Content */}
       <ScrollView
         style={styles.pipelineContainer}
         contentContainerStyle={styles.pipelineContent}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          <RefreshControl 
+            refreshing={refreshing} 
+            onRefresh={onRefresh}
+            tintColor={COLORS.primary}
+          />
         }
+        showsVerticalScrollIndicator={false}
       >
         {pipelineData?.is_team_view && (
           <View style={styles.teamBadge}>
-            <Ionicons name="people" size={14} color="#3B82F6" />
+            <Ionicons name="people" size={14} color={COLORS.primary} />
             <Text style={styles.teamBadgeText}>Team View</Text>
           </View>
         )}
 
-        {pipelineData?.stages && pipelineData.stages.length > 0 ? (
-          pipelineData.stages.map(renderStageCard)
+        {activeStages.length > 0 ? (
+          <>
+            {/* Active stages with leads */}
+            {activeStages.map(renderStageSection)}
+
+            {/* Collapsed empty stages */}
+            {emptyStages.length > 0 && (
+              <View style={styles.emptyStagesSection}>
+                <Text style={styles.emptyStagesTitle}>Other Stages</Text>
+                <View style={styles.emptyStagesGrid}>
+                  {emptyStages.slice(0, 8).map(stage => {
+                    const config = STAGE_CONFIG[stage.stage] || { color: '#6B7280', icon: 'help-circle', label: stage.label };
+                    return (
+                      <View key={stage.stage} style={styles.emptyStageChip}>
+                        <Ionicons name={config.icon as any} size={12} color={config.color} />
+                        <Text style={styles.emptyStageChipText}>{config.label}</Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              </View>
+            )}
+          </>
         ) : (
+          /* Premium Empty State */
           <View style={styles.emptyState}>
-            <Ionicons name="funnel-outline" size={64} color="#64748B" />
+            <View style={styles.emptyStateIcon}>
+              <Ionicons name="layers-outline" size={48} color={COLORS.primaryMuted} />
+            </View>
             <Text style={styles.emptyStateTitle}>
-              {loadError ? 'Unable to Load Pipeline' : 'No Pipeline Data'}
+              {loadError ? 'Unable to Load Pipeline' : 'Your Pipeline is Empty'}
             </Text>
             <Text style={styles.emptyStateText}>
-              {loadError 
-                ? loadError 
-                : 'Your pipeline will populate as you create leads and appointments.'}
+              {loadError
+                ? 'Please check your connection and try again.'
+                : 'Start adding leads and moving them through your sales pipeline to track your progress.'}
             </Text>
-            {!loadError && (
-              <TouchableOpacity 
-                style={styles.emptyStateButton}
-                onPress={() => router.push('/lead/new')}
-              >
-                <Ionicons name="add" size={20} color="#FFFFFF" />
-                <Text style={styles.emptyStateButtonText}>Add Your First Lead</Text>
-              </TouchableOpacity>
-            )}
-            {loadError && (
-              <TouchableOpacity 
-                style={styles.emptyStateButton}
-                onPress={() => {
+            <TouchableOpacity
+              style={styles.emptyStateButton}
+              onPress={() => {
+                if (loadError) {
                   setLoading(true);
                   loadPipeline();
-                }}
-              >
-                <Ionicons name="refresh" size={20} color="#FFFFFF" />
-                <Text style={styles.emptyStateButtonText}>Retry</Text>
-              </TouchableOpacity>
-            )}
+                } else {
+                  router.push('/lead/new');
+                }
+              }}
+            >
+              <Ionicons name={loadError ? 'refresh' : 'add'} size={18} color="#0A0A0F" />
+              <Text style={styles.emptyStateButtonText}>
+                {loadError ? 'Retry' : 'Add Your First Lead'}
+              </Text>
+            </TouchableOpacity>
           </View>
         )}
+
+        <View style={{ height: 100 }} />
       </ScrollView>
 
       {/* Move Case Modal */}
@@ -425,7 +489,7 @@ export default function PipelineScreen() {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Move Case</Text>
               <TouchableOpacity onPress={() => setMoveModalVisible(false)}>
-                <Ionicons name="close" size={24} color="#64748B" />
+                <Ionicons name="close" size={24} color={COLORS.textMuted} />
               </TouchableOpacity>
             </View>
 
@@ -433,100 +497,89 @@ export default function PipelineScreen() {
               <Text style={styles.modalSubtitle}>Moving: {selectedLead.name}</Text>
             )}
 
-            {/* Stage Selector */}
             <Text style={styles.inputLabel}>Move to Stage</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.stageSelector}>
               {ALL_STAGES.map((stage) => {
-                const config = STAGE_CONFIG[stage];
+                const config = STAGE_CONFIG[stage] || { color: '#6B7280', label: stage };
                 const isSelected = selectedNewStage === stage;
-                const label = pipelineData?.stages.find(s => s.stage === stage)?.label || stage;
                 return (
                   <TouchableOpacity
                     key={stage}
                     style={[
                       styles.stageSelectorItem,
-                      isSelected && { backgroundColor: config.color },
+                      isSelected && { backgroundColor: config.color, borderColor: config.color },
                     ]}
                     onPress={() => setSelectedNewStage(stage)}
                   >
-                    <Ionicons
-                      name={config.icon as any}
-                      size={14}
-                      color={isSelected ? '#FFFFFF' : config.color}
-                    />
                     <Text
                       style={[
                         styles.stageSelectorText,
                         isSelected && { color: '#FFFFFF' },
                       ]}
-                      numberOfLines={1}
                     >
-                      {label}
+                      {config.label}
                     </Text>
                   </TouchableOpacity>
                 );
               })}
             </ScrollView>
 
-            {/* Notes */}
-            <Text style={styles.inputLabel}>Notes (optional)</Text>
+            <Text style={styles.inputLabel}>Notes (Optional)</Text>
             <TextInput
-              style={styles.notesInput}
-              placeholder="Add notes about this move..."
-              placeholderTextColor="#94A3B8"
+              style={styles.textInput}
               value={moveNotes}
               onChangeText={setMoveNotes}
+              placeholder="Add notes about this move..."
+              placeholderTextColor={COLORS.textMuted}
               multiline
             />
 
-            {/* Financial fields (show for application_submitted and later) */}
-            {['application_submitted', 'underwriting_review', 'approved', 'policy_issued', 'policy_placed', 'commission_pending', 'commission_paid'].includes(selectedNewStage) && (
-              <>
-                <View style={styles.financialRow}>
-                  <View style={styles.financialField}>
-                    <Text style={styles.inputLabel}>Premium ($)</Text>
-                    <TextInput
-                      style={styles.financialInput}
-                      placeholder="0.00"
-                      placeholderTextColor="#94A3B8"
-                      value={movePremium}
-                      onChangeText={setMovePremium}
-                      keyboardType="decimal-pad"
-                    />
-                  </View>
-                  <View style={styles.financialField}>
-                    <Text style={styles.inputLabel}>Commission ($)</Text>
-                    <TextInput
-                      style={styles.financialInput}
-                      placeholder="0.00"
-                      placeholderTextColor="#94A3B8"
-                      value={moveCommission}
-                      onChangeText={setMoveCommission}
-                      keyboardType="decimal-pad"
-                    />
-                  </View>
-                </View>
-
-                <Text style={styles.inputLabel}>Policy Type</Text>
+            <View style={styles.modalRow}>
+              <View style={styles.modalRowItem}>
+                <Text style={styles.inputLabel}>Premium ($)</Text>
                 <TextInput
                   style={styles.textInput}
-                  placeholder="e.g., Medicare Advantage, Life Insurance"
-                  placeholderTextColor="#94A3B8"
-                  value={policyType}
-                  onChangeText={setPolicyType}
+                  value={movePremium}
+                  onChangeText={setMovePremium}
+                  placeholder="0"
+                  placeholderTextColor={COLORS.textMuted}
+                  keyboardType="numeric"
                 />
-              </>
-            )}
+              </View>
+              <View style={styles.modalRowItem}>
+                <Text style={styles.inputLabel}>Commission ($)</Text>
+                <TextInput
+                  style={styles.textInput}
+                  value={moveCommission}
+                  onChangeText={setMoveCommission}
+                  placeholder="0"
+                  placeholderTextColor={COLORS.textMuted}
+                  keyboardType="numeric"
+                />
+              </View>
+            </View>
+
+            <Text style={styles.inputLabel}>Policy Type (Optional)</Text>
+            <TextInput
+              style={styles.textInput}
+              value={policyType}
+              onChangeText={setPolicyType}
+              placeholder="e.g., Medicare Advantage"
+              placeholderTextColor={COLORS.textMuted}
+            />
 
             <TouchableOpacity
-              style={[styles.moveConfirmButton, moving && styles.moveConfirmButtonDisabled]}
+              style={[styles.confirmButton, moving && styles.confirmButtonDisabled]}
               onPress={confirmMoveCase}
               disabled={moving}
             >
               {moving ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
+                <ActivityIndicator color="#0A0A0F" />
               ) : (
-                <Text style={styles.moveConfirmButtonText}>Move Case</Text>
+                <>
+                  <Ionicons name="checkmark" size={20} color="#0A0A0F" />
+                  <Text style={styles.confirmButtonText}>Confirm Move</Text>
+                </>
               )}
             </TouchableOpacity>
           </View>
@@ -539,17 +592,17 @@ export default function PipelineScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0F172A',
+    backgroundColor: COLORS.background,
   },
   loadingContainer: {
     flex: 1,
-    backgroundColor: '#0F172A',
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: COLORS.background,
   },
   loadingText: {
-    color: '#94A3B8',
-    marginTop: 12,
+    marginTop: 16,
+    color: COLORS.textSecondary,
     fontSize: 14,
   },
   header: {
@@ -557,30 +610,35 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#1E293B',
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.cardBorder,
   },
   backButton: {
     width: 40,
     height: 40,
     justifyContent: 'center',
-    alignItems: 'center',
+    alignItems: 'flex-start',
   },
   headerTitle: {
-    color: '#FFFFFF',
     fontSize: 18,
     fontWeight: '600',
+    color: COLORS.text,
+    letterSpacing: 0.5,
   },
   teamToggle: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#334155',
+    backgroundColor: COLORS.cardBackground,
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
   },
   teamToggleActive: {
-    backgroundColor: '#3B82F6',
+    borderColor: COLORS.primary,
+    backgroundColor: `${COLORS.primary}15`,
   },
   summaryContainer: {
     flexDirection: 'row',
@@ -590,47 +648,56 @@ const styles = StyleSheet.create({
   },
   summaryCard: {
     flex: 1,
-    backgroundColor: '#1E293B',
+    backgroundColor: COLORS.cardBackground,
     borderRadius: 12,
     padding: 12,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+  },
+  summaryCardGold: {
+    borderColor: `${COLORS.primary}40`,
   },
   summaryValue: {
-    color: '#FFFFFF',
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '700',
+    color: COLORS.text,
+    marginBottom: 4,
   },
   summaryLabel: {
-    color: '#94A3B8',
     fontSize: 10,
-    marginTop: 4,
+    color: COLORS.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   pipelineContainer: {
     flex: 1,
   },
   pipelineContent: {
     padding: 16,
-    paddingBottom: 32,
   },
   teamBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#1E40AF',
     alignSelf: 'flex-start',
+    backgroundColor: `${COLORS.primary}15`,
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 16,
+    borderRadius: 20,
     marginBottom: 16,
     gap: 6,
   },
   teamBadgeText: {
-    color: '#93C5FD',
     fontSize: 12,
-    fontWeight: '500',
+    fontWeight: '600',
+    color: COLORS.primary,
   },
-  stageCard: {
+  stageSection: {
     marginBottom: 12,
-    borderRadius: 12,
+    backgroundColor: COLORS.cardBackground,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
     overflow: 'hidden',
   },
   stageHeader: {
@@ -642,106 +709,195 @@ const styles = StyleSheet.create({
   stageHeaderLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    flex: 1,
   },
   stageIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 40,
+    height: 40,
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
+    marginRight: 12,
   },
-  stageInfo: {
-    gap: 2,
+  stageHeaderText: {
+    flex: 1,
   },
   stageLabel: {
-    color: '#1E293B',
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '600',
+    color: COLORS.text,
+    marginBottom: 2,
   },
   stageCount: {
-    color: '#64748B',
-    fontSize: 12,
+    fontSize: 13,
+    color: COLORS.textMuted,
   },
   stageHeaderRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 12,
   },
   stagePremium: {
     fontSize: 14,
     fontWeight: '600',
+    color: COLORS.primary,
   },
-  leadsContainer: {
-    backgroundColor: '#1E293B',
+  stageLeads: {
     padding: 12,
+    paddingTop: 0,
     gap: 8,
   },
   leadCard: {
+    backgroundColor: COLORS.background,
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+  },
+  leadCardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#334155',
-    borderRadius: 8,
-    padding: 12,
+    justifyContent: 'space-between',
+    marginBottom: 8,
   },
   leadInfo: {
     flex: 1,
   },
   leadName: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '500',
+    fontSize: 15,
+    fontWeight: '600',
+    color: COLORS.text,
+    marginBottom: 2,
   },
-  leadAgent: {
-    color: '#94A3B8',
+  leadDate: {
     fontSize: 12,
-    marginTop: 2,
-  },
-  leadPolicyType: {
-    color: '#3B82F6',
-    fontSize: 12,
-    marginTop: 4,
-  },
-  leadFinancials: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 6,
-  },
-  leadPremium: {
-    color: '#10B981',
-    fontSize: 11,
-  },
-  leadCommission: {
-    color: '#F59E0B',
-    fontSize: 11,
+    color: COLORS.textMuted,
   },
   moveButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 32,
+    height: 32,
+    borderRadius: 8,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  emptyStage: {
-    backgroundColor: '#1E293B',
-    padding: 24,
-    alignItems: 'center',
+  leadDetails: {
+    flexDirection: 'row',
+    gap: 16,
   },
-  emptyStageText: {
-    color: '#64748B',
+  leadDetailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  leadDetailText: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+  },
+  leadStatus: {
+    marginTop: 10,
+  },
+  statusBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  statusText: {
+    fontSize: 11,
+    fontWeight: '500',
+    textTransform: 'capitalize',
+  },
+  emptyStagesSection: {
+    marginTop: 24,
+    padding: 16,
+    backgroundColor: COLORS.cardBackground,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+  },
+  emptyStagesTitle: {
     fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.textMuted,
+    marginBottom: 12,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  emptyStagesGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  emptyStageChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: COLORS.background,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+  },
+  emptyStageChipText: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 60,
+    paddingHorizontal: 32,
+  },
+  emptyStateIcon: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: COLORS.cardBackground,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+  },
+  emptyStateTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: COLORS.text,
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  emptyStateText: {
+    fontSize: 14,
+    color: COLORS.textMuted,
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 24,
+  },
+  emptyStateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: 12,
+  },
+  emptyStateButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#0A0A0F',
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: '#1E293B',
+    backgroundColor: COLORS.cardBackground,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 24,
-    maxHeight: '80%',
+    maxHeight: '85%',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -750,116 +906,74 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   modalTitle: {
-    color: '#FFFFFF',
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '600',
+    color: COLORS.text,
   },
   modalSubtitle: {
-    color: '#94A3B8',
     fontSize: 14,
+    color: COLORS.textSecondary,
     marginBottom: 20,
   },
   inputLabel: {
-    color: '#94A3B8',
-    fontSize: 12,
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
     marginBottom: 8,
-    marginTop: 16,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   stageSelector: {
-    flexDirection: 'row',
+    marginBottom: 20,
   },
   stageSelectorItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: '#334155',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
     marginRight: 8,
-    gap: 6,
+    backgroundColor: COLORS.background,
   },
   stageSelectorText: {
-    color: '#94A3B8',
-    fontSize: 11,
-    maxWidth: 80,
+    fontSize: 13,
+    fontWeight: '500',
+    color: COLORS.textSecondary,
   },
-  notesInput: {
-    backgroundColor: '#334155',
+  textInput: {
+    backgroundColor: COLORS.background,
     borderRadius: 12,
-    padding: 16,
-    color: '#FFFFFF',
-    fontSize: 14,
-    minHeight: 80,
-    textAlignVertical: 'top',
+    padding: 14,
+    fontSize: 15,
+    color: COLORS.text,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+    marginBottom: 16,
+    minHeight: 48,
   },
-  financialRow: {
+  modalRow: {
     flexDirection: 'row',
     gap: 12,
   },
-  financialField: {
+  modalRowItem: {
     flex: 1,
   },
-  financialInput: {
-    backgroundColor: '#334155',
-    borderRadius: 12,
-    padding: 16,
-    color: '#FFFFFF',
-    fontSize: 14,
-  },
-  textInput: {
-    backgroundColor: '#334155',
-    borderRadius: 12,
-    padding: 16,
-    color: '#FFFFFF',
-    fontSize: 14,
-  },
-  moveConfirmButton: {
-    backgroundColor: '#3B82F6',
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
-    marginTop: 24,
-  },
-  moveConfirmButtonDisabled: {
-    backgroundColor: '#64748B',
-  },
-  moveConfirmButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  emptyState: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 60,
-    paddingHorizontal: 24,
-  },
-  emptyStateTitle: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '600',
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  emptyStateText: {
-    color: '#94A3B8',
-    fontSize: 14,
-    textAlign: 'center',
-    marginBottom: 24,
-  },
-  emptyStateButton: {
+  confirmButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#3B82F6',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 12,
+    justifyContent: 'center',
     gap: 8,
+    backgroundColor: COLORS.primary,
+    paddingVertical: 16,
+    borderRadius: 12,
+    marginTop: 8,
   },
-  emptyStateButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
+  confirmButtonDisabled: {
+    opacity: 0.6,
+  },
+  confirmButtonText: {
+    fontSize: 16,
     fontWeight: '600',
+    color: '#0A0A0F',
   },
 });
