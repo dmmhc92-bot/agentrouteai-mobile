@@ -11,7 +11,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "app.emergent.agentrouteai2dd9b4e9",
-      "buildNumber": "5",
+      "buildNumber": "6",
       "entitlements": {},
       "infoPlist": {
         "NSCameraUsageDescription": "Scan business cards to quickly add new leads",
@@ -71,7 +71,8 @@
       "eas": {
         "projectId": "f8cc2bc9-96ed-4333-8c34-82c2a0a8d2a0"
       },
-      "router": {}
+      "router": {},
+      "EXPO_PUBLIC_BACKEND_URL": "https://secure-app-lock.preview.emergentagent.com"
     },
     "owner": "dmmhc92",
     "runtimeVersion": {

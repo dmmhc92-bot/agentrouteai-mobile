@@ -1,7 +1,29 @@
 import axios, { AxiosError } from 'axios';
+import Constants from 'expo-constants';
 
-// Use the stable production backend URL - NOT ngrok
-const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL || 'https://secure-app-lock.preview.emergentagent.com';
+// Get backend URL from app config extra (for production builds) or env var (for dev)
+const getBackendUrl = (): string => {
+  // First try app.json extra config (works in production EAS builds)
+  const extraUrl = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL;
+  if (extraUrl) {
+    console.log('[API] Using backend URL from app config:', extraUrl);
+    return extraUrl;
+  }
+  
+  // Then try environment variable (works in development)
+  const envUrl = process.env.EXPO_PUBLIC_BACKEND_URL;
+  if (envUrl) {
+    console.log('[API] Using backend URL from env:', envUrl);
+    return envUrl;
+  }
+  
+  // Fallback to production URL
+  const fallbackUrl = 'https://secure-app-lock.preview.emergentagent.com';
+  console.log('[API] Using fallback backend URL:', fallbackUrl);
+  return fallbackUrl;
+};
+
+const BACKEND_URL = getBackendUrl();
 
 // Network error types for offline handling
 export type NetworkErrorType = 'offline' | 'timeout' | 'server_error' | 'unknown';
@@ -71,16 +93,42 @@ const apiClient = axios.create({
   },
 });
 
+// Add response interceptor for better error logging
+apiClient.interceptors.response.use(
+  (response) => {
+    return response;
+  },
+  (error) => {
+    // Log detailed error info for debugging
+    console.error('[API Error]', {
+      url: error.config?.url,
+      method: error.config?.method,
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      data: error.response?.data,
+      message: error.message,
+      hasAuthHeader: !!error.config?.headers?.Authorization,
+    });
+    return Promise.reject(error);
+  }
+);
+
 class ApiService {
   private authToken: string | null = null;
 
   constructor() {
+    console.log('[API] Service initialized with baseURL:', `${BACKEND_URL}/api`);
+    
     // Add request interceptor to ensure auth token is always sent
     apiClient.interceptors.request.use(
       (config) => {
         if (this.authToken) {
           config.headers.Authorization = `Bearer ${this.authToken}`;
         }
+        // Log outgoing requests for debugging
+        console.log('[API Request]', config.method?.toUpperCase(), config.url, {
+          hasAuth: !!this.authToken,
+        });
         return config;
       },
       (error) => {
