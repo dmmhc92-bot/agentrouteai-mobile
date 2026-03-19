@@ -2962,22 +2962,30 @@ async def get_pipeline(team_view: bool = False, current_user: dict = Depends(get
     # Determine which user IDs to include
     if is_team_view:
         if user_role == "admin":
-            # Admin sees all users
-            user_ids = [u["id"] async for u in db.users.find({}, {"id": 1})]
+            # Admin sees all users (with limit for performance)
+            user_ids = [u["id"] async for u in db.users.find({}, {"id": 1}).limit(1000)]
         else:
             # Manager sees their direct reports + themselves
             user_ids = [current_user["id"]]
-            async for agent in db.users.find({"manager_id": current_user["id"]}, {"id": 1}):
+            async for agent in db.users.find({"manager_id": current_user["id"]}, {"id": 1}).limit(500):
                 user_ids.append(agent["id"])
     else:
         user_ids = [current_user["id"]]
     
-    # Get all leads for these users
-    leads_cursor = db.leads.find({"created_by_user": {"$in": user_ids}})
+    # Get all leads for these users with projection for required fields only
+    leads_cursor = db.leads.find(
+        {"created_by_user": {"$in": user_ids}},
+        {"id": 1, "name": 1, "phone": 1, "email": 1, "stage": 1, "created_date": 1, 
+         "last_contact_date": 1, "created_by_user": 1, "underwriting_status": 1, 
+         "policy_type": 1, "notes": 1, "carrier": 1, "product": 1}
+    )
     all_leads = await leads_cursor.to_list(1000)
     
-    # Get production data for commission calculations
-    production_cursor = db.production.find({"created_by_user": {"$in": user_ids}})
+    # Get production data for commission calculations with projection
+    production_cursor = db.production.find(
+        {"created_by_user": {"$in": user_ids}},
+        {"lead_id": 1, "premium": 1, "commission": 1, "agent_commission": 1, "created_by_user": 1}
+    )
     all_production = await production_cursor.to_list(1000)
     
     # Build production lookup by lead_id
