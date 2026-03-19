@@ -111,7 +111,6 @@ export default function PipelineScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [pipelineData, setPipelineData] = useState<PipelineData | null>(null);
   const [teamView, setTeamView] = useState(false);
-  const [expandedStage, setExpandedStage] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   // Move modal state
@@ -168,12 +167,8 @@ export default function PipelineScreen() {
   };
 
   const handleStagePress = (stage: PipelineStage) => {
-    // Toggle expand/collapse
-    if (expandedStage === stage.stage) {
-      setExpandedStage(null);
-    } else {
-      setExpandedStage(stage.stage);
-    }
+    // Navigate to stage detail screen
+    router.push(`/stage/${stage.stage}`);
   };
 
   const handleLeadPress = (lead: PipelineLead) => {
@@ -303,64 +298,41 @@ export default function PipelineScreen() {
     );
   };
 
-  // Render stage row - LARGE, TAPPABLE
-  const renderStageRow = (stage: PipelineStage, showEmpty: boolean = true) => {
+  // Render stage row - LARGE, TAPPABLE - navigates to stage detail
+  const renderStageRow = (stage: PipelineStage) => {
     const config = STAGE_CONFIG[stage.stage] || { color: '#6B7280', icon: 'help-circle', label: stage.label };
-    const isExpanded = expandedStage === stage.stage;
     const hasLeads = stage.count > 0;
 
-    // Don't show empty stages if showEmpty is false
-    if (!hasLeads && !showEmpty) return null;
-
     return (
-      <View key={stage.stage} style={styles.stageContainer}>
-        <TouchableOpacity
-          style={[
-            styles.stageRow,
-            hasLeads && styles.stageRowWithCases,
-            isExpanded && styles.stageRowExpanded,
-          ]}
-          onPress={() => handleStagePress(stage)}
-          activeOpacity={0.6}
-        >
-          {/* Stage Icon */}
-          <View style={[styles.stageIconContainer, { backgroundColor: `${config.color}20` }]}>
-            <Ionicons name={config.icon as any} size={22} color={config.color} />
-          </View>
+      <TouchableOpacity
+        key={stage.stage}
+        style={[styles.stageRow, hasLeads && styles.stageRowWithCases]}
+        onPress={() => handleStagePress(stage)}
+        activeOpacity={0.6}
+      >
+        {/* Stage Icon */}
+        <View style={[styles.stageIconContainer, { backgroundColor: `${config.color}20` }]}>
+          <Ionicons name={config.icon as any} size={22} color={config.color} />
+        </View>
 
-          {/* Stage Info */}
-          <View style={styles.stageInfo}>
-            <Text style={[styles.stageName, !hasLeads && styles.stageNameEmpty]}>
-              {config.label}
-            </Text>
-            <Text style={styles.stageCount}>
-              {hasLeads ? `${stage.count} ${stage.count === 1 ? 'case' : 'cases'}` : 'No cases'}
-            </Text>
-          </View>
+        {/* Stage Info */}
+        <View style={styles.stageInfo}>
+          <Text style={[styles.stageName, !hasLeads && styles.stageNameEmpty]}>
+            {config.label}
+          </Text>
+          <Text style={styles.stageCount}>
+            {hasLeads ? `${stage.count} ${stage.count === 1 ? 'case' : 'cases'}` : 'No cases'}
+          </Text>
+        </View>
 
-          {/* Right side - Premium & Chevron */}
-          <View style={styles.stageRight}>
-            {stage.total_premium > 0 && (
-              <Text style={styles.stageTotalPremium}>{formatCurrency(stage.total_premium)}</Text>
-            )}
-            {hasLeads && (
-              <Ionicons
-                name={isExpanded ? 'chevron-up' : 'chevron-down'}
-                size={22}
-                color={COLORS.textMuted}
-                style={styles.chevron}
-              />
-            )}
-          </View>
-        </TouchableOpacity>
-
-        {/* Expanded Leads List */}
-        {isExpanded && hasLeads && (
-          <View style={styles.leadsContainer}>
-            {stage.leads.map(lead => renderLeadCard(lead, stage))}
-          </View>
-        )}
-      </View>
+        {/* Right side - Premium & Chevron */}
+        <View style={styles.stageRight}>
+          {stage.total_premium > 0 && (
+            <Text style={styles.stageTotalPremium}>{formatCurrency(stage.total_premium)}</Text>
+          )}
+          <Ionicons name="chevron-forward" size={22} color={COLORS.textMuted} />
+        </View>
+      </TouchableOpacity>
     );
   };
 
@@ -475,7 +447,7 @@ export default function PipelineScreen() {
             {stagesWithoutCases.length > 0 && (
               <View style={styles.stagesSection}>
                 <Text style={styles.sectionTitle}>All Stages</Text>
-                {stagesWithoutCases.map(stage => renderStageRow(stage, true))}
+                {stagesWithoutCases.map(stage => renderStageRow(stage))}
               </View>
             )}
 
