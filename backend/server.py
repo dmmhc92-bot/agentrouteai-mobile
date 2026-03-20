@@ -1155,92 +1155,92 @@ async def login(credentials: dict):
 @api_router.post("/auth/forgot-password")
 async def forgot_password(request: dict):
     """
-    Production-ready password reset flow.
-    Sends email via Resend if configured, otherwise logs token for development.
+    Production password reset flow - sends email via Resend.
+    NO dev fallback - email sending is required.
     """
     email = request.get("email", "").lower()
     user = await db.users.find_one({"email": email})
     
     # Always return success to prevent email enumeration attacks
     if not user:
-        logger.info(f"Password reset requested for non-existent email: {email}")
-        return {"message": "If email exists, a reset link has been sent", "email_sent": True}
+        # Don't reveal that email doesn't exist
+        return {"message": "If an account exists with this email, a reset link has been sent", "email_sent": True}
     
+    # Generate secure reset token
     reset_token = secrets.token_urlsafe(32)
     await db.users.update_one(
         {"id": user["id"]},
         {"$set": {"reset_token": reset_token, "reset_token_expiry": datetime.utcnow() + timedelta(hours=1)}}
     )
     
-    # Try to send email via Resend
+    # Send email via Resend - REQUIRED for production
     resend_api_key = os.environ.get('RESEND_API_KEY')
-    email_sent = False
     
-    if resend_api_key:
-        try:
-            import resend
-            resend.api_key = resend_api_key
-            
-            # Create the reset URL - use the app's deep link scheme
-            reset_url = f"agentroute://reset-password?token={reset_token}"
-            # Fallback web URL for email clients that don't support deep links
-            web_reset_url = f"https://app.agentrouteai.com/reset-password?token={reset_token}"
-            
-            html_content = f"""
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <meta charset="utf-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            </head>
-            <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #0F172A; margin: 0; padding: 40px 20px;">
-                <div style="max-width: 480px; margin: 0 auto; background-color: #1E293B; border-radius: 16px; padding: 40px; text-align: center;">
-                    <div style="width: 60px; height: 60px; background-color: #3B82F6; border-radius: 30px; margin: 0 auto 24px; display: flex; align-items: center; justify-content: center;">
-                        <span style="font-size: 28px;">🔐</span>
-                    </div>
-                    <h1 style="color: #FFFFFF; font-size: 24px; margin: 0 0 16px;">Reset Your Password</h1>
-                    <p style="color: #94A3B8; font-size: 16px; line-height: 24px; margin: 0 0 32px;">
-                        Hi {user.get('name', 'there')},<br><br>
-                        We received a request to reset your password. Tap the button below to create a new password.
-                    </p>
-                    <a href="{reset_url}" style="display: inline-block; background-color: #3B82F6; color: #FFFFFF; text-decoration: none; padding: 16px 32px; border-radius: 12px; font-size: 16px; font-weight: 600; margin-bottom: 24px;">
-                        Reset Password
-                    </a>
-                    <p style="color: #64748B; font-size: 14px; line-height: 20px; margin: 24px 0 0;">
-                        This link will expire in 1 hour.<br>
-                        If you didn't request this, you can safely ignore this email.
-                    </p>
-                    <hr style="border: none; border-top: 1px solid #334155; margin: 32px 0;">
-                    <p style="color: #64748B; font-size: 12px; margin: 0;">
-                        AgentRoute AI - Your AI-Powered Sales Companion
-                    </p>
+    if not resend_api_key:
+        logger.error("CRITICAL: RESEND_API_KEY not configured - cannot send password reset emails")
+        raise HTTPException(status_code=500, detail="Email service not configured. Please contact support.")
+    
+    try:
+        import resend
+        resend.api_key = resend_api_key
+        
+        # Create the reset URL using app's deep link scheme for mobile
+        reset_url = f"agentroute://reset-password?token={reset_token}"
+        
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        </head>
+        <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #0F172A; margin: 0; padding: 40px 20px;">
+            <div style="max-width: 480px; margin: 0 auto; background-color: #1E293B; border-radius: 16px; padding: 40px; text-align: center;">
+                <div style="width: 60px; height: 60px; background-color: #3B82F6; border-radius: 30px; margin: 0 auto 24px; display: flex; align-items: center; justify-content: center;">
+                    <span style="font-size: 28px;">🔐</span>
                 </div>
-            </body>
-            </html>
-            """
-            
-            params = {
-                "from": "AgentRoute AI <noreply@agentrouteai.com>",
-                "to": [email],
-                "subject": "Reset Your Password - AgentRoute AI",
-                "html": html_content,
-                "reply_to": "support@agentrouteai.com"
-            }
-            
-            result = resend.Emails.send(params)
-            email_sent = True
-            logger.info(f"Password reset email sent successfully to {email}")
-            
-        except Exception as e:
-            logger.error(f"Failed to send password reset email to {email}: {str(e)}")
-            # Fall back to logging the token for development
-            logger.info(f"PASSWORD RESET TOKEN for {email}: {reset_token}")
-    else:
-        # Development mode - log the token
-        logger.warning("RESEND_API_KEY not configured - password reset emails disabled")
-        logger.info(f"PASSWORD RESET TOKEN for {email}: {reset_token}")
-    
-    return {"message": "If email exists, a reset link has been sent", "email_sent": email_sent}
+                <h1 style="color: #FFFFFF; font-size: 24px; margin: 0 0 16px;">Reset Your Password</h1>
+                <p style="color: #94A3B8; font-size: 16px; line-height: 24px; margin: 0 0 32px;">
+                    Hi {user.get('name', 'there')},<br><br>
+                    We received a request to reset your password for your AgentRoute AI account. Tap the button below to create a new password.
+                </p>
+                <a href="{reset_url}" style="display: inline-block; background-color: #3B82F6; color: #FFFFFF; text-decoration: none; padding: 16px 32px; border-radius: 12px; font-size: 16px; font-weight: 600; margin-bottom: 24px;">
+                    Reset Password
+                </a>
+                <p style="color: #64748B; font-size: 14px; line-height: 20px; margin: 24px 0 0;">
+                    This link will expire in 1 hour.<br>
+                    If you didn't request this, you can safely ignore this email.
+                </p>
+                <hr style="border: none; border-top: 1px solid #334155; margin: 32px 0;">
+                <p style="color: #64748B; font-size: 12px; margin: 0;">
+                    AgentRoute AI - Your AI-Powered Sales Companion
+                </p>
+            </div>
+        </body>
+        </html>
+        """
+        
+        # Use Resend's verified test domain for sending
+        params = {
+            "from": "AgentRoute AI <onboarding@resend.dev>",
+            "to": [email],
+            "subject": "Reset Your Password - AgentRoute AI",
+            "html": html_content
+        }
+        
+        result = resend.Emails.send(params)
+        logger.info(f"Password reset email sent successfully to {email}, message_id: {result.get('id', 'unknown')}")
+        
+        return {"message": "If an account exists with this email, a reset link has been sent", "email_sent": True}
+        
+    except Exception as e:
+        logger.error(f"Failed to send password reset email to {email}: {str(e)}")
+        # Clear the token since email failed
+        await db.users.update_one(
+            {"id": user["id"]},
+            {"$set": {"reset_token": None, "reset_token_expiry": None}}
+        )
+        raise HTTPException(status_code=500, detail="Failed to send reset email. Please try again later.")
 
 @api_router.post("/auth/reset-password")
 async def reset_password(request: dict):
