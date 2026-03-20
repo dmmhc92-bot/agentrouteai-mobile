@@ -19,69 +19,143 @@ import { useAuth } from '../../src/contexts/AuthContext';
 export default function ForgotPasswordScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { forgotPassword, resetPassword } = useAuth();
+  const { forgotPassword } = useAuth();
 
-  const [step, setStep] = useState<'email' | 'reset'>('email');
   const [email, setEmail] = useState('');
-  const [resetToken, setResetToken] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [devToken, setDevToken] = useState('');
+  const [emailSent, setEmailSent] = useState(false);
 
-  const handleSendReset = async () => {
+  const validateEmail = (email: string) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
+  const handleSendResetEmail = async () => {
     if (!email) {
-      Alert.alert('Error', 'Please enter your email');
+      Alert.alert('Error', 'Please enter your email address');
+      return;
+    }
+
+    if (!validateEmail(email)) {
+      Alert.alert('Error', 'Please enter a valid email address');
       return;
     }
 
     setIsLoading(true);
     try {
-      const response = await forgotPassword(email);
-      if (response.dev_token) {
-        setDevToken(response.dev_token);
-      }
-      setStep('reset');
-      Alert.alert('Success', 'If the email exists, a reset token has been generated. Check the console for the token (development mode).');
+      await forgotPassword(email);
+      setEmailSent(true);
     } catch (error: any) {
-      const message = error.response?.data?.detail || 'Failed to send reset email';
-      Alert.alert('Error', message);
+      // Don't reveal if email exists or not for security
+      // Show success even if email doesn't exist
+      setEmailSent(true);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleResetPassword = async () => {
-    if (!resetToken || !newPassword) {
-      Alert.alert('Error', 'Please enter the reset token and new password');
-      return;
-    }
-
-    if (newPassword !== confirmPassword) {
-      Alert.alert('Error', 'Passwords do not match');
-      return;
-    }
-
-    if (newPassword.length < 6) {
-      Alert.alert('Error', 'Password must be at least 6 characters');
-      return;
-    }
-
+  const handleResendEmail = async () => {
     setIsLoading(true);
     try {
-      await resetPassword(resetToken, newPassword);
-      Alert.alert('Success', 'Password reset successfully', [
-        { text: 'OK', onPress: () => router.replace('/(auth)/signin') },
-      ]);
+      await forgotPassword(email);
+      Alert.alert('Email Sent', 'We\'ve sent another password reset email to your address.');
     } catch (error: any) {
-      const message = error.response?.data?.detail || 'Failed to reset password';
-      Alert.alert('Error', message);
+      Alert.alert('Error', 'Unable to send email. Please try again later.');
     } finally {
       setIsLoading(false);
     }
   };
 
+  // Email sent success screen
+  if (emailSent) {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+            <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+          </TouchableOpacity>
+
+          <View style={styles.header}>
+            <View style={[styles.iconCircle, styles.successIconCircle]}>
+              <Ionicons name="mail" size={40} color="#FFFFFF" />
+            </View>
+            <Text style={styles.title}>Check Your Email</Text>
+            <Text style={styles.subtitle}>
+              We've sent a password reset link to:
+            </Text>
+            <Text style={styles.emailText}>{email}</Text>
+          </View>
+
+          <View style={styles.instructionsContainer}>
+            <View style={styles.instructionItem}>
+              <View style={styles.instructionNumber}>
+                <Text style={styles.instructionNumberText}>1</Text>
+              </View>
+              <Text style={styles.instructionText}>
+                Open the email from AgentRoute AI
+              </Text>
+            </View>
+            <View style={styles.instructionItem}>
+              <View style={styles.instructionNumber}>
+                <Text style={styles.instructionNumberText}>2</Text>
+              </View>
+              <Text style={styles.instructionText}>
+                Tap the "Reset Password" button in the email
+              </Text>
+            </View>
+            <View style={styles.instructionItem}>
+              <View style={styles.instructionNumber}>
+                <Text style={styles.instructionNumberText}>3</Text>
+              </View>
+              <Text style={styles.instructionText}>
+                Create your new password
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.form}>
+            <View style={styles.noteContainer}>
+              <Ionicons name="information-circle" size={20} color="#64748B" />
+              <Text style={styles.noteText}>
+                The link will expire in 1 hour. Check your spam folder if you don't see the email.
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              style={[styles.secondaryButton, isLoading && styles.buttonDisabled]}
+              onPress={handleResendEmail}
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <ActivityIndicator color="#3B82F6" />
+              ) : (
+                <Text style={styles.secondaryButtonText}>Resend Email</Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.linkButton}
+              onPress={() => {
+                setEmailSent(false);
+                setEmail('');
+              }}
+            >
+              <Text style={styles.linkButtonText}>Try a different email</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.button}
+              onPress={() => router.replace('/(auth)/signin')}
+            >
+              <Text style={styles.buttonText}>Back to Sign In</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </View>
+    );
+  }
+
+  // Email input screen
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -102,114 +176,48 @@ export default function ForgotPasswordScreen() {
           <View style={styles.iconCircle}>
             <Ionicons name="key" size={40} color="#FFFFFF" />
           </View>
-          <Text style={styles.title}>
-            {step === 'email' ? 'Forgot Password' : 'Reset Password'}
-          </Text>
+          <Text style={styles.title}>Forgot Password?</Text>
           <Text style={styles.subtitle}>
-            {step === 'email'
-              ? 'Enter your email to receive a reset token'
-              : 'Enter the token and your new password'}
+            No worries! Enter your email and we'll send you a link to reset your password.
           </Text>
         </View>
 
-        {step === 'email' ? (
-          <View style={styles.form}>
-            <View style={styles.inputContainer}>
-              <Ionicons name="mail-outline" size={20} color="#64748B" style={styles.inputIcon} />
-              <TextInput
-                style={styles.input}
-                placeholder="Email"
-                placeholderTextColor="#64748B"
-                value={email}
-                onChangeText={setEmail}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-            </View>
-
-            <TouchableOpacity
-              style={[styles.button, isLoading && styles.buttonDisabled]}
-              onPress={handleSendReset}
-              disabled={isLoading}
-            >
-              {isLoading ? (
-                <ActivityIndicator color="#FFFFFF" />
-              ) : (
-                <Text style={styles.buttonText}>Send Reset Token</Text>
-              )}
-            </TouchableOpacity>
+        <View style={styles.form}>
+          <View style={styles.inputContainer}>
+            <Ionicons name="mail-outline" size={20} color="#64748B" style={styles.inputIcon} />
+            <TextInput
+              style={styles.input}
+              placeholder="Enter your email"
+              placeholderTextColor="#64748B"
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="email"
+            />
           </View>
-        ) : (
-          <View style={styles.form}>
-            {devToken ? (
-              <View style={styles.devTokenContainer}>
-                <Text style={styles.devTokenLabel}>Development Token:</Text>
-                <Text style={styles.devTokenValue} selectable>{devToken}</Text>
-              </View>
-            ) : null}
 
-            <View style={styles.inputContainer}>
-              <Ionicons name="key-outline" size={20} color="#64748B" style={styles.inputIcon} />
-              <TextInput
-                style={styles.input}
-                placeholder="Reset Token"
-                placeholderTextColor="#64748B"
-                value={resetToken}
-                onChangeText={setResetToken}
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-            </View>
+          <TouchableOpacity
+            style={[styles.button, isLoading && styles.buttonDisabled]}
+            onPress={handleSendResetEmail}
+            disabled={isLoading}
+          >
+            {isLoading ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <Text style={styles.buttonText}>Send Reset Link</Text>
+            )}
+          </TouchableOpacity>
 
-            <View style={styles.inputContainer}>
-              <Ionicons name="lock-closed-outline" size={20} color="#64748B" style={styles.inputIcon} />
-              <TextInput
-                style={styles.input}
-                placeholder="New Password"
-                placeholderTextColor="#64748B"
-                value={newPassword}
-                onChangeText={setNewPassword}
-                secureTextEntry={!showPassword}
-              />
-              <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-                <Ionicons
-                  name={showPassword ? 'eye-off-outline' : 'eye-outline'}
-                  size={20}
-                  color="#64748B"
-                />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.inputContainer}>
-              <Ionicons name="lock-closed-outline" size={20} color="#64748B" style={styles.inputIcon} />
-              <TextInput
-                style={styles.input}
-                placeholder="Confirm Password"
-                placeholderTextColor="#64748B"
-                value={confirmPassword}
-                onChangeText={setConfirmPassword}
-                secureTextEntry={!showPassword}
-              />
-            </View>
-
-            <TouchableOpacity
-              style={[styles.button, isLoading && styles.buttonDisabled]}
-              onPress={handleResetPassword}
-              disabled={isLoading}
-            >
-              {isLoading ? (
-                <ActivityIndicator color="#FFFFFF" />
-              ) : (
-                <Text style={styles.buttonText}>Reset Password</Text>
-              )}
-            </TouchableOpacity>
-
-            <TouchableOpacity onPress={() => setStep('email')}>
-              <Text style={styles.backToEmail}>Back to email</Text>
-            </TouchableOpacity>
-          </View>
-        )}
+          <TouchableOpacity
+            style={styles.linkButton}
+            onPress={() => router.replace('/(auth)/signin')}
+          >
+            <Ionicons name="arrow-back" size={16} color="#3B82F6" />
+            <Text style={styles.linkButtonText}>Back to Sign In</Text>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -232,7 +240,7 @@ const styles = StyleSheet.create({
   header: {
     alignItems: 'center',
     marginTop: 40,
-    marginBottom: 48,
+    marginBottom: 40,
   },
   iconCircle: {
     width: 80,
@@ -243,16 +251,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 20,
   },
+  successIconCircle: {
+    backgroundColor: '#22C55E',
+  },
   title: {
     fontSize: 28,
     fontWeight: 'bold',
     color: '#FFFFFF',
-    marginBottom: 8,
+    marginBottom: 12,
   },
   subtitle: {
     fontSize: 16,
     color: '#94A3B8',
     textAlign: 'center',
+    paddingHorizontal: 10,
+    lineHeight: 24,
+  },
+  emailText: {
+    fontSize: 16,
+    color: '#3B82F6',
+    fontWeight: '600',
+    marginTop: 8,
   },
   form: {
     gap: 16,
@@ -278,7 +297,6 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderRadius: 12,
     alignItems: 'center',
-    marginTop: 8,
   },
   buttonDisabled: {
     opacity: 0.7,
@@ -288,27 +306,73 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
   },
-  devTokenContainer: {
-    backgroundColor: '#1E293B',
-    padding: 16,
+  secondaryButton: {
+    backgroundColor: 'transparent',
+    paddingVertical: 16,
     borderRadius: 12,
+    alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#22C55E',
+    borderColor: '#3B82F6',
   },
-  devTokenLabel: {
-    color: '#22C55E',
-    fontSize: 12,
-    marginBottom: 4,
-  },
-  devTokenValue: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-  },
-  backToEmail: {
+  secondaryButtonText: {
     color: '#3B82F6',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  linkButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    gap: 6,
+  },
+  linkButtonText: {
+    color: '#3B82F6',
+    fontSize: 16,
+  },
+  instructionsContainer: {
+    backgroundColor: '#1E293B',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 24,
+    gap: 16,
+  },
+  instructionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  instructionNumber: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#3B82F6',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  instructionNumberText: {
+    color: '#FFFFFF',
     fontSize: 14,
-    textAlign: 'center',
-    marginTop: 8,
+    fontWeight: '600',
+  },
+  instructionText: {
+    flex: 1,
+    color: '#E2E8F0',
+    fontSize: 15,
+    lineHeight: 22,
+  },
+  noteContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#1E293B',
+    borderRadius: 12,
+    padding: 16,
+    gap: 12,
+  },
+  noteText: {
+    flex: 1,
+    color: '#94A3B8',
+    fontSize: 14,
+    lineHeight: 20,
   },
 });

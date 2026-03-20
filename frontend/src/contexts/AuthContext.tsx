@@ -57,7 +57,7 @@ interface AuthContextType {
   createOrganization: (organizationName: string, name: string, email: string, password: string, phone?: string) => Promise<User>;
   registerSolo: (name: string, email: string, password: string, phone?: string) => Promise<User>;
   signOut: () => Promise<void>;
-  forgotPassword: (email: string) => Promise<{ dev_token?: string }>;
+  forgotPassword: (email: string) => Promise<{ email_sent?: boolean }>;
   resetPassword: (token: string, newPassword: string) => Promise<void>;
   updateProfile: (data: { name?: string; phone?: string; profile_image?: string }) => Promise<void>;
   deleteAccount: () => Promise<void>;
