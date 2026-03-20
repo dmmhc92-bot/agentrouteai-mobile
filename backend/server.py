@@ -1220,9 +1220,9 @@ async def forgot_password(request: dict):
         </html>
         """
         
-        # Use Resend's verified test domain for sending
+        # Use verified production domain for sending
         params = {
-            "from": "AgentRoute AI <onboarding@resend.dev>",
+            "from": "AgentRoute AI <noreply@agentrouteai.com>",
             "to": [email],
             "subject": "Reset Your Password - AgentRoute AI",
             "html": html_content
