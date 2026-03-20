@@ -10,7 +10,7 @@ import time
 from datetime import datetime
 
 # Test Configuration from review request
-BASE_URL = "https://app-store-ready-26.preview.emergentagent.com/api"
+BASE_URL = "https://secure-dashboard-32.preview.emergentagent.com/api"
 TIMEOUT = 30
 
 # Test Credentials (exactly as specified in review request)

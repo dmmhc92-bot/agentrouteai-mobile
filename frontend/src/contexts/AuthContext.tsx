@@ -227,18 +227,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setIsLoading(false);
     }
   };
-        if (cached.user) {
-          setUser(cached.user);
-          setTeamInfo(cached.teamInfo);
-          setIsOffline(true);
-        }
-      } catch (e) {
-        // Ignore
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const refreshUser = async () => {
     if (token) {

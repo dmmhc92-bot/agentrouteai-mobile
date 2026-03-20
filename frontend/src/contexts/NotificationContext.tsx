@@ -105,7 +105,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
   const markAsRead = async (notificationId: string) => {
     try {
-      await api.markNotificationAsRead(notificationId);
+      await api.markNotificationRead(notificationId);
       setNotifications(prev => 
         prev.map(n => n.id === notificationId ? { ...n, read: true } : n)
       );
@@ -117,7 +117,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
   const markAllAsRead = async () => {
     try {
-      await api.markAllNotificationsAsRead();
+      await api.markAllNotificationsRead();
       setNotifications(prev => prev.map(n => ({ ...n, read: true })));
       setUnreadCount(0);
     } catch (error) {

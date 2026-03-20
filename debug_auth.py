@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import requests
 
-BASE_URL = "https://app-store-ready-26.preview.emergentagent.com/api"
+BASE_URL = "https://secure-dashboard-32.preview.emergentagent.com/api"
 
 # Test without auth
 response = requests.get(f"{BASE_URL}/auth/me", headers={})

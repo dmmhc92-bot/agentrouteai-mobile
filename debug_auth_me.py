@@ -7,7 +7,7 @@ import requests
 import json
 
 # Test Configuration
-BASE_URL = "https://app-store-ready-26.preview.emergentagent.com/api"
+BASE_URL = "https://secure-dashboard-32.preview.emergentagent.com/api"
 
 # Admin credentials
 admin_credentials = {

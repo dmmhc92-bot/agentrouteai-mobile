@@ -22,6 +22,8 @@ interface Lead {
   phone: string;
   email: string;
   created_date: string;
+  last_contact_date?: string;
+  stage?: string;
 }
 
 interface Appointment {

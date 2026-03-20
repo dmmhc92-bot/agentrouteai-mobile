@@ -1,163 +1,150 @@
 **original_problem_statement:**
-The user wants to prepare the AgentRoute AI CRM mobile application for its final Apple App Store submission. The process involved several critical, urgent fixes:
-1.  **Initial Hardening:** Verify core features like Scanner OCR, offline mode, auth, and data persistence to ensure App Store readiness.
-2.  **Metadata URL Fix:** Replace all internal/preview URLs with clean, public-facing frontend pages for the Privacy Policy, Terms of Service, and Support, as required by Apple.
-3.  **App Identity Correction:** Ensure the iOS  in  matches the one configured in App Store Connect ().
-4.  **Production Bugs:** Fix critical production bugs where lead creation and pipeline loading failed in TestFlight builds. This was traced to an environment variable () not being correctly bundled in production builds.
-5.  **Pipeline Regressions:** Address multiple regressions in the Sales Pipeline feature, including:
-    *   An agent-only failure where the pipeline would show an error popup.
-    *   A UI flicker/glitch caused by race conditions, duplicate data fetches, and state overwrite issues affecting both Admin and Agent roles.
-    *   Incomplete functionality where pipeline stages were not tappable or navigable.
-6.  **Final Blocker (Subscription):** The current and final task is to remove a broken subscription purchase flow that would block Apple's review. This involves disabling all purchase actions and ensuring the app remains fully usable.
-
-PRODUCT REQUIREMENTS:
-- The app must be fully functional for Apple's review team.
-- No broken features, dead-end UI, or misleading subscription prompts.
-- Both  and  roles must have a stable experience.
-- The pipeline must load and be fully interactive for both roles without errors or glitches.
+The initial goal was to disable a broken subscription feature to pass an App Store review. This evolved into a series of critical tasks:
+1.  **Reinstate Subscriptions:** Implement a real, working 0/month Apple auto-renewable subscription using RevenueCat, ensuring the full purchase and restore flow is functional for App Store review.
+2.  **Fix Bundle ID:** A major issue arose where the build system was ignoring the  configuration and using an incorrect, auto-generated bundle ID. The user provided multiple corrections, finally settling on  as the single source of truth. This required extensive auditing and fixing across the codebase and configuration files.
+3.  **Resolve Deployment Errors:** Fix deployment blockers identified by the deployment agent, including an N+1 query, missing environment variables, and hardcoded URLs.
+4.  **Fix Auth Bug:** Correct an issue where a 401 error from  was surfaced as a console error for logged-out users upon app launch.
+5.  **Final Polish and Hardening (Current Task):** Implement a set of emergency-safe engineering improvements focusing on security, dashboard professionalism, and UI performance, with a strict rule of additive changes only and no regressions. This includes:
+    *   **Protective session security:** Add/tighten app auto-lock and biometric re-entry.
+    *   **Dashboard professionalism:** Add a Priority Actions area.
+    *   **UI/performance hardening:** Audit and fix duplicate renders, flicker, and slow responses, and perform a full click-through audit of all interactive elements.
 
 **User's preferred language**: English
 
 **what currently exists?**
-The project is a full-stack AI CRM application built with an Expo (React Native) frontend and a FastAPI backend. Key features like authentication, lead management, a sales pipeline, and settings are implemented. The application has been through several build-and-submit cycles to fix critical bugs related to production environment configuration and race conditions in the pipeline feature. Public-facing pages for legal and support have been created and deployed. The pipeline UI has been redesigned with a premium dark theme and is now fully navigable.
+The application is a full-stack Expo (React Native) and FastAPI mobile CRM called AgentRoute AI. The backend uses MongoDB. Core features include user authentication (with admin, manager, and agent roles), lead management, a sales pipeline, a calendar, and an AI coach.
+
+A fully functional RevenueCat integration for a real Apple In-App Purchase subscription () has been implemented, replacing a previous Free Access mock. The critical issue of the build system using the wrong bundle ID has been resolved at the code level, with  now enforced in all relevant configuration files. Various deployment blockers and an auth-related startup bug have also been fixed.
 
 **Last working item**:
-*   **Last item agent was working:** Removing the broken subscription purchase flow from the Settings screen to ensure the app is compliant for Apple App Store review.
-*   **Status:** IN PROGRESS
-*   **Agent Testing Done:** N
-*   **Which testing method agent to use?** screenshot tool
-*   **User Testing Done:** N
+- Last item agent was working: The agent began the Final Polish and Hardening task. It started by implementing the Dashboard professionalism requirement, adding a UI shell for a new Priority Actions section to the dashboard screen (). While doing this, it inadvertently introduced and then fixed a syntax error in .
+- Status: IN PROGRESS
+- Agent Testing Done: N
+- Which testing method agent to use? Frontend testing agent. After completing the Priority Actions feature, the agent should perform a visual check with the screenshot tool and then conduct a full click-through audit as requested by the user.
+- User Testing Done: N
 
 **All Pending/In progress Issue list**:
-*   **Issue 1: Finalize and verify the removal of the broken subscription purchase flow (P0)**
-    *   **Description:** The live subscription purchase feature is broken and must be completely disabled for the App Store submission build. This requires removing the purchase button, associated error popups, and any misleading UI related to subscriptions.
-    *   **Attempted fixes:** The agent has started fixing this by using  to comment out the  function and replace the subscription UI block in  with a non-interactive Subscription management coming soon message.
-    *   **Next debug checklist:**
-        1.  Verify the changes in  are correct and have fully disabled all subscription-related actions.
-        2.  Use the  to log in as both an 'Agent' () and an 'Admin' ().
-        3.  For each role, navigate to the Settings screen.
-        4.  Confirm the subscription section has been replaced by the static Subscription management coming soon message.
-        5.  Confirm there are no buttons or actions to start a purchase.
-        6.  Verify that the rest of the Settings screen and the application remain fully functional.
-    *   **Why fix this issue and what will be achieved with the fix?** To prevent the app from being rejected by Apple Review due to a broken, incomplete, or misleading in-app purchase flow.
-    *   **Status:** IN PROGRESS
-    *   **Is recurring issue?** N
-    *   **Should Test frontend/backend/both after fix?** Frontend
+There are no pending *issues* at the moment. The agent's last action was to fix a syntax error it had just introduced. The pending work is the continuation of the in-progress tasks.
 
 **In progress Task List**:
-None.
+- Task 1: **Complete Dashboard Professionalism Upgrade (P0)**
+  - **Where to resume**: The UI shell for the Priority Actions section is present in . The next step is to implement the logic to fetch and display meaningful data, such as leads needing follow-up, stale leads, or next best action. This may require creating a new backend endpoint.
+  - **What will be achieved with this?**: A more professional and actionable dashboard for users.
+  - **Status**: IN PROGRESS
+  - **Should Test frontend/backend/both after fix?**: Both
 
 **Upcoming and Future Tasks**
-*   **Upcoming Tasks:**
-    *   **P0:** Generate a new iOS production build (Build #12) after the subscription fix is fully verified.
-    *   **P0:** Submit the final build to App Store Connect for review.
-*   **Future Tasks:**
-    *   Implement a fully functional and tested Apple In-App Purchase (IAP) subscription system.
+- **Upcoming Tasks**:
+    - **Task 1: Implement Protective Session Security (P1)**
+        - **Action**: Enhance the existing  to add/tighten auto-lock after a period of inactivity and improve the optional biometric re-entry flow. Ensure the session token is stored only in SecureStore.
+    - **Task 2: UI/Performance Hardening (P2)**
+        - **Action**: Audit key components (, , ) to remove duplicate render paths, repeated API fetches, and UI flicker. Improve tap responsiveness and ensure all touch targets meet mobile standards.
+    - **Task 3: Mandatory Click-Through Audit (P3)**
+        - **Action**: After all other improvements are complete, manually test every single visible interactive element (buttons, cards, links, menu items) across all screens to ensure it routes correctly and performs the intended action without errors. Fix or hide any non-functional elements.
+
+- **Future Tasks**:
+    - **Task 1: Implement Pagination (P4)**
+        - **Action**: The deployment agent warned about unbounded queries. Implement pagination (using  and ) for list-based API endpoints like  and  in  to ensure performance at scale.
 
 **Completed work in this session**
-*   **Pipeline Stability and Interaction Flow (DONE):**
-    *   Fixed multiple critical regressions in the Sales Pipeline feature ().
-    *   **Root causes identified and fixed:**
-        1.  **Race Conditions:** Removed duplicate data fetches by hardening  and  hooks and implementing request tracking.
-        2.  **State Overwrites:** Prevented failed API requests from overwriting existing valid data, which was causing a UI flicker.
-        3.  **Auth Timing Issues:** Ensured the component waits for authentication to be ready before fetching data, fixing an Admin-specific bug.
-    *   **Functionality Added:**
-        1.  Made all pipeline stages fully tappable for both Agent and Admin roles.
-        2.  Created a new dynamic route  to display a detailed list of leads for any selected stage.
-        3.  Ensured the UI gracefully handles empty stages.
-*   **Production Environment Bug Fix (DONE):**
-    *   Resolved a critical bug where the production build could not connect to the backend.
-    *   **File changed:** .
-    *   **Fix:** Added the  to the  configuration field to ensure it's bundled with the production app.
-*   **App Store Metadata URLs (DONE):**
-    *   Created and deployed public, browser-accessible frontend pages for , , and  to comply with Apple's requirements.
-    *   **Files created:** , , .
-*   **iOS App Identity Configuration (DONE):**
-    *   Confirmed and set the correct iOS  in  to  to match the existing App Store Connect profile.
-*   **Generated and Submitted Multiple Builds:** Successfully created and submitted iOS builds #6 through #11 to App Store Connect, each addressing a critical issue.
+- **Subscription Flow Overhaul:**
+  - Disabled a broken, non-functional subscription UI.
+  - Implemented a real Apple IAP subscription flow using the RevenueCat SDK (). Created , , and the paywall screen .
+- **Critical Configuration Fixes:**
+  - Resolved a recurring and critical issue with the iOS bundle ID. Audited and corrected all configuration files (, , and comments in source code) to enforce the use of .
+- **Deployment Readiness:**
+  - Fixed an N+1 query in the pipeline API endpoint in  by batch-fetching user data.
+  - Removed hardcoded preview URLs from  and other frontend files (, , etc.).
+  - Corrected a malformed  file that was blocking  files.
+- **Bug Fixes:**
+  - Resolved a critical login failure by restoring soft-deleted test users in the database.
+  - Fixed an auth bug where logged-out users would see a 401 error in the console on app launch by improving error handling in  and .
 
 **Earlier issues found/mentioned but not fixed**
-None. All identified issues have been addressed or are currently in progress.
+- **Issue 1: Lack of Pagination in Core Endpoints**
+  - **Debug checklist**: Review API endpoints in  that return lists of data (e.g., leads, appointments). They currently fetch all documents, which is not scalable. Implement  and  query parameters to paginate results.
+  - **Why to solve this issue and what will be achieved with this?**: Prevents backend timeouts and high memory usage, and improves frontend load times as the database grows.
+  - **Should Test frontend/backend/both after fix**: Both. The backend needs to be tested for correct pagination, and the frontend will need to be updated to handle loading more data (e.g., via infinite scroll).
+  - **Is recurring issue?** N
 
 **Known issue recurrence from previous fork**
-The Sales Pipeline feature has been a recurring source of regressions, specifically related to race conditions, state management, and role-based data fetching. It has been fixed multiple times, with the latest fix being the most comprehensive.
+- None.
 
 **Code Architecture**
 
 
 **Key Technical Concepts**
-*   **Frontend:** React Native, Expo, Expo Router (file-based routing), React Context API for state management (AuthContext), Axios for API calls.
-*   **Backend:** Python with FastAPI.
-*   **Database:** MongoDB.
-*   **Build & Deployment:** Expo Application Services (EAS) for iOS builds, web hosting, and App Store submissions.
-*   **State Management:** The pipeline component () now uses a hardened state management approach with request tracking and refs (, ) to prevent race conditions.
+-   **Frontend**: Expo (React Native), TypeScript, Expo Router (file-based routing).
+-   **Backend**: FastAPI (Python), Motor (async MongoDB driver).
+-   **Database**: MongoDB.
+-   **State Management**: React Context API (, , ).
+-   **IAP**: RevenueCat () for managing Apple In-App Purchases.
+-   **Deployment**: Emergent Platform (containerized deployment to Kubernetes).
 
 **key DB schema**
-Not explicitly defined, but core tables include  (with roles like 'agent', 'admin'), and  (with fields like , , , and ).
+-   **users**: { uid=0(root) gid=0(root) groups=0(root), , , , , , ,  }
+-   **leads**: { uid=0(root) gid=0(root) groups=0(root), , , , ,  }
+-   **appointments**: { uid=0(root) gid=0(root) groups=0(root), , , ,  }
 
 **changes in tech stack**
-None.
+-   Added  to the frontend for RevenueCat integration.
 
 **All files of reference**
-*   **/app/frontend/app/(tabs)/settings.tsx:** Currently being modified to remove the broken subscription flow.
-*   **/app/frontend/app/pipeline.tsx:** The main pipeline component. Has been rewritten multiple times to fix stability issues and improve UI/UX.
-*   **/app/frontend/app/stage/[stage].tsx:** A new file that displays leads filtered by a specific pipeline stage.
-*   **/app/frontend/app.json:** A critical configuration file. It was updated to include  in the  field, which was the root cause of major production bugs.
-*   **/app/frontend/src/services/api.ts:** The central API client. It was updated to correctly read the backend URL from  in production.
+-   ****: The source of truth for the app's version and the critical iOS/Android bundle identifiers ().
+-   ****: Manages user authentication state, session tokens, and the initial auth bootstrap logic. Recently fixed to handle logged-out states gracefully.
+-   ****: New file that provides RevenueCat subscription status () to the entire app.
+-   ****: New file that encapsulates all RevenueCat API calls, configuration (API key, product IDs), and logic.
+-   ****: The new paywall screen.
+-   ****: UI was updated to show real subscription status and provide Upgrade and Restore Purchases buttons.
+-   ****: Recently modified to add a shell for the Priority Actions section. This is the primary file for the current in-progress task.
+-   ****: The entire backend. Recently optimized to fix an N+1 query in the pipeline endpoint.
 
 **Areas that need refactoring**:
-None. The pipeline component was the main area needing refactoring, and it has been significantly improved.
+-   The user's current request is a major hardening and refactoring task, focusing on security, UI performance, and dashboard improvements.
+-   API endpoints that return lists (e.g., leads, appointments) need to be refactored to support pagination.
 
 **key api endpoints**
-*   : Authenticates a user.
-*   : Deletes a user's account.
-*   : Fetches sales pipeline data. It accepts a  parameter.
-*   : CRUD operations for leads.
-*   : For scanning business cards.
-*   , , : Publicly accessible HTML pages served by the backend, intended for App Store metadata links.
+-   
+-   
+-   
+-   
+-   
 
 **Critical Info for New Agent**
-*   **The absolute priority is a successful App Store submission.** Avoid any changes not directly related to fixing the final subscription blocker.
-*   The  must be . DO NOT CHANGE IT.
-*   The production backend URL is configured in  under the  field. This was the root cause of several production bugs and is now fixed.
-*   The pipeline component () has been a major source of bugs (race conditions, state overwrites). The latest version is significantly more robust, but be cautious if you need to modify it.
-*   Always test changes for both  and  roles, as they have different UI flows and data permissions that have caused issues in the past.
+-   **Bundle ID is Sacred**: The iOS bundle ID **MUST** be . This was the source of significant back-and-forth. The build platform has previously shown a tendency to ignore  and auto-generate an ID. Be extremely vigilant that this exact ID is used for any builds.
+-   **Additive Changes Only**: The user has strictly mandated additive changes only. Do not refactor, rename, or rebuild core structures. Improve what exists safely.
+-   **No Broken UI**: Any visible, clickable element must be fully functional. If a feature is half-implemented, it should be hidden or disabled. No placeholders.
+-   **Current Task**: You are in the middle of a Professionalism and Hardening phase. The first part (Dashboard Priority Actions) is in progress. You must complete it, then move on to session security and performance hardening, and finally perform a full click-through audit of the app.
 
 **documents and test reports created in this job**
-*   
-*   
-*   
-*   
+-   The agent has been reading and updating  as per the system prompt, but no new formal documents have been generated.
 
 **Last 10 User Messages and any pending HUMAN messages**
-1.  **User:** URGENT FINAL APPLE-SUBMISSION FIX... remove the broken subscription purchase blocker... (IN PROGRESS)
-2.  **User:** Yes proceed (to submit Build 11) (COMPLETED)
-3.  **User:** FINAL ROOT-CAUSE FIX DEMAND — SALES PIPELINE (AGENT + ADMIN)... Assume MULTIPLE ROOT CAUSES... (COMPLETED)
-4.  **User:** Yes (to submit Build 10) (COMPLETED)
-5.  **User:** FINAL BUILD REQUIREMENT — this must be the last pipeline fix... Fix only what is still broken... (COMPLETED)
-6.  **User:** Proceed with the new build upload (Build 8). I will verify the updated iOS runtime behavior... (COMPLETED)
-7.  **User:** CRITICAL: Pipeline issue exists ONLY on AGENT role... This is a role-specific regression... (COMPLETED)
-8.  **User:** I approve and would like you to proceed (to submit Build 6). (COMPLETED)
-9.  **User:** Good — that is a plausible root cause. But do not stop at editing app.json... I need you to fully validate... (COMPLETED)
-10. **User:** URGENT: Major production/TestFlight blocker in AgentRoute AI CRM... Creating a new lead fails... Sales Pipeline fails... (COMPLETED)
+1.  **User Request**: Fix an auth bug where a 401 error appears for logged-out users. (Completed)
+2.  **User Request**: Start a major emergency-safe engineering task: improve session security, dashboard professionalism, and UI performance without regressions. (In Progress)
+3.  **User Request**: (Part of the above) Add a Priority Actions section to the dashboard. (In Progress)
+4.  **User Request**: (Part of the above) Harden UI and performance, removing duplicates and flicker. (Upcoming)
+5.  **User Request**: (Part of the above) Perform a mandatory click-through audit of all interactive elements. (Upcoming)
+6.  **User Request**: (Part of the above) The request included specific rules: additive changes only, no duplicates, no dead buttons. (Guiding Principle)
+7.  **User Request**: The final user message of the last session was the large request detailing the 3 high-value upgrades (Security, Dashboard, Performance).
 
 **Project Health Check:**
-*   **Broken:** The subscription purchase flow is intentionally being disabled as it is non-functional.
-*   **Mocked:** No mocked responses are in use.
+-   **Broken**: None.
+-   **Mocked**: None. The RevenueCat flow is real but can only be fully tested on a device.
 
 **3rd Party Integrations**
-*   Standard Expo libraries for native functionality.
-*   Apple In-App Purchase (IAP) is the feature being disabled.
+-   **RevenueCat**: For managing In-App Purchases. Uses a User-provided API Key ( SDK).
 
 **Testing status**
-*   **Testing agent used:** YES ( for backend checks).
-*   **Troubleshoot agent used:** NO.
-*   **Test files created:** None.
-*   **Known regressions:** The Sales Pipeline feature has had multiple regressions related to state management and environment configuration, which have been iteratively fixed.
+-   **Testing agent used after significant changes**: YES,  was used multiple times to identify and verify fixes for deployment blockers.
+-   **Troubleshoot agent used after agent stuck in loop**: NO.
+-   **Test files created**: None.
+-   **Known regressions**: A major login failure was introduced and fixed (due to soft-deleted users in a forked environment). The agent also introduced a syntax error while editing the dashboard, which was immediately fixed.
 
 **Credentials to test flow:**
-*   **Agent:**  / 
-*   **Admin:**  / 
+-   **Admin**:  / 
+-   **Manager**:  / 
+-   **Agent**:  / 
 
 **What agent forgot to execute**
-The agent has followed all user instructions diligently. The current task of removing the subscription flow is still in progress and requires final verification.
+The agent has not forgotten any tasks but is in the very early stages of a large, multi-part request from the user. The Priority Actions feature on the dashboard has its UI shell but lacks the underlying logic, which is the immediate next step. The other parts of the user's request (session security, performance hardening, and the final click-through audit) are still pending.

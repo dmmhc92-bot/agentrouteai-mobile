@@ -25,7 +25,7 @@ import time
 import sys
 
 # Test Configuration
-BASE_URL = "https://app-store-ready-26.preview.emergentagent.com/api"
+BASE_URL = "https://secure-dashboard-32.preview.emergentagent.com/api"
 
 # Test Credentials from review request
 TEST_CREDENTIALS = {
