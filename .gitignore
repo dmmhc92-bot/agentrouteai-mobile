@@ -84,3 +84,7 @@ android-sdk/
 .env.local
 .env.production
 .env.*.local
+-e 
+# Environment files
+*.env
+*.env.*
