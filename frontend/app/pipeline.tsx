@@ -237,12 +237,13 @@ export default function PipelineScreen() {
   // ===== REFRESH ON SCREEN FOCUS (ENSURES DATA IS CURRENT) =====
   useFocusEffect(
     useCallback(() => {
-      // Refresh data when screen comes into focus (e.g., after creating a lead)
-      if (isAuthenticated && !isInitialLoad) {
+      // Always refresh data when screen comes into focus
+      // This ensures new leads appear immediately after creation
+      if (isAuthenticated) {
         console.log('[Pipeline] Screen focused - refreshing data');
         fetchPipeline(true);
       }
-    }, [isAuthenticated, isInitialLoad, fetchPipeline])
+    }, [isAuthenticated, fetchPipeline])
   );
 
   // ===== TEAM VIEW CHANGE HANDLER =====
