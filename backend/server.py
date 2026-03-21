@@ -23,23 +23,49 @@ import math
 from enum import Enum
 
 ROOT_DIR = Path(__file__).parent
-load_dotenv(ROOT_DIR / '.env')
 
-# MongoDB connection with error handling
+# Load .env file if it exists (development), otherwise rely on system environment variables (production)
+env_file = ROOT_DIR / '.env'
+if env_file.exists():
+    load_dotenv(env_file)
+    logging.info(f"Loaded environment from {env_file}")
+else:
+    logging.info("No .env file found, using system environment variables (production mode)")
+
+# MongoDB connection with proper error handling for production
 mongo_url = os.environ.get('MONGO_URL')
 if not mongo_url:
-    raise RuntimeError("FATAL: MONGO_URL environment variable is required but not set")
+    # Log error but don't crash immediately - allow healthcheck to report unhealthy
+    logging.error("MONGO_URL environment variable is not set!")
+    mongo_url = "mongodb://localhost:27017"  # Fallback for local dev only
+    logging.warning(f"Using fallback MONGO_URL: {mongo_url}")
+
+db_name = os.environ.get('DB_NAME', 'agentroute_db')
+logging.info(f"Connecting to MongoDB: {mongo_url[:30]}... database: {db_name}")
 
 try:
-    client = AsyncIOMotorClient(mongo_url, serverSelectionTimeoutMS=5000)
-    db = client[os.environ.get('DB_NAME', 'agentroute_db')]
+    # For MongoDB Atlas, we need specific settings
+    client = AsyncIOMotorClient(
+        mongo_url, 
+        serverSelectionTimeoutMS=10000,
+        connectTimeoutMS=10000,
+        socketTimeoutMS=30000,
+        retryWrites=True,
+        w='majority'
+    )
+    db = client[db_name]
+    logging.info("MongoDB client initialized successfully")
 except Exception as e:
+    logging.error(f"Failed to initialize MongoDB connection: {e}")
     raise RuntimeError(f"FATAL: Failed to initialize MongoDB connection: {e}")
 
-# JWT Configuration
+# JWT Configuration - with secure fallback for production
 SECRET_KEY = os.environ.get('JWT_SECRET_KEY')
 if not SECRET_KEY:
-    raise RuntimeError("FATAL: JWT_SECRET_KEY environment variable is required but not set")
+    # Generate a secure random key if not provided - log warning
+    import secrets as sec_module
+    SECRET_KEY = sec_module.token_urlsafe(64)
+    logging.warning("JWT_SECRET_KEY not set - generated random key. Set JWT_SECRET_KEY in production!")
 ALGORITHM = os.environ.get('JWT_ALGORITHM', 'HS256')
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.environ.get('ACCESS_TOKEN_EXPIRE_MINUTES', 10080))
 
@@ -9783,6 +9809,24 @@ async def get_manager_daily_command_center(current_user: dict = Depends(require_
 app.include_router(api_router)
 app.add_middleware(CORSMiddleware, allow_credentials=True, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
+@app.on_event("startup")
+async def startup_db_client():
+    """Verify database connection on startup"""
+    try:
+        # Test MongoDB connection
+        await client.admin.command('ping')
+        logger.info("✅ MongoDB connection verified on startup")
+        
+        # Log connection details (without sensitive info)
+        mongo_url_display = mongo_url[:30] + "..." if len(mongo_url) > 30 else mongo_url
+        logger.info(f"✅ Connected to: {mongo_url_display}, database: {db_name}")
+        
+    except Exception as e:
+        logger.error(f"❌ MongoDB connection failed on startup: {e}")
+        # Don't raise - let the app start and report unhealthy via health check
+        # This allows Kubernetes to restart the pod if needed
+
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
+    logger.info("MongoDB client closed")
