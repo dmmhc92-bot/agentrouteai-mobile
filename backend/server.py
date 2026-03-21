@@ -266,6 +266,7 @@ class LeadCreate(BaseModel):
     address: Optional[str] = ""
     notes: Optional[str] = ""
     source: Optional[str] = "manual"
+    stage: Optional[str] = None  # Allow stage to be specified during creation
     referral_source: Optional[str] = None
     referred_by_lead_id: Optional[str] = None
 
@@ -2533,6 +2534,19 @@ async def get_leads(current_user: dict = Depends(get_current_user)):
 @api_router.post("/leads", response_model=LeadResponse)
 async def create_lead(lead_data: LeadCreate, current_user: dict = Depends(get_current_user)):
     lead_id = str(uuid.uuid4())
+    
+    # Use provided stage if valid, otherwise default to new_lead
+    # This enables stage-aware lead creation from pipeline categories
+    valid_stages = [
+        "new_lead", "new", "contacted", "follow_up", 
+        "appointment_set", "appointment_scheduled",
+        "soa_completed", "policy_submitted", "application_submitted",
+        "underwriting_review", "additional_requirements",
+        "approved", "closed_won", "policy_issued", "policy_placed",
+        "commission_pending", "commission_paid", "closed_lost"
+    ]
+    initial_stage = lead_data.stage if lead_data.stage in valid_stages else "new_lead"
+    
     lead_doc = {
         "id": lead_id,
         "name": lead_data.name,
@@ -2541,7 +2555,7 @@ async def create_lead(lead_data: LeadCreate, current_user: dict = Depends(get_cu
         "address": lead_data.address or "",
         "notes": lead_data.notes or "",
         "source": lead_data.source or "manual",
-        "stage": "new_lead",
+        "stage": initial_stage,
         "underwriting_status": "not_submitted",
         "referral_source": lead_data.referral_source,
         "referred_by_lead_id": lead_data.referred_by_lead_id,
@@ -2559,10 +2573,12 @@ async def create_lead(lead_data: LeadCreate, current_user: dict = Depends(get_cu
     }
     await db.leads.insert_one(lead_doc)
     
+    logger.info(f"Lead created: id={lead_id}, name={lead_data.name}, stage={initial_stage}")
+    
     if lead_data.address:
         await geocode_address(lead_id, lead_data.address)
     
-    await log_activity(current_user["id"], "lead_created", f"Created lead: {lead_data.name}", lead_id)
+    await log_activity(current_user["id"], "lead_created", f"Created lead: {lead_data.name} in stage: {initial_stage}", lead_id)
     
     return LeadResponse(**{**lead_doc, "latitude": None, "longitude": None})
 

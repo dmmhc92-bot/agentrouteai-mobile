@@ -169,7 +169,7 @@ export default function StageDetailScreen() {
             </Text>
             <TouchableOpacity
               style={styles.addButton}
-              onPress={() => router.push('/lead/new')}
+              onPress={() => router.push(`/lead/new?stage=${stageKey}`)}
             >
               <Ionicons name="add" size={20} color="#0A0A0F" />
               <Text style={styles.addButtonText}>Add New Lead</Text>

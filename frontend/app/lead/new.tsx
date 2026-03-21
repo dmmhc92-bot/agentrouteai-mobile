@@ -11,7 +11,7 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../../src/services/api';
@@ -20,10 +20,37 @@ import { offlineStorage } from '../../src/services/offlineStorage';
 import { syncService } from '../../src/services/syncService';
 import SyncStatusIndicator from '../../src/components/SyncStatusIndicator';
 
+// Stage configuration for display labels
+const STAGE_LABELS: Record<string, string> = {
+  new_lead: 'New Lead',
+  new: 'New',
+  contacted: 'Contacted',
+  follow_up: 'Follow Up',
+  appointment_set: 'Appointment Set',
+  appointment_scheduled: 'Appointment Set',
+  soa_completed: 'SOA Completed',
+  policy_submitted: 'Policy Submitted',
+  application_submitted: 'Application Submitted',
+  underwriting_review: 'Underwriting',
+  additional_requirements: 'Requirements',
+  approved: 'Approved',
+  closed_won: 'Closed Won',
+  policy_issued: 'Policy Issued',
+  policy_placed: 'Policy Placed',
+  commission_pending: 'Commission Pending',
+  commission_paid: 'Commission Paid',
+  closed_lost: 'Closed Lost',
+};
+
 export default function NewLeadScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { isOnline } = useNetwork();
+  
+  // Get stage from URL params - this enables stage-aware lead creation
+  const { stage: stageParam } = useLocalSearchParams<{ stage?: string }>();
+  const targetStage = stageParam && STAGE_LABELS[stageParam] ? stageParam : null;
+  const stageLabel = targetStage ? STAGE_LABELS[targetStage] : null;
 
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -41,13 +68,20 @@ export default function NewLeadScreen() {
 
     setIsLoading(true);
     
-    const leadData = {
+    // Build lead data - include stage if creating from a specific category
+    const leadData: any = {
       name: name.trim(),
       phone: phone.trim(),
       email: email.trim(),
       address: address.trim(),
       notes: notes.trim(),
     };
+    
+    // CRITICAL: Include stage if creating from a specific pipeline category
+    if (targetStage) {
+      leadData.stage = targetStage;
+      console.log(`[NewLead] Creating lead in stage: ${targetStage} (${stageLabel})`);
+    }
 
     try {
       if (isOnline) {
@@ -58,11 +92,20 @@ export default function NewLeadScreen() {
         if (!lead || !lead.id) {
           throw new Error('Lead creation failed - no ID returned');
         }
-        if (!lead.stage) {
-          console.warn('[Lead] Created without stage - backend issue');
+        
+        // Verify stage was correctly set
+        if (targetStage && lead.stage !== targetStage) {
+          console.warn(`[NewLead] Stage mismatch! Expected: ${targetStage}, Got: ${lead.stage}`);
+        } else {
+          console.log(`[NewLead] Lead created successfully with stage: ${lead.stage}`);
         }
         
-        router.replace(`/lead/${lead.id}`);
+        // Navigate back to the stage detail screen to see the new lead
+        if (targetStage) {
+          router.replace(`/stage/${targetStage}`);
+        } else {
+          router.replace(`/lead/${lead.id}`);
+        }
       } else {
         // Offline mode - save locally and queue for sync
         await offlineStorage.queueLeadCreate(leadData);
@@ -103,6 +146,11 @@ export default function NewLeadScreen() {
     }
   };
 
+  // Dynamic title based on whether creating into a specific stage
+  const screenTitle = targetStage 
+    ? `New Lead - ${stageLabel}` 
+    : 'New Lead';
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -113,7 +161,7 @@ export default function NewLeadScreen() {
           <Ionicons name="close" size={24} color="#FFFFFF" />
         </TouchableOpacity>
         <View style={styles.titleContainer}>
-          <Text style={styles.title}>New Lead</Text>
+          <Text style={styles.title} numberOfLines={1}>{screenTitle}</Text>
           {!isOnline && (
             <SyncStatusIndicator status="pending" compact />
           )}
@@ -132,6 +180,16 @@ export default function NewLeadScreen() {
           )}
         </TouchableOpacity>
       </View>
+
+      {/* Stage indicator banner when creating into specific category */}
+      {targetStage && (
+        <View style={styles.stageBanner}>
+          <Ionicons name="layers" size={16} color="#3B82F6" />
+          <Text style={styles.stageBannerText}>
+            Creating in: <Text style={styles.stageBannerStage}>{stageLabel}</Text>
+          </Text>
+        </View>
+      )}
 
       <ScrollView
         style={styles.scrollView}
@@ -301,5 +359,21 @@ const styles = StyleSheet.create({
   },
   textArea: {
     height: '100%',
+  },
+  stageBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1E3A5F',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    gap: 8,
+  },
+  stageBannerText: {
+    color: '#94A3B8',
+    fontSize: 14,
+  },
+  stageBannerStage: {
+    color: '#3B82F6',
+    fontWeight: '600',
   },
 });
