@@ -21,7 +21,7 @@ from datetime import datetime
 import time
 
 # Backend URL from frontend/.env
-BASE_URL = "https://secure-dashboard-32.preview.emergentagent.com/api"
+BASE_URL = "https://pipeline-proof.preview.emergentagent.com/api"
 
 # Test Credentials
 TEST_CREDENTIALS = {

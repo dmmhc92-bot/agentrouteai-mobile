@@ -1,150 +1,135 @@
-**original_problem_statement:**
-The initial goal was to disable a broken subscription feature to pass an App Store review. This evolved into a series of critical tasks:
-1.  **Reinstate Subscriptions:** Implement a real, working 0/month Apple auto-renewable subscription using RevenueCat, ensuring the full purchase and restore flow is functional for App Store review.
-2.  **Fix Bundle ID:** A major issue arose where the build system was ignoring the  configuration and using an incorrect, auto-generated bundle ID. The user provided multiple corrections, finally settling on  as the single source of truth. This required extensive auditing and fixing across the codebase and configuration files.
-3.  **Resolve Deployment Errors:** Fix deployment blockers identified by the deployment agent, including an N+1 query, missing environment variables, and hardcoded URLs.
-4.  **Fix Auth Bug:** Correct an issue where a 401 error from  was surfaced as a console error for logged-out users upon app launch.
-5.  **Final Polish and Hardening (Current Task):** Implement a set of emergency-safe engineering improvements focusing on security, dashboard professionalism, and UI performance, with a strict rule of additive changes only and no regressions. This includes:
-    *   **Protective session security:** Add/tighten app auto-lock and biometric re-entry.
-    *   **Dashboard professionalism:** Add a Priority Actions area.
-    *   **UI/performance hardening:** Audit and fix duplicate renders, flicker, and slow responses, and perform a full click-through audit of all interactive elements.
+<analysis>Here is the handover summary based on the LLM message history:
 
-**User's preferred language**: English
+**original_problem_statement:** The user requested a complete production-readiness audit and bug fixing for the final iOS TestFlight/App Store build. Critical requirements included locking the iOS bundle identifier, fixing a development-only password reset flow to use real production emails, resolving EAS build credential/certificate issues, and fundamentally fixing a No cases data synchronization bug in the Sales Pipeline where newly created leads were not appearing in the stage views in the live mobile runtime. 
 
-**what currently exists?**
-The application is a full-stack Expo (React Native) and FastAPI mobile CRM called AgentRoute AI. The backend uses MongoDB. Core features include user authentication (with admin, manager, and agent roles), lead management, a sales pipeline, a calendar, and an AI coach.
+PRODUCT REQUIREMENTS:
+- Do NOT change the bundle ID ().
+- Forgot Password flow must use actual email delivery via Resend (not dev tokens).
+- Entire app must use a Single Source of Truth for data (Pipeline counts must perfectly match actual DB records).
 
-A fully functional RevenueCat integration for a real Apple In-App Purchase subscription () has been implemented, replacing a previous Free Access mock. The critical issue of the build system using the wrong bundle ID has been resolved at the code level, with  now enforced in all relevant configuration files. Various deployment blockers and an auth-related startup bug have also been fixed.
+**User's preferred language**: English (INSTRUCT next agent to respond in English only).
 
-**Last working item**:
-- Last item agent was working: The agent began the Final Polish and Hardening task. It started by implementing the Dashboard professionalism requirement, adding a UI shell for a new Priority Actions section to the dashboard screen (). While doing this, it inadvertently introduced and then fixed a syntax error in .
-- Status: IN PROGRESS
-- Agent Testing Done: N
-- Which testing method agent to use? Frontend testing agent. After completing the Priority Actions feature, the agent should perform a visual check with the screenshot tool and then conduct a full click-through audit as requested by the user.
-- User Testing Done: N
+**what currently exists?** 
+A React Native (Expo) mobile application with a FastAPI backend and MongoDB database. The app features role-based authentication (Admin, Manager, Agent), lead capture, a pipeline stage management system, an offline-capable signature capture tool, and subscription handling via RevenueCat.
+
+**Last working item**: 
+    - Last item agent was working: Providing hard proof to the user that existing database records map accurately to frontend pipeline stages to validate the Single Source of Truth fixes before triggering the final EAS build (Version 1.0.5). The agent was in the middle of executing bash scripts to dump actual user records and stage counts to show the user.
+    - Status: IN PROGRESS
+    - Agent Testing Done: Y
+    - Which testing method agent to use? manual testing by python -c / bash scripts to extract MongoDB records and API responses to prove data consistency to the user.
+    - User Testing Done: N (User is waiting for the proof before authorizing the EAS build).
 
 **All Pending/In progress Issue list**:
-There are no pending *issues* at the moment. The agent's last action was to fix a syntax error it had just introduced. The pending work is the continuation of the in-progress tasks.
+  Issue 1: Pipeline Stage UI No Cases Bug in Live Mobile Runtime (P0)
+     - Attempted fixes: Unification of backend queries (ensuring  and  use the exact same  logic for  and ). Added missing stage keys to frontend  array. Added  to trigger frontend refetching. 
+     - Next debug checklist: Provide the user with the exact requested proof: Show 1 real record -> show its exact stage value in DB -> show which pipeline section it maps to -> confirm count updates. After user confirms, generate the EAS Build.
+     - Why fix this issue and what will be achieved with the fix? It is the absolute final blocker. The user's live TestFlight app was failing to show newly created leads in the pipeline UI despite them being in the DB.
+     - Status: USER VERIFICATION PENDING
+     - Is recurring issue? Y (surfaced multiple times during live mobile testing)
+     - Should Test frontend/backend/both after fix? Both
+     - Blocked on other issue: None.
 
-**In progress Task List**:
-- Task 1: **Complete Dashboard Professionalism Upgrade (P0)**
-  - **Where to resume**: The UI shell for the Priority Actions section is present in . The next step is to implement the logic to fetch and display meaningful data, such as leads needing follow-up, stale leads, or next best action. This may require creating a new backend endpoint.
-  - **What will be achieved with this?**: A more professional and actionable dashboard for users.
-  - **Status**: IN PROGRESS
-  - **Should Test frontend/backend/both after fix?**: Both
+**In progress Task List**: 
+  Task 1: Generate Final iOS TestFlight Build
+     - Where to resume: Await user approval after providing the pipeline data proof, then trigger An Expo user account is required to proceed.
+Either log in with eas login or set the EXPO_TOKEN environment variable if you're using EAS CLI on CI (Learn more: https://docs.expo.dev/accounts/programmatic-access/) (Version 1.0.5).
+     - What will be achieved with this? Deployment of the fixed, production-ready app to TestFlight.
+     - Status: BLOCKED (Waiting on user approval of the pipeline fix proof).
+     - Should Test frontend/backend/both after fix? NA
+     - Blocked on something: Issue 1 proof verification.
 
-**Upcoming and Future Tasks**
-- **Upcoming Tasks**:
-    - **Task 1: Implement Protective Session Security (P1)**
-        - **Action**: Enhance the existing  to add/tighten auto-lock after a period of inactivity and improve the optional biometric re-entry flow. Ensure the session token is stored only in SecureStore.
-    - **Task 2: UI/Performance Hardening (P2)**
-        - **Action**: Audit key components (, , ) to remove duplicate render paths, repeated API fetches, and UI flicker. Improve tap responsiveness and ensure all touch targets meet mobile standards.
-    - **Task 3: Mandatory Click-Through Audit (P3)**
-        - **Action**: After all other improvements are complete, manually test every single visible interactive element (buttons, cards, links, menu items) across all screens to ensure it routes correctly and performs the intended action without errors. Fix or hide any non-functional elements.
+**Upcoming and Future Tasks**:
+    Upcoming Tasks:
+    - P0: Provide the console/DB output proving pipeline stage mapping to the user.
+    - P0: Trigger EAS iOS Build (Version 1.0.5).
 
-- **Future Tasks**:
-    - **Task 1: Implement Pagination (P4)**
-        - **Action**: The deployment agent warned about unbounded queries. Implement pagination (using  and ) for list-based API endpoints like  and  in  to ensure performance at scale.
+    Future Tasks:
+    - None explicitly requested beyond stabilizing the current release.
 
-**Completed work in this session**
-- **Subscription Flow Overhaul:**
-  - Disabled a broken, non-functional subscription UI.
-  - Implemented a real Apple IAP subscription flow using the RevenueCat SDK (). Created , , and the paywall screen .
-- **Critical Configuration Fixes:**
-  - Resolved a recurring and critical issue with the iOS bundle ID. Audited and corrected all configuration files (, , and comments in source code) to enforce the use of .
-- **Deployment Readiness:**
-  - Fixed an N+1 query in the pipeline API endpoint in  by batch-fetching user data.
-  - Removed hardcoded preview URLs from  and other frontend files (, , etc.).
-  - Corrected a malformed  file that was blocking  files.
-- **Bug Fixes:**
-  - Resolved a critical login failure by restoring soft-deleted test users in the database.
-  - Fixed an auth bug where logged-out users would see a 401 error in the console on app launch by improving error handling in  and .
+**Completed work in this session**:
+- Verified and Locked Bundle ID () (DONE)
+- Rebuilt Forgot Password flow to use Resend API instead of dev tokens ,  (DONE)
+- Fixed EAS Certificate Revocation issue by allowing EAS CLI to auto-generate fresh distribution certificates and provisioning profiles (DONE)
+- Fixed Signature Capture strictness by lowering  to 3 in  (DONE)
+- Unified backend query filtering for Leads and Pipeline to ensure data parity  (DONE)
+- Implemented  for automatic pipeline refreshing  (DONE)
 
-**Earlier issues found/mentioned but not fixed**
-- **Issue 1: Lack of Pagination in Core Endpoints**
-  - **Debug checklist**: Review API endpoints in  that return lists of data (e.g., leads, appointments). They currently fetch all documents, which is not scalable. Implement  and  query parameters to paginate results.
-  - **Why to solve this issue and what will be achieved with this?**: Prevents backend timeouts and high memory usage, and improves frontend load times as the database grows.
-  - **Should Test frontend/backend/both after fix**: Both. The backend needs to be tested for correct pagination, and the frontend will need to be updated to handle loading more data (e.g., via infinite scroll).
-  - **Is recurring issue?** N
+**Earlier issues found/mentioned but not fixed**:
+   - None. All discovered issues have been systematically addressed, though the pipeline UI sync requires final user validation.
 
-**Known issue recurrence from previous fork**
-- None.
+**Known issue recurrence from previous fork**:
+  - Issue recurrence in previous fork: EAS Build Pipeline/Credential Failures
+  - Recurrence count: 2
+  - Status: RESOLVED (Fresh certificates were successfully generated and assigned to the project).
+  Note: Do NOT mess with EAS credentials, iOS bundle identifiers, or  remote configurations anymore. They are currently working.
 
-**Code Architecture**
+**Code Architecture**:
+- : Expo React Native app using  for file-based routing.
+- : React Contexts (Auth, Subscriptions, Notifications).
+- : FastAPI monolithic backend handling auth, leads, pipeline, and email logic.
+- : Holds MongoDB connections and Resend API keys.
 
+**Key Technical Concepts**:
+React Native, Expo, EAS Build CLI, FastAPI, MongoDB, JWT Authentication, Resend Email API, RevenueCat (In-App Subscriptions).
 
-**Key Technical Concepts**
--   **Frontend**: Expo (React Native), TypeScript, Expo Router (file-based routing).
--   **Backend**: FastAPI (Python), Motor (async MongoDB driver).
--   **Database**: MongoDB.
--   **State Management**: React Context API (, , ).
--   **IAP**: RevenueCat () for managing Apple In-App Purchases.
--   **Deployment**: Emergent Platform (containerized deployment to Kubernetes).
+**key DB schema**:
+  - : {id, email, password_hash, role, reset_token, organization_id, manager_id}
+  - : {id, name, phone, email, stage, created_by_user, assigned_to_user}
 
-**key DB schema**
--   **users**: { uid=0(root) gid=0(root) groups=0(root), , , , , , ,  }
--   **leads**: { uid=0(root) gid=0(root) groups=0(root), , , , ,  }
--   **appointments**: { uid=0(root) gid=0(root) groups=0(root), , , ,  }
+**changes in tech stack**:
+  - Integrated  Python SDK into the backend for production transactional emails.
 
-**changes in tech stack**
--   Added  to the frontend for RevenueCat integration.
-
-**All files of reference**
--   ****: The source of truth for the app's version and the critical iOS/Android bundle identifiers ().
--   ****: Manages user authentication state, session tokens, and the initial auth bootstrap logic. Recently fixed to handle logged-out states gracefully.
--   ****: New file that provides RevenueCat subscription status () to the entire app.
--   ****: New file that encapsulates all RevenueCat API calls, configuration (API key, product IDs), and logic.
--   ****: The new paywall screen.
--   ****: UI was updated to show real subscription status and provide Upgrade and Restore Purchases buttons.
--   ****: Recently modified to add a shell for the Priority Actions section. This is the primary file for the current in-progress task.
--   ****: The entire backend. Recently optimized to fix an N+1 query in the pipeline endpoint.
+**All files of reference**:
+  -  (Updated to include Resend API logic, unified Lead/Pipeline  DB queries).
+  -  (Added ).
+  -  &  (Completely rewritten for production flow).
+  -  (Modified point validation logic).
+  -  (Modified  array and added  hooks).
 
 **Areas that need refactoring**:
--   The user's current request is a major hardening and refactoring task, focusing on security, UI performance, and dashboard improvements.
--   API endpoints that return lists (e.g., leads, appointments) need to be refactored to support pagination.
+  -  is highly monolithic (~10,000 lines). Once the immediate build crisis is over, routes should be abstracted.
 
-**key api endpoints**
--   
--   
--   
--   
--   
+**key api endpoints**:
+  -  (Sends email via Resend)
+  - 
+  -  (Aggregates stage counts)
+  -  (Fetches full lead lists)
 
-**Critical Info for New Agent**
--   **Bundle ID is Sacred**: The iOS bundle ID **MUST** be . This was the source of significant back-and-forth. The build platform has previously shown a tendency to ignore  and auto-generate an ID. Be extremely vigilant that this exact ID is used for any builds.
--   **Additive Changes Only**: The user has strictly mandated additive changes only. Do not refactor, rename, or rebuild core structures. Improve what exists safely.
--   **No Broken UI**: Any visible, clickable element must be fully functional. If a feature is half-implemented, it should be hidden or disabled. No placeholders.
--   **Current Task**: You are in the middle of a Professionalism and Hardening phase. The first part (Dashboard Priority Actions) is in progress. You must complete it, then move on to session security and performance hardening, and finally perform a full click-through audit of the app.
+**Critical Info for New Agent**: 
+1. **DO NOT CHANGE THE BUNDLE ID OR CREDENTIALS:** The user is highly sensitive to build configurations breaking. Leave  and  bundle IDs exactly as they are.
+2. **USER NEEDS HARD PROOF:** The user explicitly requested: *Take an EXISTING record... Show its exact stage value... Show which pipeline section it maps to... Confirm section count increases.* Do exactly this before asking if you can trigger the build.
+3. **DO NOT USE FIREBASE:** The user rejected Firebase auth. The system relies purely on the custom JWT/MongoDB implementation.
 
-**documents and test reports created in this job**
--   The agent has been reading and updating  as per the system prompt, but no new formal documents have been generated.
+**documents and test reports created in this job**:
+  -  (Updated by  during pipeline and auth tests).
 
-**Last 10 User Messages and any pending HUMAN messages**
-1.  **User Request**: Fix an auth bug where a 401 error appears for logged-out users. (Completed)
-2.  **User Request**: Start a major emergency-safe engineering task: improve session security, dashboard professionalism, and UI performance without regressions. (In Progress)
-3.  **User Request**: (Part of the above) Add a Priority Actions section to the dashboard. (In Progress)
-4.  **User Request**: (Part of the above) Harden UI and performance, removing duplicates and flicker. (Upcoming)
-5.  **User Request**: (Part of the above) Perform a mandatory click-through audit of all interactive elements. (Upcoming)
-6.  **User Request**: (Part of the above) The request included specific rules: additive changes only, no duplicates, no dead buttons. (Guiding Principle)
-7.  **User Request**: The final user message of the last session was the large request detailing the 3 high-value upgrades (Security, Dashboard, Performance).
+**Last 10 User Messages and any pending HUMAN messages**:
+ 1. (Latest) Demands proof using REAL DATA showing 1 real record maps to 1 stage and increases the count before generating the build. (PENDING PROOF)
+ 2. Demands confirmation that the fix applies to the FULL SYSTEM (unified data system), not just the pipeline screen. (COMPLETED)
+ 3. Demands enforcement of a single unified data system where the pipeline is purely data-driven by DB counts. (COMPLETED)
+ 4. Demands unification of the read/write paths for pipeline data because counts are out of sync. (COMPLETED)
+ 5. Gives the go-ahead for TestFlight build generation. (ABORTED BY SUBSEQUENT BUGS)
+ 6. Demands confirmation of 7 system-level guarantees (Single source of truth, stage write, count calculation, state fix, API response, role filter, no false success). (COMPLETED)
+ 7. Refuses to generate build yet, demands a full LIVE MOBILE FLOW VERIFICATION of the pipeline data flow. (COMPLETED/ONGOING)
+ 8. Acknowledges Pipeline Fix, tells agent to stop returning PASS, demands a real mobile runtime fix. (COMPLETED)
+ 9. Engineering command to update version to 1.0.5 and build. (COMPLETED)
+ 10. Commands to proceed immediately with new iOS TestFlight build. (COMPLETED)
 
-**Project Health Check:**
--   **Broken**: None.
--   **Mocked**: None. The RevenueCat flow is real but can only be fully tested on a device.
+**Project Health Check**:
+- Backend APIs: Functional
+- Frontend Preview: Functional
+- Live Mobile Sync: Under strict user scrutiny (Pipeline UI state vs DB parity).
 
-**3rd Party Integrations**
--   **RevenueCat**: For managing In-App Purchases. Uses a User-provided API Key ( SDK).
+**3rd Party Integrations**:
+ - OpenAI GPT-4o — uses Emergent LLM Key
+ - Resend (Emails) — requires User API Key ( - successfully configured)
+ - RevenueCat (Subscriptions) — uses User configuration
 
-**Testing status**
--   **Testing agent used after significant changes**: YES,  was used multiple times to identify and verify fixes for deployment blockers.
--   **Troubleshoot agent used after agent stuck in loop**: NO.
--   **Test files created**: None.
--   **Known regressions**: A major login failure was introduced and fixed (due to soft-deleted users in a forked environment). The agent also introduced a syntax error while editing the dashboard, which was immediately fixed.
+**Testing status**:
+  - Testing agent used after significant changes: YES ( ran with 100% success).
+  - Troubleshoot agent used after agent stuck in loop: NO
+  - Test files created: N/A
+  - Known regressions: Pipeline display UI de-sync (currently being proven fixed).
 
-**Credentials to test flow:**
--   **Admin**:  / 
--   **Manager**:  / 
--   **Agent**:  / 
-
-**What agent forgot to execute**
-The agent has not forgotten any tasks but is in the very early stages of a large, multi-part request from the user. The Priority Actions feature on the dashboard has its UI shell but lacks the underlying logic, which is the immediate next step. The other parts of the user's request (session security, performance hardening, and the final click-through audit) are still pending.
+**What agent forgot to execute**:
+The agent was in the middle of executing a bash command to pull the exact MongoDB record and prove to the user that it maps to the correct UI stage. The next agent must format this DB proof and present it to the user immediately to unblock the final iOS build.</analysis>

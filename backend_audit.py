@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Dict, Any, Optional
 
 # Configuration
-BACKEND_URL = "https://secure-dashboard-32.preview.emergentagent.com/api"
+BACKEND_URL = "https://pipeline-proof.preview.emergentagent.com/api"
 
 # Test credentials
 CREDENTIALS = {

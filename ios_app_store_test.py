@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 import uuid
 
 # Test Configuration
-BASE_URL = "https://secure-dashboard-32.preview.emergentagent.com/api"
+BASE_URL = "https://pipeline-proof.preview.emergentagent.com/api"
 TIMEOUT = 30
 
 # Test Credentials (provided in review request)

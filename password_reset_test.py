@@ -20,7 +20,7 @@ import time
 from pymongo import MongoClient
 
 # Backend URL from frontend .env
-BASE_URL = "https://secure-dashboard-32.preview.emergentagent.com/api"
+BASE_URL = "https://pipeline-proof.preview.emergentagent.com/api"
 
 # Test email from review request
 TEST_EMAIL = "dmmhc92@gmail.com"
