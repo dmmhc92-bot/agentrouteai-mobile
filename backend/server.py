@@ -1115,19 +1115,44 @@ async def register(user_data: UserCreate):
 
 @api_router.post("/auth/login", response_model=TokenResponse)
 async def login(credentials: dict):
-    email = credentials.get("email", "").lower()
+    # Normalize email: lowercase and strip whitespace
+    raw_email = credentials.get("email", "")
+    email = raw_email.lower().strip()
     password = credentials.get("password", "")
     
+    # Log login attempt for diagnostics
+    logger.info(f"Login attempt: email='{email}' (raw='{raw_email}', len={len(email)})")
+    
+    # Find user by email
     user = await db.users.find_one({"email": email, "deleted_at": None})
-    if not user or not verify_password(password, user["password_hash"]):
+    
+    if not user:
+        logger.warning(f"Login failed: user not found for email='{email}'")
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    
+    logger.info(f"User found: id={user['id'][:8]}..., email='{user['email']}', has_hash={bool(user.get('password_hash'))}")
+    
+    # Verify password
+    try:
+        password_valid = verify_password(password, user["password_hash"])
+    except Exception as e:
+        logger.error(f"Password verification error for email='{email}': {e}")
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    
+    if not password_valid:
+        logger.warning(f"Login failed: password mismatch for email='{email}'")
         raise HTTPException(status_code=401, detail="Invalid email or password")
     
     # Check if user is active
     if not user.get("is_active", True):
+        logger.warning(f"Login blocked: account deactivated for email='{email}'")
         raise HTTPException(status_code=403, detail="Account is deactivated. Contact your administrator.")
     
     await db.users.update_one({"id": user["id"]}, {"$set": {"last_login": datetime.utcnow()}})
     await log_activity(user["id"], "login", "User logged in")
+    
+    # Log successful login
+    logger.info(f"Login SUCCESS: email='{email}', role='{user.get('role', 'agent')}', user_id='{user['id'][:8]}...'")
     
     access_token = create_access_token(data={"sub": user["id"]})
     return TokenResponse(
