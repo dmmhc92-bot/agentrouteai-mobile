@@ -1,6 +1,7 @@
 {
   "cli": {
-    "version": ">= 5.0.0"
+    "version": ">= 5.0.0",
+    "appVersionSource": "local"
   },
   "build": {
     "development": {
@@ -18,9 +19,11 @@
     },
     "production": {
       "distribution": "store",
+      "autoIncrement": false,
       "ios": {
         "resourceClass": "m-medium",
-        "credentialsSource": "remote"
+        "credentialsSource": "remote",
+        "autoIncrement": false
       },
       "android": {
         "buildType": "apk"
