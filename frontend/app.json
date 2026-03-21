@@ -11,7 +11,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "app.emergent.agentrouteai2dd9b4e9",
-      "buildNumber": "15",
+      "buildNumber": "16",
       "entitlements": {
         "com.apple.developer.associated-domains": [
           "applinks:app.agentrouteai.com",
