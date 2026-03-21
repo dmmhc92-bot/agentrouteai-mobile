@@ -40,9 +40,10 @@ const CANVAS_WIDTH = Math.min(screenWidth - 40, 360);
 const CANVAS_HEIGHT = 180;
 
 // Minimum requirements for a valid signature
-// Reduced threshold to allow normal signatures on first attempt
-const MIN_POINTS = 3;  // Just need a few points to confirm drawing started
-const MIN_PATHS = 1;
+// VERY lenient - any intentional mark counts as a signature
+// Users may sign quickly, shakily, or with minimal strokes
+const MIN_POINTS = 1;  // Any touch counts
+const MIN_PATHS = 1;   // Any stroke counts
 
 // Storage key prefix for signature persistence
 const SIGNATURE_STORAGE_KEY = '@soa_signature_';
@@ -221,10 +222,11 @@ export default function SignatureCapture({
     setSaveStatus('idle');
   }, []);
 
-  // Check if signature is valid
-  const hasValidSignature = (paths.length >= MIN_PATHS && totalPoints >= MIN_POINTS) || 
+  // Check if signature is valid - very lenient: any drawn mark or uploaded image counts
+  const hasValidSignature = (paths.length >= MIN_PATHS) || 
                             (signatureImage && signatureImage.length > 500);
 
+  // Has user drawn anything at all?
   const hasDrawnAnything = paths.length > 0 || currentPoints.length > 0;
 
   // Generate SVG string for fallback
@@ -314,15 +316,18 @@ export default function SignatureCapture({
         }
       }
       
-      // Validate final data
+      // Validate final data - be more lenient for SVG fallback
       setSaveStatus('validating');
       
       if (!finalSignatureData) {
         throw new Error('Failed to capture signature - no data generated');
       }
       
-      if (finalSignatureData.length < 500) {
-        throw new Error('Signature data is too small - may be corrupted');
+      // SVG data URIs are typically smaller than PNGs, so use a lower threshold
+      const minSize = finalSignatureData.startsWith('data:image/svg') ? 100 : 500;
+      
+      if (finalSignatureData.length < minSize) {
+        throw new Error(`Signature data is too small (${finalSignatureData.length} bytes)`);
       }
       
       if (!finalSignatureData.startsWith('data:image/')) {
@@ -438,7 +443,8 @@ export default function SignatureCapture({
   // Current path SVG string
   const currentPathStr = pointsToPath(currentPoints);
 
-  // Status badge
+  // Status badge - simplified to be more user-friendly
+  // No more "Keep drawing..." - any mark is valid
   const getStatusBadge = () => {
     if (saveStatus === 'capturing') {
       return { icon: 'camera', color: '#2563EB', bg: '#DBEAFE', text: 'Capturing...' };
@@ -458,9 +464,7 @@ export default function SignatureCapture({
     if (hasValidSignature) {
       return { icon: 'checkmark-circle', color: '#16A34A', bg: '#DCFCE7', text: 'Ready to save' };
     }
-    if (hasDrawnAnything) {
-      return { icon: 'time-outline', color: '#D97706', bg: '#FEF3C7', text: 'Keep drawing...' };
-    }
+    // Empty state - no "Keep drawing" message
     return { icon: 'hand-left-outline', color: '#94A3B8', bg: '#F1F5F9', text: 'Touch to draw' };
   };
 
@@ -650,7 +654,7 @@ export default function SignatureCapture({
 
           {!hasValidSignature && !signatureImage && (
             <Text style={styles.hint}>
-              Draw your signature or upload an image
+              Draw your signature above or upload an image
             </Text>
           )}
         </View>
