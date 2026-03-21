@@ -53,6 +53,15 @@ export default function NewLeadScreen() {
       if (isOnline) {
         // Online mode - create directly on server
         const lead = await api.createLead(leadData);
+        
+        // VALIDATE: Ensure lead was saved with correct stage
+        if (!lead || !lead.id) {
+          throw new Error('Lead creation failed - no ID returned');
+        }
+        if (!lead.stage) {
+          console.warn('[Lead] Created without stage - backend issue');
+        }
+        
         router.replace(`/lead/${lead.id}`);
       } else {
         // Offline mode - save locally and queue for sync

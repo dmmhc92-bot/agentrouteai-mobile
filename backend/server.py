@@ -2987,12 +2987,14 @@ async def get_production_dashboard(current_user: dict = Depends(get_current_user
     weekly = await get_stats(week_start)
     monthly = await get_stats(month_start)
     
-    # Get pipeline counts
-    leads_count = await db.leads.count_documents({"created_by_user": {"$in": user_ids}})
+    # Get pipeline counts - UNIFIED QUERY matching leads/pipeline endpoints
+    # Include both created_by_user AND assigned_to_user for consistency
+    unified_filter = {"$or": [{"created_by_user": {"$in": user_ids}}, {"assigned_to_user": {"$in": user_ids}}]}
+    leads_count = await db.leads.count_documents(unified_filter)
     appointments_scheduled = await db.appointments.count_documents({"created_by_user": {"$in": user_ids}, "status": "scheduled"})
     appointments_completed = await db.appointments.count_documents({"created_by_user": {"$in": user_ids}, "status": "completed"})
-    applications_submitted = await db.leads.count_documents({"created_by_user": {"$in": user_ids}, "stage": "application_submitted"})
-    policies_issued = await db.leads.count_documents({"created_by_user": {"$in": user_ids}, "stage": "policy_issued"})
+    applications_submitted = await db.leads.count_documents({**unified_filter, "stage": "application_submitted"})
+    policies_issued = await db.leads.count_documents({**unified_filter, "stage": "policy_issued"})
     
     return {
         "daily": {"premium": daily["premium"], "commission": daily["commission"], "policies": daily["count"]},
@@ -3047,11 +3049,13 @@ async def get_pipeline(team_view: bool = False, current_user: dict = Depends(get
         user_ids = [current_user["id"]]
     
     # Get all leads for these users with projection for required fields only
+    # UNIFIED QUERY - Same filter as leads list for consistency
+    # Include both created_by_user AND assigned_to_user to match leads endpoint
     leads_cursor = db.leads.find(
-        {"created_by_user": {"$in": user_ids}},
+        {"$or": [{"created_by_user": {"$in": user_ids}}, {"assigned_to_user": {"$in": user_ids}}]},
         {"id": 1, "name": 1, "phone": 1, "email": 1, "stage": 1, "created_date": 1, 
          "last_contact_date": 1, "created_by_user": 1, "underwriting_status": 1, 
-         "policy_type": 1, "notes": 1, "carrier": 1, "product": 1}
+         "policy_type": 1, "notes": 1, "carrier": 1, "product": 1, "assigned_to_user": 1}
     )
     all_leads = await leads_cursor.to_list(1000)
     
