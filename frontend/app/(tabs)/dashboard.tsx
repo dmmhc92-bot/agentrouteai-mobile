@@ -221,25 +221,37 @@ export default function DashboardScreen() {
           </TouchableOpacity>
         )}
 
-        {/* Stats */}
+        {/* Stats - NOW CLICKABLE */}
         <View style={styles.statsContainer}>
-          <View style={styles.statCard}>
+          <TouchableOpacity 
+            style={styles.statCard}
+            onPress={() => router.push('/(tabs)/leads')}
+            activeOpacity={0.7}
+          >
             <Ionicons name="people" size={28} color="#3B82F6" />
             <Text style={styles.statNumber}>{leads.length}</Text>
             <Text style={styles.statLabel}>Total Leads</Text>
-          </View>
-          <View style={styles.statCard}>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.statCard}
+            onPress={() => router.push('/(tabs)/calendar')}
+            activeOpacity={0.7}
+          >
             <Ionicons name="calendar" size={28} color="#22C55E" />
             <Text style={styles.statNumber}>{upcomingAppointments.length}</Text>
             <Text style={styles.statLabel}>Upcoming</Text>
-          </View>
-          <View style={styles.statCard}>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.statCard}
+            onPress={() => router.push('/(tabs)/calendar')}
+            activeOpacity={0.7}
+          >
             <Ionicons name="checkmark-circle" size={28} color="#F59E0B" />
             <Text style={styles.statNumber}>
               {appointments.filter((a) => a.status === 'completed').length}
             </Text>
             <Text style={styles.statLabel}>Completed</Text>
-          </View>
+          </TouchableOpacity>
         </View>
 
         {/* Quick Actions */}

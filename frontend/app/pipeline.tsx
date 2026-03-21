@@ -428,24 +428,36 @@ export default function PipelineScreen() {
         )}
       </View>
 
-      {/* Summary Stats */}
+      {/* Summary Stats - NOW CLICKABLE */}
       <View style={styles.summaryContainer}>
-        <View style={styles.summaryCard}>
+        <TouchableOpacity 
+          style={styles.summaryCard}
+          onPress={() => router.push('/(tabs)/leads')}
+          activeOpacity={0.7}
+        >
           <Text style={styles.summaryValue}>{pipelineData?.summary?.total_cases || 0}</Text>
           <Text style={styles.summaryLabel}>Cases</Text>
-        </View>
-        <View style={[styles.summaryCard, styles.summaryCardHighlight]}>
+        </TouchableOpacity>
+        <TouchableOpacity 
+          style={[styles.summaryCard, styles.summaryCardHighlight]}
+          onPress={() => router.push('/stage/application_submitted')}
+          activeOpacity={0.7}
+        >
           <Text style={[styles.summaryValue, { color: COLORS.primary }]}>
             {formatCurrency(pipelineData?.summary?.total_premium || 0)}
           </Text>
           <Text style={styles.summaryLabel}>Premium</Text>
-        </View>
-        <View style={styles.summaryCard}>
+        </TouchableOpacity>
+        <TouchableOpacity 
+          style={styles.summaryCard}
+          onPress={() => router.push('/stage/commission_pending')}
+          activeOpacity={0.7}
+        >
           <Text style={[styles.summaryValue, { color: COLORS.success }]}>
             {formatCurrency(pipelineData?.summary?.total_commission || 0)}
           </Text>
           <Text style={styles.summaryLabel}>Commission</Text>
-        </View>
+        </TouchableOpacity>
       </View>
 
       {/* Pipeline Stages */}
