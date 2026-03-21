@@ -1,16 +1,9 @@
 {
   "cli": {
     "version": ">= 5.0.0",
-    "appVersionSource": "local",
-    "requireCommit": false
+    "appVersionSource": "local"
   },
   "build": {
-    "base": {
-      "ios": {
-        "credentialsSource": "local",
-        "distribution": "store"
-      }
-    },
     "development": {
       "developmentClient": true,
       "distribution": "internal",
@@ -29,7 +22,7 @@
       "autoIncrement": false,
       "ios": {
         "resourceClass": "m-medium",
-        "credentialsSource": "local",
+        "credentialsSource": "remote",
         "autoIncrement": false
       },
       "android": {
