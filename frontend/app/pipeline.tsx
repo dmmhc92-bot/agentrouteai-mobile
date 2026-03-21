@@ -90,8 +90,11 @@ const STAGE_CONFIG: Record<string, { color: string; icon: string; label: string 
 };
 
 const ALL_STAGES = [
-  'new_lead', 'contacted', 'follow_up', 'appointment_set', 'soa_completed',
-  'policy_submitted', 'underwriting_review', 'additional_requirements',
+  // Primary stages (used for display order)
+  'new_lead', 'new', 'contacted', 'follow_up', 
+  'appointment_set', 'appointment_scheduled',  // Both variants
+  'soa_completed', 'policy_submitted', 'application_submitted',
+  'underwriting_review', 'additional_requirements',
   'approved', 'closed_won', 'policy_issued', 'policy_placed',
   'commission_pending', 'commission_paid', 'closed_lost',
 ];
