@@ -40,7 +40,8 @@ const CANVAS_WIDTH = Math.min(screenWidth - 40, 360);
 const CANVAS_HEIGHT = 180;
 
 // Minimum requirements for a valid signature
-const MIN_POINTS = 10;
+// Reduced threshold to allow normal signatures on first attempt
+const MIN_POINTS = 3;  // Just need a few points to confirm drawing started
 const MIN_PATHS = 1;
 
 // Storage key prefix for signature persistence
@@ -649,7 +650,7 @@ export default function SignatureCapture({
 
           {!hasValidSignature && !signatureImage && (
             <Text style={styles.hint}>
-              Draw at least {MIN_POINTS} points or upload an image
+              Draw your signature or upload an image
             </Text>
           )}
         </View>

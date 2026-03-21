@@ -14,6 +14,7 @@ import {
   Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../src/services/api';
@@ -229,6 +230,17 @@ export default function PipelineScreen() {
       isMountedRef.current = false;
     };
   }, [isAuthenticated]); // Re-run when auth state changes
+
+  // ===== REFRESH ON SCREEN FOCUS (ENSURES DATA IS CURRENT) =====
+  useFocusEffect(
+    useCallback(() => {
+      // Refresh data when screen comes into focus (e.g., after creating a lead)
+      if (isAuthenticated && !isInitialLoad) {
+        console.log('[Pipeline] Screen focused - refreshing data');
+        fetchPipeline(true);
+      }
+    }, [isAuthenticated, isInitialLoad, fetchPipeline])
+  );
 
   // ===== TEAM VIEW CHANGE HANDLER =====
   useEffect(() => {
