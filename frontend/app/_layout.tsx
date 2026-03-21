@@ -32,11 +32,7 @@ function AppContent() {
               }}
             >
               <Stack.Screen name="index" />
-              <Stack.Screen name="(auth)/signin" />
-              <Stack.Screen name="(auth)/signup" />
-              <Stack.Screen name="(auth)/onboarding" />
-              <Stack.Screen name="(auth)/forgot-password" />
-              <Stack.Screen name="(auth)/reset-password" />
+              <Stack.Screen name="(auth)" />
               <Stack.Screen name="(tabs)" />
               <Stack.Screen 
                 name="subscription" 
