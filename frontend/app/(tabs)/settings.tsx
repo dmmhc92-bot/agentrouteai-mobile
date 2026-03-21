@@ -37,8 +37,9 @@ const getBaseUrl = () => {
   return '';
 };
 const BASE_URL = getBaseUrl();
-const PRIVACY_POLICY_URL = `${BASE_URL}/api/privacy`;
-const TERMS_OF_SERVICE_URL = `${BASE_URL}/api/terms`;
+const PRIVACY_POLICY_URL = 'https://agentrouteai.expo.app/privacy';
+const TERMS_OF_SERVICE_URL = 'https://agentrouteai.expo.app/terms';
+const SUPPORT_URL = 'https://agentrouteai.expo.app/support';
 const SUPPORT_EMAIL = 'agentrouteai@gmail.com';
 const SUPPORT_SUBJECT = 'AgentRoute Support Request';
 

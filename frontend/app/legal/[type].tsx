@@ -47,13 +47,13 @@ export default function LegalScreen() {
       case 'terms':
         return {
           title: 'Terms of Service',
-          url: `${BASE_URL}/api/terms`,
+          url: 'https://agentrouteai.expo.app/terms',
         };
       case 'privacy':
       default:
         return {
           title: 'Privacy Policy',
-          url: `${BASE_URL}/api/privacy`,
+          url: 'https://agentrouteai.expo.app/privacy',
         };
     }
   };
