@@ -521,10 +521,22 @@ metadata:
 
 test_plan:
   current_focus:
-    - "Critical Authentication Verification for iOS TestFlight Build Approval"
+    - "SOA Document Flow Verification - PDF Actions and Signature Pad"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
+
+  - task: "SOA Document Flow - PDF Actions and Signature Pad Verification"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/scope/[id].tsx, frontend/src/components/SignatureCapture.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "CRITICAL FIXES APPLIED: 1) PDF ACTIONS - Added missing savePdfToTempFile() and openPdfInBrowser() helper functions to scope/[id].tsx. These were referenced but not defined, causing 'Cannot read property Base64 of undefined' and print errors. 2) SIGNATURE PAD - Improved PanResponder implementation with throttled state updates (60fps), direct ref mutation for point tracking, and increased canvas height from 180px to 200px for better signing experience. NEEDS VERIFICATION: View PDF, Print, Save to Files, Share, Send via Email, and full continuous signature drawing."
 
   - task: "iOS App Store Submission Validation"
     implemented: true
