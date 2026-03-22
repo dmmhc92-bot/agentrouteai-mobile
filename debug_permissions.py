@@ -6,7 +6,7 @@ Debug permission enforcement for invite system
 import requests
 import json
 
-API_BASE_URL = "https://pipeline-proof.preview.emergentagent.com/api"
+API_BASE_URL = "https://crm-final-build.preview.emergentagent.com/api"
 
 # Test credentials
 TEST_CREDENTIALS = {

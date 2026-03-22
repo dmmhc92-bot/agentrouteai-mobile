@@ -13,7 +13,7 @@ import sys
 import time
 
 # Backend URL from frontend .env
-BASE_URL = "https://pipeline-proof.preview.emergentagent.com/api"
+BASE_URL = "https://crm-final-build.preview.emergentagent.com/api"
 
 # Test Credentials (from review request)
 TEST_CREDENTIALS = {

@@ -10,7 +10,7 @@ import time
 from datetime import datetime
 
 # Test Configuration from review request
-BASE_URL = "https://pipeline-proof.preview.emergentagent.com/api"
+BASE_URL = "https://crm-final-build.preview.emergentagent.com/api"
 TIMEOUT = 30
 
 # Test Credentials (exactly as specified in review request)

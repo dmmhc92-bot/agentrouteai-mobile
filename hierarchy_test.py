@@ -11,7 +11,7 @@ import os
 from datetime import datetime
 
 # Get backend URL from frontend .env
-BACKEND_URL = "https://pipeline-proof.preview.emergentagent.com/api"
+BACKEND_URL = "https://crm-final-build.preview.emergentagent.com/api"
 
 # Test credentials from review request
 TEST_CREDENTIALS = {

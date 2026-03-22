@@ -10,7 +10,7 @@ import sys
 from datetime import datetime
 
 # Configuration
-BACKEND_URL = "https://pipeline-proof.preview.emergentagent.com/api"
+BACKEND_URL = "https://crm-final-build.preview.emergentagent.com/api"
 
 # Test credentials
 TEST_CREDENTIALS = {

@@ -10,7 +10,7 @@ import uuid
 from datetime import datetime
 
 # Configuration
-BASE_URL = "https://pipeline-proof.preview.emergentagent.com/api"
+BASE_URL = "https://crm-final-build.preview.emergentagent.com/api"
 
 class RoleBasedTester:
     def __init__(self):

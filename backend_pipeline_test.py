@@ -10,7 +10,7 @@ import time
 from datetime import datetime
 
 # Configuration
-BASE_URL = "https://pipeline-proof.preview.emergentagent.com/api"
+BASE_URL = "https://crm-final-build.preview.emergentagent.com/api"
 TEST_CREDENTIALS = {
     "admin": {"email": "admin@agentroute.com", "password": "Admin123!"},
     "manager": {"email": "manager@agentroute.com", "password": "Manager123!"},

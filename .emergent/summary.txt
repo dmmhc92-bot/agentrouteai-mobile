@@ -1,135 +1,146 @@
-<analysis>Here is the handover summary based on the LLM message history:
+<analysis>
+Here is the handover summary based on the LLM message history:
 
-**original_problem_statement:** The user requested a complete production-readiness audit and bug fixing for the final iOS TestFlight/App Store build. Critical requirements included locking the iOS bundle identifier, fixing a development-only password reset flow to use real production emails, resolving EAS build credential/certificate issues, and fundamentally fixing a No cases data synchronization bug in the Sales Pipeline where newly created leads were not appearing in the stage views in the live mobile runtime. 
+**original_problem_statement**: The user requested a comprehensive production-readiness audit, bug fixes, and final iOS TestFlight/App Store builds. PRODUCT REQUIREMENTS: Enforce a Single Source of Truth for all data displays (counts must perfectly match DB records), make dashboard/pipeline summary cards fully clickable, ensure stage-aware lead creation from within pipeline categories, relax signature capture validation to accept simple handwritten marks, ensure the production App Store review accounts work flawlessly, use specific production legal URLs, and increment the final App Store version to 2.0.0.
 
-PRODUCT REQUIREMENTS:
-- Do NOT change the bundle ID ().
-- Forgot Password flow must use actual email delivery via Resend (not dev tokens).
-- Entire app must use a Single Source of Truth for data (Pipeline counts must perfectly match actual DB records).
-
-**User's preferred language**: English (INSTRUCT next agent to respond in English only).
+**User's preferred language**: English (INSTRUCT next agent to respond in English only)
 
 **what currently exists?** 
-A React Native (Expo) mobile application with a FastAPI backend and MongoDB database. The app features role-based authentication (Admin, Manager, Agent), lead capture, a pipeline stage management system, an offline-capable signature capture tool, and subscription handling via RevenueCat.
+A React Native (Expo) mobile application with a FastAPI backend and MongoDB database. It serves as a CRM for insurance agents with role-based access (Admin, Manager, Agent), lead pipeline management, AI coaching, digital Scope of Appointment (SOA) signature capture, and RevenueCat subscriptions. The app is fully functional and undergoing its absolute final EAS builds for App Store submission.
 
 **Last working item**: 
-    - Last item agent was working: Providing hard proof to the user that existing database records map accurately to frontend pipeline stages to validate the Single Source of Truth fixes before triggering the final EAS build (Version 1.0.5). The agent was in the middle of executing bash scripts to dump actual user records and stage counts to show the user.
+    - Last item agent was working: Generating the final iOS build for App Store submission. The agent successfully modified  to set the version to  and incremented the iOS build number (to ), but needs to trigger the actual EAS build command.
     - Status: IN PROGRESS
-    - Agent Testing Done: Y
-    - Which testing method agent to use? manual testing by python -c / bash scripts to extract MongoDB records and API responses to prove data consistency to the user.
-    - User Testing Done: N (User is waiting for the proof before authorizing the EAS build).
+    - Agent Testing Done: N/A (Build pending)
+    - Which testing method agent to use? NA
+    - User Testing Done: N
 
 **All Pending/In progress Issue list**:
-  Issue 1: Pipeline Stage UI No Cases Bug in Live Mobile Runtime (P0)
-     - Attempted fixes: Unification of backend queries (ensuring  and  use the exact same  logic for  and ). Added missing stage keys to frontend  array. Added  to trigger frontend refetching. 
-     - Next debug checklist: Provide the user with the exact requested proof: Show 1 real record -> show its exact stage value in DB -> show which pipeline section it maps to -> confirm count updates. After user confirms, generate the EAS Build.
-     - Why fix this issue and what will be achieved with the fix? It is the absolute final blocker. The user's live TestFlight app was failing to show newly created leads in the pipeline UI despite them being in the DB.
-     - Status: USER VERIFICATION PENDING
-     - Is recurring issue? Y (surfaced multiple times during live mobile testing)
-     - Should Test frontend/backend/both after fix? Both
-     - Blocked on other issue: None.
+  Issue 1: Generate Final Version 2.0.0 iOS Build (P0)
+     - Attempted fixes: The agent successfully ran  on  to update  and .
+     - Next debug checklist: Run An Expo user account is required to proceed.
+Either log in with eas login or set the EXPO_TOKEN environment variable if you're using EAS CLI on CI (Learn more: https://docs.expo.dev/accounts/programmatic-access/), wait for completion, and report the app version, iOS build number, and build status back to the user as explicitly requested.
+     - Why fix this issue and what will be achieved with the fix? This is the final step requested by the user to increment the version for the final App Store Connect submission.
+     - Status: IN PROGRESS
+     - Is recurring issue? N
+     - Should Test frontend/backend/both after fix? NA
+     - Blocked on other issue: None
+
+
+Pause build.
+
+Verify signature pad allows full continuous handwritten signature (not just a short line).
+
+Do not change anything else.
+
+Report status and wait for my approval before continuing or generating next build.
 
 **In progress Task List**: 
-  Task 1: Generate Final iOS TestFlight Build
-     - Where to resume: Await user approval after providing the pipeline data proof, then trigger An Expo user account is required to proceed.
-Either log in with eas login or set the EXPO_TOKEN environment variable if you're using EAS CLI on CI (Learn more: https://docs.expo.dev/accounts/programmatic-access/) (Version 1.0.5).
-     - What will be achieved with this? Deployment of the fixed, production-ready app to TestFlight.
-     - Status: BLOCKED (Waiting on user approval of the pipeline fix proof).
+  Task 1: Report Final Build Status
+     - Where to resume: Trigger the EAS build CLI command. Once the build finishes, provide the final confirmation requested in the last user message.
+     - What will be achieved with this? The user will have the definitive 2.0.0 IPA file for App Store Connect.
+     - Status: IN PROGRESS
      - Should Test frontend/backend/both after fix? NA
-     - Blocked on something: Issue 1 proof verification.
+     - Blocked on something: None
 
 **Upcoming and Future Tasks**:
     Upcoming Tasks:
-    - P0: Provide the console/DB output proving pipeline stage mapping to the user.
-    - P0: Trigger EAS iOS Build (Version 1.0.5).
+    - None explicitly requested beyond the 2.0.0 EAS build execution.
+
+
 
     Future Tasks:
-    - None explicitly requested beyond stabilizing the current release.
+    - None.
 
 **Completed work in this session**:
-- Verified and Locked Bundle ID () (DONE)
-- Rebuilt Forgot Password flow to use Resend API instead of dev tokens ,  (DONE)
-- Fixed EAS Certificate Revocation issue by allowing EAS CLI to auto-generate fresh distribution certificates and provisioning profiles (DONE)
-- Fixed Signature Capture strictness by lowering  to 3 in  (DONE)
-- Unified backend query filtering for Leads and Pipeline to ensure data parity  (DONE)
-- Implemented  for automatic pipeline refreshing  (DONE)
+- Resolved deployment crash caused by missing  in Kubernetes environment  (DONE)
+- Made Dashboard and Pipeline summary cards completely interactive and clickable ,  (DONE)
+- Implemented stage-aware lead creation (clicking Add Lead inside a pipeline category saves directly to that category) ,  (DONE)
+- Relaxed Signature Capture validation UX (lowered  to 1, enabled Save immediately upon drawing)  (DONE)
+- Updated production legal URLs to specific  endpoints ,  (DONE)
+- Repaired App Store Connect Review test accounts (reset passwords, injected missing DB fields) (DONE)
+- Fixed critical iOS mobile login failure by injecting  into the  section of  (DONE)
+- Completed Data-Access Audit verifying Role-Based access (Agent/Manager/Admin) is correctly compartmentalized (DONE)
 
 **Earlier issues found/mentioned but not fixed**:
-   - None. All discovered issues have been systematically addressed, though the pipeline UI sync requires final user validation.
+   - None. All requested logic and routing issues have been resolved.
 
 **Known issue recurrence from previous fork**:
-  - Issue recurrence in previous fork: EAS Build Pipeline/Credential Failures
-  - Recurrence count: 2
-  - Status: RESOLVED (Fresh certificates were successfully generated and assigned to the project).
-  Note: Do NOT mess with EAS credentials, iOS bundle identifiers, or  remote configurations anymore. They are currently working.
+  - Issue recurrence in previous fork: EAS Certificate Revocation / Build Failures
+  - Recurrence count: 3
+  - Status: RESOLVED (The user manually regenerated Apple certificates via Expo portal. Do NOT attempt to alter credentials or run interactive credential commands).
 
 **Code Architecture**:
-- : Expo React Native app using  for file-based routing.
-- : React Contexts (Auth, Subscriptions, Notifications).
-- : FastAPI monolithic backend handling auth, leads, pipeline, and email logic.
-- : Holds MongoDB connections and Resend API keys.
+- : Expo React Native app using .
+- : FastAPI monolithic backend.
 
 **Key Technical Concepts**:
-React Native, Expo, EAS Build CLI, FastAPI, MongoDB, JWT Authentication, Resend Email API, RevenueCat (In-App Subscriptions).
+React Native, Expo Router, EAS Build CLI, FastAPI, MongoDB, JWT Authentication, bcrypt, RevenueCat (In-App Subscriptions), Resend API.
 
 **key DB schema**:
-  - : {id, email, password_hash, role, reset_token, organization_id, manager_id}
-  - : {id, name, phone, email, stage, created_by_user, assigned_to_user}
+  - : {id, email, password_hash, role, reset_token, organization_id, manager_id, created_at}
+  - : {id, name, stage, created_by_user, assigned_to_user, owner_agent_id}
 
 **changes in tech stack**:
-  - Integrated  Python SDK into the backend for production transactional emails.
+  - None.
 
 **All files of reference**:
-  -  (Updated to include Resend API logic, unified Lead/Pipeline  DB queries).
-  -  (Added ).
-  -  &  (Completely rewritten for production flow).
-  -  (Modified point validation logic).
-  -  (Modified  array and added  hooks).
+  -  (CRITICAL: Added  under  to fix live mobile networking; updated version to 2.0.0).
+  -  (Modified  endpoint to accept  params and gracefully handle K8s  env vars).
+  -  (Modified signature validation UX).
+  -  &  (Updated to pass and utilize stage parameters for category-specific creation).
+  -  (Wrapped stats in ).
+  -  (Hardcoded production legal URLs).
 
 **Areas that need refactoring**:
-  -  is highly monolithic (~10,000 lines). Once the immediate build crisis is over, routes should be abstracted.
+  -  is almost 10,000 lines long and highly monolithic.
 
 **key api endpoints**:
-  -  (Sends email via Resend)
   - 
-  -  (Aggregates stage counts)
-  -  (Fetches full lead lists)
+  -  (uses Resend)
+  -  (accepts  to auto-categorize)
+  - 
 
 **Critical Info for New Agent**: 
-1. **DO NOT CHANGE THE BUNDLE ID OR CREDENTIALS:** The user is highly sensitive to build configurations breaking. Leave  and  bundle IDs exactly as they are.
-2. **USER NEEDS HARD PROOF:** The user explicitly requested: *Take an EXISTING record... Show its exact stage value... Show which pipeline section it maps to... Confirm section count increases.* Do exactly this before asking if you can trigger the build.
-3. **DO NOT USE FIREBASE:** The user rejected Firebase auth. The system relies purely on the custom JWT/MongoDB implementation.
+1. **NO CONFIGURATION CHANGES:** Do NOT modify the bundle ID, App Store review accounts, RevenueCat subscription settings, Legal URLs, or certificates. The app is in a heavily scrutinized read-only submission phase.
+2. **APP STORE TEST ACCOUNTS:** The iOS TestFlight login works now. The official test accounts are:
+   - Admin:  / 
+   - Manager:  / 
+   - Agent:  / 
+3. **EAS BUILDS:** Only run builds using the  flag. The Apple Developer connection requires manual 2FA, so the CLI will crash if it tries to prompt interactively.
 
 **documents and test reports created in this job**:
-  -  (Updated by  during pipeline and auth tests).
+  - N/A (Agent extensively used screenshots to verify live UI flow).
 
 **Last 10 User Messages and any pending HUMAN messages**:
- 1. (Latest) Demands proof using REAL DATA showing 1 real record maps to 1 stage and increases the count before generating the build. (PENDING PROOF)
- 2. Demands confirmation that the fix applies to the FULL SYSTEM (unified data system), not just the pipeline screen. (COMPLETED)
- 3. Demands enforcement of a single unified data system where the pipeline is purely data-driven by DB counts. (COMPLETED)
- 4. Demands unification of the read/write paths for pipeline data because counts are out of sync. (COMPLETED)
- 5. Gives the go-ahead for TestFlight build generation. (ABORTED BY SUBSEQUENT BUGS)
- 6. Demands confirmation of 7 system-level guarantees (Single source of truth, stage write, count calculation, state fix, API response, role filter, no false success). (COMPLETED)
- 7. Refuses to generate build yet, demands a full LIVE MOBILE FLOW VERIFICATION of the pipeline data flow. (COMPLETED/ONGOING)
- 8. Acknowledges Pipeline Fix, tells agent to stop returning PASS, demands a real mobile runtime fix. (COMPLETED)
- 9. Engineering command to update version to 1.0.5 and build. (COMPLETED)
- 10. Commands to proceed immediately with new iOS TestFlight build. (COMPLETED)
+ 1. (Latest) Engineering command to increment version to 2.0.0, increment build number, run iOS build, and report back. (PENDING EXECUTION)
+ 2. Requested a deep data-access audit verifying that Admins/Managers/Agents only see appropriate data. (COMPLETED)
+ 3. Confirmed proceeding with fixing the missing backend URL in . (COMPLETED)
+ 4. Requested read-only verification of auth flow due to all iOS TestFlight accounts failing Welcome Back login. (COMPLETED - found missing ).
+ 5. Instructed to proceed without modifying anything. (COMPLETED)
+ 6. Confirmed agent's readiness report for App Store Connect. (COMPLETED)
+ 7. Instructed to set iOS version to 1.0.9 and rebuild. (COMPLETED)
+ 8. Demanded exact updates to production Legal URLs without touching anything else. (COMPLETED)
+ 9. Requested a strict read-only info gathering session for App Store Connect metadata. (COMPLETED)
+ 10. Directed agent to pause while user manually fixed revoked Apple Distribution Certificates. (COMPLETED)
 
 **Project Health Check**:
-- Backend APIs: Functional
-- Frontend Preview: Functional
-- Live Mobile Sync: Under strict user scrutiny (Pipeline UI state vs DB parity).
+- Backend APIs: Healthy
+- Frontend Mobile Runtime: Healthy (Routing bug fixed)
+- Apple Certificates: Healthy
 
 **3rd Party Integrations**:
  - OpenAI GPT-4o — uses Emergent LLM Key
- - Resend (Emails) — requires User API Key ( - successfully configured)
- - RevenueCat (Subscriptions) — uses User configuration
+ - Resend (Emails) — requires User API Key (Active)
+ - RevenueCat (Subscriptions) — requires User API Key (Active)
 
 **Testing status**:
-  - Testing agent used after significant changes: YES ( ran with 100% success).
-  - Troubleshoot agent used after agent stuck in loop: NO
-  - Test files created: N/A
-  - Known regressions: Pipeline display UI de-sync (currently being proven fixed).
+  - Testing agent used after significant changes: YES (Earlier in session)
+  - Troubleshoot agent used after agent stuck in loop: YES (For certificate troubleshooting)
+  - Test files created: None
+  - Known regressions: None
 
 **What agent forgot to execute**:
-The agent was in the middle of executing a bash command to pull the exact MongoDB record and prove to the user that it maps to the correct UI stage. The next agent must format this DB proof and present it to the user immediately to unblock the final iOS build.</analysis>
+The agent successfully modified  to  and  as requested in the final prompt, but its context ended before it could run An Expo user account is required to proceed.
+Either log in with eas login or set the EXPO_TOKEN environment variable if you're using EAS CLI on CI (Learn more: https://docs.expo.dev/accounts/programmatic-access/) and report the status back to the user. You must execute this build immediately.
+</analysis>

@@ -7,7 +7,7 @@ import requests
 import json
 
 # Test Configuration
-BASE_URL = "https://pipeline-proof.preview.emergentagent.com/api"
+BASE_URL = "https://crm-final-build.preview.emergentagent.com/api"
 
 # Admin credentials
 admin_credentials = {
