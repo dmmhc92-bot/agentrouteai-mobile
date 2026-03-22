@@ -81,7 +81,8 @@
       "eas": {
         "projectId": "f8cc2bc9-96ed-4333-8c34-82c2a0a8d2a0"
       },
-      "router": {}
+      "router": {},
+      "EXPO_PUBLIC_BACKEND_URL": "https://pipeline-proof.preview.emergentagent.com"
     },
     "owner": "dmmhc92",
     "runtimeVersion": {
