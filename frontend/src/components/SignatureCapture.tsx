@@ -37,7 +37,7 @@ interface Point {
 
 const { width: screenWidth } = Dimensions.get('window');
 const CANVAS_WIDTH = Math.min(screenWidth - 40, 360);
-const CANVAS_HEIGHT = 180;
+const CANVAS_HEIGHT = 200;  // Increased height for more comfortable signing
 
 // Minimum requirements for a valid signature
 // VERY lenient - any intentional mark counts as a signature
@@ -124,22 +124,33 @@ export default function SignatureCapture({
     return path;
   }, []);
 
-  // PanResponder with proper event handling
+  // Throttle state updates to prevent re-render interruptions during drawing
+  const updateThrottleRef = useRef<NodeJS.Timeout | null>(null);
+  const pendingPointsRef = useRef<Point[]>([]);
+
+  // Force a state update for rendering
+  const forceUpdateCurrentPoints = useCallback(() => {
+    if (pendingPointsRef.current.length > 0) {
+      setCurrentPoints([...pendingPointsRef.current]);
+    }
+  }, []);
+
+  // PanResponder with improved continuous drawing support
   const panResponder = useMemo(() => PanResponder.create({
-    // Always claim the touch
+    // Always claim the touch - critical for continuous drawing
     onStartShouldSetPanResponder: () => true,
     onMoveShouldSetPanResponder: () => true,
     onStartShouldSetPanResponderCapture: () => true,
     onMoveShouldSetPanResponderCapture: () => true,
     
-    // Touch start
+    // Touch start - begin a new stroke
     onPanResponderGrant: (event: GestureResponderEvent) => {
       const { locationX, locationY } = event.nativeEvent;
-      console.log(`[SignatureCapture] Touch START: ${locationX.toFixed(0)}, ${locationY.toFixed(0)}`);
       
       isDrawingRef.current = true;
       const point = { x: locationX, y: locationY };
       currentPointsRef.current = [point];
+      pendingPointsRef.current = [point];
       setCurrentPoints([point]);
       setSaveStatus('idle');
       
@@ -150,25 +161,40 @@ export default function SignatureCapture({
       }
     },
     
-    // Touch move
+    // Touch move - add points to current stroke (optimized for smooth drawing)
     onPanResponderMove: (event: GestureResponderEvent, gestureState) => {
       if (!isDrawingRef.current) return;
       
       const { locationX, locationY } = event.nativeEvent;
       
-      // Clamp to canvas bounds
-      const x = Math.max(0, Math.min(locationX, CANVAS_WIDTH));
-      const y = Math.max(0, Math.min(locationY, CANVAS_HEIGHT));
+      // Clamp to canvas bounds with small padding
+      const x = Math.max(2, Math.min(locationX, CANVAS_WIDTH - 2));
+      const y = Math.max(2, Math.min(locationY, CANVAS_HEIGHT - 2));
       
       const newPoint = { x, y };
-      const newPoints = [...currentPointsRef.current, newPoint];
-      currentPointsRef.current = newPoints;
-      setCurrentPoints(newPoints);
+      
+      // Always add to refs immediately for accurate tracking
+      currentPointsRef.current.push(newPoint);
+      pendingPointsRef.current.push(newPoint);
+      
+      // Throttle state updates to every ~16ms (60fps) to prevent jank
+      // This ensures smooth drawing while still updating the UI
+      if (!updateThrottleRef.current) {
+        updateThrottleRef.current = setTimeout(() => {
+          updateThrottleRef.current = null;
+          // Copy current points to state for rendering
+          setCurrentPoints([...currentPointsRef.current]);
+        }, 16);
+      }
     },
     
-    // Touch end
+    // Touch end - finalize the stroke
     onPanResponderRelease: () => {
-      console.log(`[SignatureCapture] Touch END, points: ${currentPointsRef.current.length}`);
+      // Clear any pending throttle
+      if (updateThrottleRef.current) {
+        clearTimeout(updateThrottleRef.current);
+        updateThrottleRef.current = null;
+      }
       
       if (currentPointsRef.current.length > 0) {
         const pathStr = pointsToPath(currentPointsRef.current);
@@ -181,13 +207,18 @@ export default function SignatureCapture({
       }
       
       currentPointsRef.current = [];
+      pendingPointsRef.current = [];
       setCurrentPoints([]);
       isDrawingRef.current = false;
     },
     
-    // Touch cancelled
+    // Touch cancelled - still save the partial stroke
     onPanResponderTerminate: () => {
-      console.log('[SignatureCapture] Touch TERMINATED');
+      // Clear any pending throttle
+      if (updateThrottleRef.current) {
+        clearTimeout(updateThrottleRef.current);
+        updateThrottleRef.current = null;
+      }
       
       if (currentPointsRef.current.length > 0) {
         const pathStr = pointsToPath(currentPointsRef.current);
@@ -200,11 +231,12 @@ export default function SignatureCapture({
       }
       
       currentPointsRef.current = [];
+      pendingPointsRef.current = [];
       setCurrentPoints([]);
       isDrawingRef.current = false;
     },
     
-    // Prevent termination
+    // Never allow termination during drawing - critical for continuous strokes
     onPanResponderTerminationRequest: () => false,
   }), [pointsToPath]);
 

@@ -501,6 +501,78 @@ export default function ScopeDetailScreen() {
     });
   };
 
+  /**
+   * Helper: Save PDF to temporary file (for mobile share/print operations)
+   */
+  const savePdfToTempFile = async (): Promise<string | null> => {
+    try {
+      const pdfBase64 = await getPdfData();
+      if (!pdfBase64) {
+        return null;
+      }
+      
+      const filename = getFilename();
+      const fileUri = `${FileSystem.cacheDirectory}${filename}`;
+      
+      await FileSystem.writeAsStringAsync(fileUri, pdfBase64, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      
+      console.log('[SOA] PDF saved to temp file:', fileUri);
+      return fileUri;
+    } catch (error: any) {
+      console.error('[SOA] Failed to save PDF to temp file:', error);
+      return null;
+    }
+  };
+
+  /**
+   * Helper: Open PDF in browser (for web platform)
+   */
+  const openPdfInBrowser = async (): Promise<void> => {
+    try {
+      const pdfBase64 = await getPdfData();
+      if (!pdfBase64) {
+        Alert.alert('Error', 'Could not generate PDF');
+        return;
+      }
+      
+      // Convert base64 to blob and open
+      const byteCharacters = atob(pdfBase64);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type: 'application/pdf' });
+      const fileUrl = URL.createObjectURL(blob);
+      
+      // Try to open in new window
+      const newWindow = window.open(fileUrl, '_blank', 'noopener,noreferrer');
+      
+      if (!newWindow) {
+        // Popup blocked - trigger download instead
+        const filename = getFilename();
+        const a = document.createElement('a');
+        a.href = fileUrl;
+        a.download = filename;
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }
+      
+      // Cleanup after delay
+      setTimeout(() => {
+        URL.revokeObjectURL(fileUrl);
+      }, 5000);
+      
+    } catch (error: any) {
+      console.error('[SOA] Failed to open PDF in browser:', error);
+      Alert.alert('Error', 'Could not open PDF in browser');
+    }
+  };
+
   // Render signature preview from base64
   const renderSignaturePreview = (signatureData: string | undefined, label: string) => {
     if (!signatureData) {
