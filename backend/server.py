@@ -57,7 +57,11 @@ try:
     logging.info("MongoDB client initialized successfully")
 except Exception as e:
     logging.error(f"Failed to initialize MongoDB connection: {e}")
-    raise RuntimeError(f"FATAL: Failed to initialize MongoDB connection: {e}")
+    # Create a placeholder client - health check will report unhealthy
+    # This allows the container to start and report status via probe
+    client = None
+    db = None
+    logging.warning("App starting without MongoDB - health checks will fail")
 
 # JWT Configuration - with secure fallback for production
 SECRET_KEY = os.environ.get('JWT_SECRET_KEY')
@@ -2035,13 +2039,17 @@ async def get_users(current_user: dict = Depends(require_manager_or_admin)):
     
     users = await db.users.find(query).to_list(1000)
     
+    # Batch fetch all manager names to avoid N+1 query problem
+    manager_ids = list(set([u.get("manager_id") for u in users if u.get("manager_id")]))
+    manager_map = {}
+    if manager_ids:
+        managers = await db.users.find({"id": {"$in": manager_ids}}, {"id": 1, "name": 1}).to_list(len(manager_ids))
+        manager_map = {m["id"]: m.get("name") for m in managers}
+    
     result = []
     for user in users:
-        # Get manager name if applicable
-        manager_name = None
-        if user.get("manager_id"):
-            manager = await db.users.find_one({"id": user["manager_id"]}, {"name": 1})
-            manager_name = manager.get("name") if manager else None
+        # Get manager name from batch-fetched map
+        manager_name = manager_map.get(user.get("manager_id")) if user.get("manager_id") else None
         
         result.append({
             "id": user["id"],
@@ -9558,9 +9566,13 @@ async def root():
 async def health_check():
     """Health check endpoint that also verifies database connectivity"""
     try:
-        # Ping the database to verify connection
-        await client.admin.command('ping')
-        db_status = "connected"
+        # Check if client was initialized
+        if client is None:
+            db_status = "not_initialized"
+        else:
+            # Ping the database to verify connection
+            await client.admin.command('ping')
+            db_status = "connected"
     except Exception as e:
         logger.error(f"Database health check failed: {e}")
         db_status = "disconnected"
