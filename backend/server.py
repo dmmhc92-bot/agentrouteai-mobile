@@ -75,7 +75,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = int(os.environ.get('ACCESS_TOKEN_EXPIRE_MINUTES', 
 
 # Password hashing
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
 
 app = FastAPI(title="AgentRoute AI - Insurance Agency Platform")
 api_router = APIRouter(prefix="/api")
@@ -698,6 +698,8 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    if credentials is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
     try:
         token = credentials.credentials
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
@@ -2543,6 +2545,18 @@ async def get_leads(current_user: dict = Depends(get_current_user)):
 async def create_lead(lead_data: LeadCreate, current_user: dict = Depends(get_current_user)):
     lead_id = str(uuid.uuid4())
     
+    # Check for duplicate email if provided
+    if lead_data.email:
+        existing_lead = await db.leads.find_one({
+            "email": lead_data.email,
+            "created_by_user": current_user["id"]
+        })
+        if existing_lead:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"A lead with email '{lead_data.email}' already exists"
+            )
+    
     # Use provided stage if valid, otherwise default to new_lead
     # This enables stage-aware lead creation from pipeline categories
     valid_stages = [
@@ -2555,6 +2569,16 @@ async def create_lead(lead_data: LeadCreate, current_user: dict = Depends(get_cu
     ]
     initial_stage = lead_data.stage if lead_data.stage in valid_stages else "new_lead"
     
+    # Initialize stage history
+    stage_history = [{
+        "from_stage": None,
+        "to_stage": initial_stage,
+        "changed_by": current_user["id"],
+        "changed_by_name": current_user.get("name", "Unknown"),
+        "changed_at": datetime.utcnow().isoformat(),
+        "notes": "Lead created"
+    }]
+    
     lead_doc = {
         "id": lead_id,
         "name": lead_data.name,
@@ -2564,6 +2588,7 @@ async def create_lead(lead_data: LeadCreate, current_user: dict = Depends(get_cu
         "notes": lead_data.notes or "",
         "source": lead_data.source or "manual",
         "stage": initial_stage,
+        "stage_history": stage_history,
         "underwriting_status": "not_submitted",
         "referral_source": lead_data.referral_source,
         "referred_by_lead_id": lead_data.referred_by_lead_id,
@@ -2574,6 +2599,8 @@ async def create_lead(lead_data: LeadCreate, current_user: dict = Depends(get_cu
         "manager_id": current_user.get("manager_id"),
         "admin_id": current_user.get("admin_id"),
         "organization_id": current_user.get("organization_id"),
+        "created_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow(),
         "created_date": datetime.utcnow(),
         "last_contact_date": None,
         "next_follow_up": None,
@@ -3278,6 +3305,26 @@ async def move_pipeline_case(update: PipelineCaseUpdate, current_user: dict = De
         update_data["underwriting_status"] = stage_to_underwriting[update.new_stage]
     
     await db.leads.update_one({"id": update.lead_id}, {"$set": update_data})
+    
+    # Add stage history entry
+    stage_history_entry = {
+        "from_stage": old_stage,
+        "to_stage": update.new_stage,
+        "changed_by": current_user["id"],
+        "changed_by_name": current_user.get("name", "Unknown"),
+        "changed_at": datetime.utcnow().isoformat(),
+        "notes": update.notes or ""
+    }
+    await db.leads.update_one(
+        {"id": update.lead_id},
+        {"$push": {"stage_history": stage_history_entry}}
+    )
+    
+    # Update the updated_at timestamp
+    await db.leads.update_one(
+        {"id": update.lead_id},
+        {"$set": {"updated_at": datetime.utcnow()}}
+    )
     
     # If moving to application_submitted or later with premium/commission, create production record
     production_stages = ["application_submitted", "underwriting_review", "approved", "policy_issued", "policy_placed", "commission_pending", "commission_paid"]
@@ -9556,6 +9603,121 @@ async def admin_recovery_fix_orphan(
     
     return {"status": "success", "message": message}
 
+# ==================== ACTIVITY LOG ENDPOINTS ====================
+
+@api_router.get("/activity/recent")
+async def get_recent_activity(
+    limit: int = 20,
+    lead_id: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get recent activity logs for the current user or a specific lead"""
+    query = {}
+    
+    user_role = current_user.get("role", "agent")
+    
+    if lead_id:
+        # Activity for a specific lead
+        query["lead_id"] = lead_id
+    else:
+        # Filter by user's visibility
+        if user_role == "agent":
+            query["user_id"] = current_user["id"]
+        elif user_role == "manager":
+            # Get all agents under this manager
+            agent_ids = [current_user["id"]]
+            async for agent in db.users.find({"manager_id": current_user["id"]}, {"id": 1}):
+                agent_ids.append(agent["id"])
+            query["user_id"] = {"$in": agent_ids}
+        # Admin sees all (no filter)
+    
+    activities = await db.activity_logs.find(query).sort("created_at", -1).limit(limit).to_list(limit)
+    
+    # Enrich with user names
+    user_ids = list(set([a.get("user_id") for a in activities if a.get("user_id")]))
+    users_map = {}
+    if user_ids:
+        async for user in db.users.find({"id": {"$in": user_ids}}, {"id": 1, "name": 1, "email": 1}):
+            users_map[user["id"]] = user.get("name", user.get("email", "Unknown"))
+    
+    result = []
+    for activity in activities:
+        result.append({
+            "id": activity.get("id"),
+            "user_id": activity.get("user_id"),
+            "user_name": users_map.get(activity.get("user_id"), "Unknown"),
+            "lead_id": activity.get("lead_id"),
+            "activity_type": activity.get("activity_type"),
+            "description": activity.get("description"),
+            "created_at": activity.get("created_at").isoformat() if activity.get("created_at") else None,
+            "metadata": activity.get("metadata", {})
+        })
+    
+    return result
+
+@api_router.get("/activity/lead/{lead_id}")
+async def get_lead_activity(
+    lead_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get all activity logs for a specific lead"""
+    # Check if user has access to this lead
+    lead = await db.leads.find_one({"id": lead_id})
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    
+    user_role = current_user.get("role", "agent")
+    if user_role == "agent":
+        if lead.get("created_by_user") != current_user["id"] and lead.get("assigned_to_user") != current_user["id"]:
+            raise HTTPException(status_code=403, detail="Not authorized to view this lead's activity")
+    
+    activities = await db.activity_logs.find({"lead_id": lead_id}).sort("created_at", -1).to_list(100)
+    
+    # Enrich with user names
+    user_ids = list(set([a.get("user_id") for a in activities if a.get("user_id")]))
+    users_map = {}
+    if user_ids:
+        async for user in db.users.find({"id": {"$in": user_ids}}, {"id": 1, "name": 1, "email": 1}):
+            users_map[user["id"]] = user.get("name", user.get("email", "Unknown"))
+    
+    result = []
+    for activity in activities:
+        result.append({
+            "id": activity.get("id"),
+            "user_id": activity.get("user_id"),
+            "user_name": users_map.get(activity.get("user_id"), "Unknown"),
+            "activity_type": activity.get("activity_type"),
+            "description": activity.get("description"),
+            "created_at": activity.get("created_at").isoformat() if activity.get("created_at") else None,
+            "metadata": activity.get("metadata", {})
+        })
+    
+    return result
+
+@api_router.get("/leads/{lead_id}/history")
+async def get_lead_stage_history(
+    lead_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get stage history for a specific lead"""
+    lead = await db.leads.find_one({"id": lead_id})
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    
+    user_role = current_user.get("role", "agent")
+    if user_role == "agent":
+        if lead.get("created_by_user") != current_user["id"] and lead.get("assigned_to_user") != current_user["id"]:
+            raise HTTPException(status_code=403, detail="Not authorized to view this lead's history")
+    
+    return {
+        "lead_id": lead_id,
+        "lead_name": lead.get("name"),
+        "current_stage": lead.get("stage"),
+        "stage_history": lead.get("stage_history", []),
+        "created_at": lead.get("created_at").isoformat() if lead.get("created_at") else None,
+        "updated_at": lead.get("updated_at").isoformat() if lead.get("updated_at") else None
+    }
+
 # ==================== HEALTH CHECK ====================
 
 @api_router.get("/")
@@ -9831,6 +9993,207 @@ async def get_manager_daily_command_center(current_user: dict = Depends(require_
             "error": "Unable to load command center data. Please try again.",
             "generated_at": datetime.utcnow().isoformat()
         }
+
+
+# ==================== DATA MIGRATION ENDPOINTS (Admin Only) ====================
+
+@api_router.post("/admin/migrate/backfill-ownership")
+async def backfill_lead_ownership(current_user: dict = Depends(require_admin)):
+    """
+    Backfill missing created_by_user, ownership fields, and stage_history on legacy leads.
+    This ensures all leads have proper ownership, visibility, and history tracking.
+    """
+    try:
+        # Find leads with missing created_by_user
+        orphan_query = {"$or": [
+            {"created_by_user": {"$exists": False}},
+            {"created_by_user": None},
+            {"created_by_user": ""}
+        ]}
+        
+        orphan_leads = await db.leads.find(orphan_query).to_list(10000)
+        logger.info(f"Found {len(orphan_leads)} leads with missing ownership")
+        
+        # Get the admin user who's running this migration as fallback
+        admin_id = current_user["id"]
+        admin_org = current_user.get("organization_id")
+        
+        fixed_count = 0
+        assigned_to_admin = 0
+        
+        for lead in orphan_leads:
+            lead_id = lead.get("id")
+            
+            # Try to find the rightful owner
+            owner_id = None
+            owner_org = None
+            owner_manager = None
+            
+            # Check if there's an assigned_to_user
+            if lead.get("assigned_to_user"):
+                owner_user = await db.users.find_one({"id": lead["assigned_to_user"]})
+                if owner_user:
+                    owner_id = owner_user["id"]
+                    owner_org = owner_user.get("organization_id")
+                    owner_manager = owner_user.get("manager_id")
+            
+            # Check if there's an owner_agent_id
+            if not owner_id and lead.get("owner_agent_id"):
+                owner_user = await db.users.find_one({"id": lead["owner_agent_id"]})
+                if owner_user:
+                    owner_id = owner_user["id"]
+                    owner_org = owner_user.get("organization_id")
+                    owner_manager = owner_user.get("manager_id")
+            
+            # If still no owner, assign to admin
+            if not owner_id:
+                owner_id = admin_id
+                owner_org = admin_org
+                owner_manager = current_user.get("manager_id")
+                assigned_to_admin += 1
+            
+            # Update the lead
+            update_data = {
+                "created_by_user": owner_id,
+                "updated_at": datetime.utcnow()
+            }
+            
+            # Only set these if they're missing
+            if not lead.get("assigned_to_user"):
+                update_data["assigned_to_user"] = owner_id
+            if not lead.get("owner_agent_id"):
+                update_data["owner_agent_id"] = owner_id
+            if not lead.get("organization_id") and owner_org:
+                update_data["organization_id"] = owner_org
+            if not lead.get("manager_id") and owner_manager:
+                update_data["manager_id"] = owner_manager
+            if not lead.get("created_at"):
+                update_data["created_at"] = lead.get("created_date", datetime.utcnow())
+            
+            # Initialize stage_history if missing
+            if not lead.get("stage_history"):
+                created_date = lead.get("created_date", datetime.utcnow())
+                if isinstance(created_date, datetime):
+                    created_date_str = created_date.isoformat()
+                else:
+                    created_date_str = datetime.utcnow().isoformat()
+                    
+                update_data["stage_history"] = [{
+                    "from_stage": None,
+                    "to_stage": lead.get("stage", "new_lead"),
+                    "changed_by": owner_id,
+                    "changed_by_name": "System Migration",
+                    "changed_at": created_date_str,
+                    "notes": "Migrated from legacy data"
+                }]
+            
+            await db.leads.update_one({"id": lead_id}, {"$set": update_data})
+            fixed_count += 1
+        
+        # Also backfill stage_history for leads that have created_by_user but missing history
+        no_history_query = {
+            "created_by_user": {"$exists": True, "$ne": None, "$ne": ""},
+            "$or": [
+                {"stage_history": {"$exists": False}},
+                {"stage_history": None},
+                {"stage_history": {"$size": 0}}
+            ]
+        }
+        
+        no_history_leads = await db.leads.find(no_history_query).to_list(10000)
+        history_added = 0
+        
+        for lead in no_history_leads:
+            lead_id = lead.get("id")
+            owner_id = lead.get("created_by_user")
+            
+            created_date = lead.get("created_date") or lead.get("created_at") or datetime.utcnow()
+            if isinstance(created_date, datetime):
+                created_date_str = created_date.isoformat()
+            else:
+                created_date_str = datetime.utcnow().isoformat()
+            
+            # Get owner name
+            owner = await db.users.find_one({"id": owner_id}, {"name": 1})
+            owner_name = owner.get("name", "Unknown") if owner else "Unknown"
+            
+            stage_history = [{
+                "from_stage": None,
+                "to_stage": lead.get("stage", "new_lead"),
+                "changed_by": owner_id,
+                "changed_by_name": owner_name,
+                "changed_at": created_date_str,
+                "notes": "Initial stage (migrated)"
+            }]
+            
+            await db.leads.update_one(
+                {"id": lead_id}, 
+                {"$set": {"stage_history": stage_history, "updated_at": datetime.utcnow()}}
+            )
+            history_added += 1
+        
+        logger.info(f"Migration complete: {fixed_count} ownership fixed, {history_added} stage histories added")
+        
+        return {
+            "status": "success",
+            "message": f"Migration completed successfully",
+            "details": {
+                "total_orphan_leads": len(orphan_leads),
+                "ownership_fixed": fixed_count,
+                "assigned_to_admin": assigned_to_admin,
+                "stage_history_added": history_added
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Migration error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Migration failed: {str(e)}")
+
+@api_router.get("/admin/data-integrity")
+async def check_data_integrity(current_user: dict = Depends(require_admin)):
+    """Check data integrity across leads, users, and activity logs"""
+    try:
+        # Count orphan leads
+        orphan_query = {"$or": [
+            {"created_by_user": {"$exists": False}},
+            {"created_by_user": None},
+            {"created_by_user": ""}
+        ]}
+        orphan_count = await db.leads.count_documents(orphan_query)
+        
+        # Count leads without stage_history
+        no_history_count = await db.leads.count_documents({
+            "$or": [
+                {"stage_history": {"$exists": False}},
+                {"stage_history": None},
+                {"stage_history": {"$size": 0}}
+            ]
+        })
+        
+        # Total leads
+        total_leads = await db.leads.count_documents({})
+        
+        # Total users
+        total_users = await db.users.count_documents({"deleted_at": None})
+        
+        # Activity logs count
+        activity_count = await db.activity_logs.count_documents({})
+        
+        return {
+            "status": "pass" if orphan_count == 0 and no_history_count == 0 else "needs_attention",
+            "total_leads": total_leads,
+            "total_users": total_users,
+            "activity_logs": activity_count,
+            "issues": {
+                "orphan_leads": orphan_count,
+                "leads_without_stage_history": no_history_count
+            },
+            "checked_at": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Integrity check error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Integrity check failed: {str(e)}")
 
 
 # Include router and CORS
