@@ -91,13 +91,21 @@ const STAGE_CONFIG: Record<string, { color: string; icon: string; label: string 
 
 const ALL_STAGES = [
   // Primary stages (used for display order)
-  'new_lead', 'new', 'contacted', 'follow_up', 
-  'appointment_set', 'appointment_scheduled',  // Both variants
-  'soa_completed', 'policy_submitted', 'application_submitted',
+  // Note: 'new' is an alias for 'new_lead', 'appointment_scheduled' is an alias for 'appointment_set'
+  'new_lead', 'contacted', 'follow_up', 
+  'appointment_set',  // Single entry - appointment_scheduled is merged into this
+  'soa_completed', 'policy_submitted',
   'underwriting_review', 'additional_requirements',
   'approved', 'closed_won', 'policy_issued', 'policy_placed',
   'commission_pending', 'commission_paid', 'closed_lost',
 ];
+
+// Stage aliases - map variant names to their canonical stage
+const STAGE_ALIASES: Record<string, string> = {
+  'new': 'new_lead',
+  'appointment_scheduled': 'appointment_set',
+  'application_submitted': 'policy_submitted',
+};
 
 export default function PipelineScreen() {
   const router = useRouter();
@@ -331,8 +339,31 @@ export default function PipelineScreen() {
   const getStagesWithData = () => {
     if (!pipelineData?.stages) return [];
     
+    // First, normalize stage data by merging aliases
     const stageMap = new Map<string, PipelineStage>();
-    pipelineData.stages.forEach(s => stageMap.set(s.stage, s));
+    
+    pipelineData.stages.forEach(s => {
+      // Get the canonical stage name (resolve alias if exists)
+      const canonicalStage = STAGE_ALIASES[s.stage] || s.stage;
+      
+      if (stageMap.has(canonicalStage)) {
+        // Merge with existing stage data
+        const existing = stageMap.get(canonicalStage)!;
+        stageMap.set(canonicalStage, {
+          ...existing,
+          count: existing.count + s.count,
+          total_premium: existing.total_premium + s.total_premium,
+          total_commission: existing.total_commission + s.total_commission,
+          leads: [...existing.leads, ...s.leads],
+        });
+      } else {
+        // Set as new entry with canonical stage name
+        stageMap.set(canonicalStage, {
+          ...s,
+          stage: canonicalStage,
+        });
+      }
+    });
     
     return ALL_STAGES.map(stageKey => {
       const existing = stageMap.get(stageKey);
