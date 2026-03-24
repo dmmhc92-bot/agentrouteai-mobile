@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, status
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, WebSocket, WebSocketDisconnect
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -21,6 +21,8 @@ from reportlab.lib.utils import ImageReader
 from reportlab.lib import colors
 import math
 from enum import Enum
+import json
+import asyncio
 
 ROOT_DIR = Path(__file__).parent
 
@@ -82,6 +84,65 @@ api_router = APIRouter(prefix="/api")
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+# ==================== WEBSOCKET CONNECTION MANAGER ====================
+
+class FeedConnectionManager:
+    """Manages WebSocket connections for real-time Team Feed updates"""
+    
+    def __init__(self):
+        # Store connections by organization_id for targeted broadcasts
+        self.active_connections: Dict[str, List[WebSocket]] = {}
+        self.connection_users: Dict[WebSocket, dict] = {}
+    
+    async def connect(self, websocket: WebSocket, user: dict):
+        """Accept connection and register it to the user's organization"""
+        await websocket.accept()
+        org_id = user.get("organization_id")
+        if org_id:
+            if org_id not in self.active_connections:
+                self.active_connections[org_id] = []
+            self.active_connections[org_id].append(websocket)
+            self.connection_users[websocket] = user
+            logger.info(f"WebSocket connected: {user.get('email')} (org: {org_id})")
+    
+    def disconnect(self, websocket: WebSocket):
+        """Remove connection from all tracking"""
+        user = self.connection_users.get(websocket)
+        if user:
+            org_id = user.get("organization_id")
+            if org_id and org_id in self.active_connections:
+                if websocket in self.active_connections[org_id]:
+                    self.active_connections[org_id].remove(websocket)
+                if not self.active_connections[org_id]:
+                    del self.active_connections[org_id]
+            if websocket in self.connection_users:
+                del self.connection_users[websocket]
+            logger.info(f"WebSocket disconnected: {user.get('email')}")
+    
+    async def broadcast_to_org(self, org_id: str, message: dict):
+        """Send message to all connected users in an organization"""
+        if org_id in self.active_connections:
+            disconnected = []
+            for connection in self.active_connections[org_id]:
+                try:
+                    await connection.send_json(message)
+                except Exception as e:
+                    logger.warning(f"Failed to send to WebSocket: {e}")
+                    disconnected.append(connection)
+            
+            # Clean up disconnected sockets
+            for ws in disconnected:
+                self.disconnect(ws)
+    
+    def get_connection_count(self, org_id: str = None) -> int:
+        """Get number of active connections"""
+        if org_id:
+            return len(self.active_connections.get(org_id, []))
+        return sum(len(conns) for conns in self.active_connections.values())
+
+# Global connection manager instance
+feed_manager = FeedConnectionManager()
 
 # ==================== ENUMS ====================
 
@@ -9650,6 +9711,76 @@ async def admin_recovery_fix_orphan(
 
 # ==================== TEAM FEED ENDPOINTS ====================
 
+# WebSocket endpoint for real-time feed updates
+@app.websocket("/api/ws/feed")
+async def websocket_feed_endpoint(websocket: WebSocket, token: str = None):
+    """WebSocket endpoint for real-time Team Feed updates"""
+    try:
+        # Authenticate the user from token query parameter
+        if not token:
+            await websocket.close(code=4001, reason="Authentication required")
+            return
+        
+        try:
+            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+            user_id = payload.get("sub")
+            if not user_id:
+                await websocket.close(code=4001, reason="Invalid token")
+                return
+            
+            # Get user from database
+            user = await db.users.find_one({"id": user_id, "deleted_at": None})
+            if not user:
+                await websocket.close(code=4001, reason="User not found")
+                return
+            
+            # Check organization
+            if not user.get("organization_id"):
+                await websocket.close(code=4003, reason="No organization membership")
+                return
+                
+        except JWTError:
+            await websocket.close(code=4001, reason="Invalid token")
+            return
+        
+        # Connect the websocket
+        await feed_manager.connect(websocket, user)
+        
+        # Send initial connection confirmation
+        await websocket.send_json({
+            "type": "connected",
+            "message": "Connected to Team Feed",
+            "user_id": user["id"],
+            "organization_id": user.get("organization_id")
+        })
+        
+        # Keep connection alive and handle incoming messages
+        try:
+            while True:
+                # Wait for any client messages (heartbeat, etc.)
+                data = await websocket.receive_text()
+                
+                # Handle ping/pong for connection health
+                if data == "ping":
+                    await websocket.send_json({"type": "pong"})
+                    
+        except WebSocketDisconnect:
+            feed_manager.disconnect(websocket)
+            
+    except Exception as e:
+        logger.error(f"WebSocket error: {e}")
+        feed_manager.disconnect(websocket)
+
+# Helper function to broadcast feed events
+async def broadcast_feed_event(org_id: str, event_type: str, data: dict):
+    """Broadcast a feed event to all connected users in an organization"""
+    message = {
+        "type": event_type,
+        "data": data,
+        "timestamp": datetime.utcnow().isoformat()
+    }
+    await feed_manager.broadcast_to_org(org_id, message)
+
 @api_router.get("/feed")
 async def get_team_feed(
     limit: int = 50,
@@ -9819,8 +9950,8 @@ async def create_feed_post(
         metadata={"post_id": post_id, "post_type": post_data.post_type}
     )
     
-    # Get author info for response
-    return {
+    # Build response data
+    post_response = {
         "id": post_id,
         "content": post_data.content,
         "post_type": post_data.post_type,
@@ -9835,6 +9966,11 @@ async def create_feed_post(
         "reactions": {},
         "created_at": post_doc["created_at"].isoformat()
     }
+    
+    # Broadcast real-time update to organization
+    await broadcast_feed_event(org_id, "new_post", post_response)
+    
+    return post_response
 
 @api_router.put("/feed/{post_id}")
 async def update_feed_post(
@@ -9966,7 +10102,8 @@ async def create_comment(
         raise HTTPException(status_code=404, detail="Post not found")
     
     # Check organization access
-    if post.get("organization_id") != current_user.get("organization_id"):
+    org_id = current_user.get("organization_id")
+    if post.get("organization_id") != org_id:
         raise HTTPException(status_code=403, detail="Not authorized")
     
     comment_id = str(uuid.uuid4())
@@ -9975,7 +10112,7 @@ async def create_comment(
         "post_id": post_id,
         "content": comment_data.content,
         "author_id": current_user["id"],
-        "organization_id": current_user.get("organization_id"),
+        "organization_id": org_id,
         "created_at": datetime.utcnow(),
         "updated_at": datetime.utcnow(),
         "edited": False,
@@ -9984,14 +10121,20 @@ async def create_comment(
     
     await db.feed_comments.insert_one(comment_doc)
     
-    return {
+    comment_response = {
         "id": comment_id,
+        "post_id": post_id,
         "content": comment_data.content,
         "author_id": current_user["id"],
         "author_name": current_user.get("name", "Unknown"),
         "author_role": current_user.get("role"),
         "created_at": comment_doc["created_at"].isoformat()
     }
+    
+    # Broadcast real-time update
+    await broadcast_feed_event(org_id, "new_comment", comment_response)
+    
+    return comment_response
 
 @api_router.delete("/feed/{post_id}/comments/{comment_id}")
 async def delete_comment(
@@ -10034,7 +10177,8 @@ async def add_reaction(
         raise HTTPException(status_code=404, detail="Post not found")
     
     # Check organization access
-    if post.get("organization_id") != current_user.get("organization_id"):
+    org_id = current_user.get("organization_id")
+    if post.get("organization_id") != org_id:
         raise HTTPException(status_code=403, detail="Not authorized")
     
     # Check if user already has a reaction
@@ -10043,19 +10187,33 @@ async def add_reaction(
         "user_id": current_user["id"]
     })
     
+    reaction_response = None
+    
     if existing:
         # Update existing reaction
         if existing.get("reaction_type") == reaction_data.reaction_type:
             # Same reaction - remove it (toggle)
             await db.feed_reactions.delete_one({"id": existing["id"]})
-            return {"message": "Reaction removed", "action": "removed"}
+            reaction_response = {
+                "message": "Reaction removed", 
+                "action": "removed",
+                "post_id": post_id,
+                "user_id": current_user["id"],
+                "reaction_type": reaction_data.reaction_type
+            }
         else:
             # Different reaction - update
             await db.feed_reactions.update_one(
                 {"id": existing["id"]},
                 {"$set": {"reaction_type": reaction_data.reaction_type, "updated_at": datetime.utcnow()}}
             )
-            return {"message": "Reaction updated", "action": "updated", "reaction_type": reaction_data.reaction_type}
+            reaction_response = {
+                "message": "Reaction updated", 
+                "action": "updated", 
+                "post_id": post_id,
+                "user_id": current_user["id"],
+                "reaction_type": reaction_data.reaction_type
+            }
     else:
         # New reaction
         reaction_id = str(uuid.uuid4())
@@ -10064,12 +10222,23 @@ async def add_reaction(
             "post_id": post_id,
             "user_id": current_user["id"],
             "reaction_type": reaction_data.reaction_type,
-            "organization_id": current_user.get("organization_id"),
+            "organization_id": org_id,
             "created_at": datetime.utcnow(),
             "updated_at": datetime.utcnow()
         }
         await db.feed_reactions.insert_one(reaction_doc)
-        return {"message": "Reaction added", "action": "added", "reaction_type": reaction_data.reaction_type}
+        reaction_response = {
+            "message": "Reaction added", 
+            "action": "added", 
+            "post_id": post_id,
+            "user_id": current_user["id"],
+            "reaction_type": reaction_data.reaction_type
+        }
+    
+    # Broadcast real-time update
+    await broadcast_feed_event(org_id, "reaction_update", reaction_response)
+    
+    return reaction_response
 
 @api_router.get("/feed/team-members")
 async def get_team_members_for_feed(current_user: dict = Depends(get_current_user)):

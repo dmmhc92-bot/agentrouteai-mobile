@@ -111,7 +111,14 @@ export default function TeamFeedScreen() {
   const [newComment, setNewComment] = useState('');
   const [postingComment, setPostingComment] = useState(false);
   
-  // Auto-refresh interval
+  // WebSocket connection
+  const wsRef = useRef<WebSocket | null>(null);
+  const [wsConnected, setWsConnected] = useState(false);
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const reconnectAttemptsRef = useRef(0);
+  const MAX_RECONNECT_ATTEMPTS = 5;
+  
+  // Auto-refresh interval (fallback when WS is not connected)
   const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const fetchPosts = useCallback(async (isRefresh = false, loadMore = false) => {
@@ -168,16 +175,180 @@ export default function TeamFeedScreen() {
     }
   }, [token]);
 
+  // WebSocket connection handler
+  const connectWebSocket = useCallback(() => {
+    if (!token || isSoloMode || wsRef.current?.readyState === WebSocket.OPEN) {
+      return;
+    }
+
+    // Construct WebSocket URL
+    const backendUrl = process.env.EXPO_PUBLIC_BACKEND_URL || 'https://crm-final-build.preview.emergentagent.com';
+    const wsUrl = backendUrl.replace('https://', 'wss://').replace('http://', 'ws://');
+    const fullWsUrl = `${wsUrl}/api/ws/feed?token=${token}`;
+
+    console.log('[WebSocket] Connecting to:', wsUrl);
+
+    try {
+      const ws = new WebSocket(fullWsUrl);
+
+      ws.onopen = () => {
+        console.log('[WebSocket] Connected successfully');
+        setWsConnected(true);
+        reconnectAttemptsRef.current = 0;
+        
+        // Clear polling interval when WebSocket is connected
+        if (refreshIntervalRef.current) {
+          clearInterval(refreshIntervalRef.current);
+          refreshIntervalRef.current = null;
+        }
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          console.log('[WebSocket] Received:', message.type);
+
+          switch (message.type) {
+            case 'connected':
+              console.log('[WebSocket] Connection confirmed');
+              break;
+
+            case 'new_post':
+              // Add new post to the top of the feed
+              const newPost = message.data as FeedPost;
+              setPosts(prev => {
+                // Avoid duplicates
+                if (prev.some(p => p.id === newPost.id)) {
+                  return prev;
+                }
+                // Insert pinned posts at top of pinned section, others after pinned
+                if (newPost.is_pinned) {
+                  return [newPost, ...prev];
+                }
+                const pinnedIndex = prev.findIndex(p => !p.is_pinned);
+                if (pinnedIndex === -1) {
+                  return [...prev, newPost];
+                }
+                return [...prev.slice(0, pinnedIndex), newPost, ...prev.slice(pinnedIndex)];
+              });
+              break;
+
+            case 'new_comment':
+              // Update comment count on the post
+              const commentData = message.data;
+              setPosts(prev => prev.map(p => 
+                p.id === commentData.post_id 
+                  ? { ...p, comment_count: (p.comment_count || 0) + 1 }
+                  : p
+              ));
+              // If viewing this post's comments, add the new comment
+              if (selectedPost?.id === commentData.post_id) {
+                setComments(prev => {
+                  if (prev.some(c => c.id === commentData.id)) {
+                    return prev;
+                  }
+                  return [...prev, commentData];
+                });
+              }
+              break;
+
+            case 'reaction_update':
+              // Refresh reactions on the post - trigger a refetch for accuracy
+              const reactionData = message.data;
+              // Simple approach: refetch the post's current state
+              fetchPosts(true);
+              break;
+
+            case 'pong':
+              // Heartbeat response received
+              break;
+
+            default:
+              console.log('[WebSocket] Unknown message type:', message.type);
+          }
+        } catch (err) {
+          console.error('[WebSocket] Error parsing message:', err);
+        }
+      };
+
+      ws.onerror = (error) => {
+        console.error('[WebSocket] Error:', error);
+        setWsConnected(false);
+      };
+
+      ws.onclose = (event) => {
+        console.log('[WebSocket] Disconnected:', event.code, event.reason);
+        setWsConnected(false);
+        wsRef.current = null;
+
+        // Start polling fallback
+        if (!refreshIntervalRef.current) {
+          refreshIntervalRef.current = setInterval(() => {
+            fetchPosts(true);
+          }, 30000);
+        }
+
+        // Attempt reconnection with exponential backoff
+        if (reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {
+          const delay = Math.min(1000 * Math.pow(2, reconnectAttemptsRef.current), 30000);
+          reconnectAttemptsRef.current++;
+          console.log(`[WebSocket] Reconnecting in ${delay}ms (attempt ${reconnectAttemptsRef.current})`);
+          
+          reconnectTimeoutRef.current = setTimeout(() => {
+            connectWebSocket();
+          }, delay);
+        }
+      };
+
+      wsRef.current = ws;
+
+      // Send heartbeat every 25 seconds to keep connection alive
+      const heartbeatInterval = setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send('ping');
+        }
+      }, 25000);
+
+      // Clean up heartbeat on close
+      ws.addEventListener('close', () => {
+        clearInterval(heartbeatInterval);
+      });
+
+    } catch (error) {
+      console.error('[WebSocket] Connection error:', error);
+      setWsConnected(false);
+    }
+  }, [token, isSoloMode, fetchPosts, selectedPost]);
+
+  // Disconnect WebSocket
+  const disconnectWebSocket = useCallback(() => {
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
+    setWsConnected(false);
+  }, []);
+
   useEffect(() => {
     fetchPosts();
     fetchTeamMembers();
     
-    // Auto-refresh every 30 seconds
-    refreshIntervalRef.current = setInterval(() => {
-      fetchPosts(true);
-    }, 30000);
+    // Connect to WebSocket for real-time updates
+    connectWebSocket();
+    
+    // Fallback polling (only runs if WebSocket is not connected)
+    if (!wsConnected) {
+      refreshIntervalRef.current = setInterval(() => {
+        fetchPosts(true);
+      }, 30000);
+    }
     
     return () => {
+      disconnectWebSocket();
       if (refreshIntervalRef.current) {
         clearInterval(refreshIntervalRef.current);
       }
@@ -551,7 +722,15 @@ export default function TeamFeedScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Team Feed</Text>
+        <View style={styles.headerTitleContainer}>
+          <Text style={styles.headerTitle}>Team Feed</Text>
+          {wsConnected && (
+            <View style={styles.liveIndicator}>
+              <View style={styles.liveDot} />
+              <Text style={styles.liveText}>LIVE</Text>
+            </View>
+          )}
+        </View>
         <View style={styles.headerActions}>
           <TouchableOpacity 
             style={styles.headerButton}
@@ -894,10 +1073,36 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#1E293B',
   },
+  headerTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   headerTitle: {
     fontSize: 24,
     fontWeight: '700',
     color: '#FFFFFF',
+  },
+  liveIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(34, 197, 94, 0.15)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 4,
+  },
+  liveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#22C55E',
+  },
+  liveText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#22C55E',
+    letterSpacing: 0.5,
   },
   headerActions: {
     flexDirection: 'row',
