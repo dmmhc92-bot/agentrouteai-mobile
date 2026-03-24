@@ -2576,8 +2576,8 @@ async def get_leads(current_user: dict = Depends(get_current_user)):
             email=lead.get("email", ""), address=lead.get("address", ""),
             notes=lead.get("notes", ""), source=lead.get("source", "manual"),
             stage=lead.get("stage", "new_lead"), underwriting_status=lead.get("underwriting_status", "not_submitted"),
-            created_by_user=lead["created_by_user"], assigned_to_user=lead.get("assigned_to_user"),
-            created_date=lead["created_date"], last_contact_date=lead.get("last_contact_date"),
+            created_by_user=lead.get("created_by_user", ""), assigned_to_user=lead.get("assigned_to_user"),
+            created_date=lead.get("created_date", datetime.utcnow()), last_contact_date=lead.get("last_contact_date"),
             next_follow_up=lead.get("next_follow_up"),
             latitude=geocode["latitude"] if geocode else None,
             longitude=geocode["longitude"] if geocode else None,
@@ -2844,8 +2844,8 @@ async def get_lead(lead_id: str, current_user: dict = Depends(get_current_user))
         email=lead.get("email", ""), address=lead.get("address", ""),
         notes=lead.get("notes", ""), source=lead.get("source", "manual"),
         stage=lead.get("stage", "new_lead"), underwriting_status=lead.get("underwriting_status", "not_submitted"),
-        created_by_user=lead["created_by_user"], assigned_to_user=lead.get("assigned_to_user"),
-        created_date=lead["created_date"], last_contact_date=lead.get("last_contact_date"),
+        created_by_user=lead.get("created_by_user", ""), assigned_to_user=lead.get("assigned_to_user"),
+        created_date=lead.get("created_date", datetime.utcnow()), last_contact_date=lead.get("last_contact_date"),
         next_follow_up=lead.get("next_follow_up"),
         latitude=geocode["latitude"] if geocode else None,
         longitude=geocode["longitude"] if geocode else None,
@@ -9784,9 +9784,10 @@ async def create_feed_post(
         raise HTTPException(status_code=400, detail="Team feed requires an organization membership")
     
     # Validate linked lead if provided
+    linked_lead = None
     if post_data.linked_lead_id:
-        lead = await db.leads.find_one({"id": post_data.linked_lead_id})
-        if not lead:
+        linked_lead = await db.leads.find_one({"id": post_data.linked_lead_id})
+        if not linked_lead:
             raise HTTPException(status_code=404, detail="Linked lead not found")
     
     # Only admins/managers can pin posts
@@ -9828,6 +9829,8 @@ async def create_feed_post(
         "author_name": current_user.get("name", "Unknown"),
         "author_role": current_user.get("role"),
         "linked_lead_id": post_data.linked_lead_id,
+        "linked_lead_name": linked_lead.get("name") if linked_lead else None,
+        "linked_lead_stage": linked_lead.get("stage") if linked_lead else None,
         "comment_count": 0,
         "reactions": {},
         "created_at": post_doc["created_at"].isoformat()
