@@ -21,8 +21,8 @@ import { Platform } from 'react-native';
 // Bundle ID: app.emergent.agentrouteai2dd9b4e9
 // Product ID: agentroute.monthly
 // Subscription Group: AgentRoute premium
-const REVENUECAT_API_KEY_IOS = 'appl_CQgM11NfsHsgSfUtCGgmiFpKEzw';
-const REVENUECAT_API_KEY_ANDROID = 'goog_YOUR_REVENUECAT_ANDROID_API_KEY'; // Configure when needed
+const REVENUECAT_API_KEY_IOS = process.env.EXPO_PUBLIC_REVENUECAT_API_KEY_IOS || 'appl_CQgM11NfsHsgSfUtCGgmiFpKEzw';
+const REVENUECAT_API_KEY_ANDROID = process.env.EXPO_PUBLIC_REVENUECAT_API_KEY_ANDROID || 'goog_YOUR_REVENUECAT_ANDROID_API_KEY';
 
 // Entitlement and Product IDs - DO NOT CHANGE
 export const ENTITLEMENT_ID = 'premium';
