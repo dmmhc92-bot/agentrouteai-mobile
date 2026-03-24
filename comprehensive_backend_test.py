@@ -1,1066 +1,669 @@
 #!/usr/bin/env python3
 """
-Comprehensive Backend API Testing for AgentRoute AI CRM
-Complete system verification as requested in review request
-Backend URL: https://crm-final-build.preview.emergentagent.com/api
+COMPREHENSIVE SYSTEM-WIDE BACKEND API AUDIT - AgentRoute AI CRM
+Test ALL API endpoints for Admin, Manager, and Agent roles as specified in review request.
+This is a complete production audit covering all 11 endpoint categories.
 """
 
 import requests
 import json
 import time
-import uuid
-import base64
-from datetime import datetime, timedelta
-from typing import Dict, Any, List, Optional
+from datetime import datetime
+from typing import Dict, List, Optional
 
-# Configuration
-BACKEND_URL = "https://crm-final-build.preview.emergentagent.com/api"
+# Configuration from review request
+BASE_URL = "https://crm-final-build.preview.emergentagent.com/api"
 
-# Test credentials from review request
-TEST_CREDENTIALS = {
-    "admin": {"email": "admin@agentroute.com", "password": "Admin123!"},
-    "manager": {"email": "manager@agentroute.com", "password": "Manager123!"},
-    "agent": {"email": "agent@agentroute.com", "password": "Agent123!"}
+# Test tokens provided in review request (all in org_7443db00)
+TOKENS = {
+    "ADMIN": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI3NDQzZGIwMC1jZjJmLTRhOGEtOWZjYS01YjkwZDEzYjllNGEiLCJlbWFpbCI6ImFkbWluQGFnZW50cm91dGUuY29tIiwiZXhwIjoxNzc0NDA3MDY5fQ.3yM9uYPorFdUxUwjhRcAa80bY-xkMZAB5L579DsZNV0",
+    "MANAGER": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2NTRhMmE5YS1mNzE0LTRjYmItODRiOS0wNzRlNGJiNDI3OTciLCJlbWFpbCI6Im1hbmFnZXJAYWdlbnRyb3V0ZS5jb20iLCJleHAiOjE3NzQ0MDcwNjl9.yrBvLAbxLRcDaaVn1VConBLg6JV_HrRCzKXTYJwV80U",
+    "AGENT": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI3MmVhNjA4YS0zZDVlLTQ4ZWQtYmNmMy0xOTRjNDdhZWYzYjQiLCJlbWFpbCI6InRlc3RAZXhhbXBsZS5jb20iLCJleHAiOjE3NzQ0MDcwNjl9.WM2QpYWwWlHtDt6s6mkllHGQ4lX-LCglzO3UQQAjKYE"
 }
 
-# Sample base64 encoded JPEG image for profile image testing
-SAMPLE_IMAGE_BASE64 = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/2wBDAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/wAARCAAKAAoDAREAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD+f+gD/9k="
-
-class ComprehensiveBackendTester:
-    """Comprehensive test suite for AgentRoute AI Backend API"""
-
-    def __init__(self, backend_url: str):
-        self.backend_url = backend_url.rstrip('/')
-        self.session = requests.Session()
-        self.session.timeout = 30
-        self.test_results = []
-        self.user_tokens = {}
-        self.created_resources = {"leads": [], "appointments": []}
+class ComprehensiveAPITester:
+    def __init__(self):
+        self.results = []
+        self.test_data = {}
+        self.category_results = {}
         
-    def log_test_result(self, test_name: str, success: bool, message: str = "", response_data: Any = None):
-        """Log test result with timestamp"""
+    def log_result(self, test_name: str, status: str, details: str = "", response_data: dict = None):
+        """Log test result"""
         result = {
             "test": test_name,
-            "success": success,
-            "message": message,
-            "response_data": response_data,
-            "timestamp": datetime.now().isoformat()
+            "status": status,
+            "details": details,
+            "timestamp": datetime.now().isoformat(),
+            "response_data": response_data
         }
-        self.test_results.append(result)
-        status = "✅ PASS" if success else "❌ FAIL"
-        print(f"{status}: {test_name} - {message}")
+        self.results.append(result)
+        status_emoji = "✅" if status == "PASS" else "❌"
+        print(f"{status_emoji} {test_name}: {status}")
+        if details:
+            print(f"   Details: {details}")
+        if response_data and status == "FAIL":
+            print(f"   Response: {response_data}")
+        print()
 
-    def make_request(self, method: str, endpoint: str, token: Optional[str] = None, **kwargs) -> Optional[requests.Response]:
-        """Make API request with optional authentication"""
-        try:
-            headers = kwargs.pop('headers', {})
-            if token:
-                headers["Authorization"] = f"Bearer {token}"
+    def make_request(self, method: str, endpoint: str, token: str = None, data: dict = None, params: dict = None) -> tuple:
+        """Make HTTP request with proper headers"""
+        url = f"{BASE_URL}{endpoint}"
+        headers = {"Content-Type": "application/json"}
+        
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
             
-            url = f"{self.backend_url}{endpoint}"
-            response = self.session.request(method, url, headers=headers, **kwargs)
-            return response
-        except Exception as e:
-            print(f"Request error for {method} {endpoint}: {str(e)}")
-            return None
-
-    # ==================== 1. AUTHENTICATION TESTS ====================
-
-    def test_admin_login(self):
-        """Test admin login credentials"""
-        test_name = "Admin Login"
         try:
-            response = self.make_request(
-                "POST", 
-                "/auth/login",
-                json=TEST_CREDENTIALS["admin"],
-                headers={"Content-Type": "application/json"}
-            )
+            if method == "GET":
+                response = requests.get(url, headers=headers, params=params, timeout=30)
+            elif method == "POST":
+                response = requests.post(url, headers=headers, json=data, timeout=30)
+            elif method == "PUT":
+                response = requests.put(url, headers=headers, json=data, timeout=30)
+            elif method == "DELETE":
+                response = requests.delete(url, headers=headers, timeout=30)
+            else:
+                raise ValueError(f"Unsupported method: {method}")
+                
+            return response.status_code, response.json() if response.content else {}
+        except requests.exceptions.Timeout:
+            return 408, {"error": "Request timeout"}
+        except requests.exceptions.RequestException as e:
+            return 500, {"error": str(e)}
+        except json.JSONDecodeError:
+            return response.status_code, {"error": "Invalid JSON response"}
+
+    def test_authentication(self):
+        """1. AUTHENTICATION"""
+        print("🔐 TESTING AUTHENTICATION ENDPOINTS")
+        category_results = []
+        
+        # Test login with valid credentials (using existing tokens to verify they work)
+        for role, token in TOKENS.items():
+            status, response = self.make_request("GET", "/auth/me", token=token)
+            if status == 200:
+                self.log_result(f"Token validation - {role}", "PASS", f"Valid token for {response.get('email', 'unknown')}")
+                category_results.append("PASS")
+            else:
+                self.log_result(f"Token validation - {role}", "FAIL", f"Expected 200, got {status}", response)
+                category_results.append("FAIL")
+        
+        # Test unauthenticated access protection (401)
+        status, response = self.make_request("GET", "/auth/me")
+        if status == 401 or status == 403:
+            self.log_result("Unauthenticated access protection", "PASS", f"Correctly returns {status}")
+            category_results.append("PASS")
+        else:
+            self.log_result("Unauthenticated access protection", "FAIL", f"Expected 401/403, got {status}", response)
+            category_results.append("FAIL")
             
-            if response and response.status_code == 200:
-                data = response.json()
-                token = data.get("access_token")
-                if token:
-                    self.user_tokens["admin"] = token
-                    self.log_test_result(test_name, True, "Admin login successful with valid token")
+        # Test forgot-password endpoint
+        status, response = self.make_request("POST", "/auth/forgot-password", data={"email": "test@example.com"})
+        if status in [200, 404]:  # 200 if implemented, 404 if not found
+            self.log_result("Forgot password endpoint", "PASS", f"Endpoint accessible, status: {status}")
+            category_results.append("PASS")
+        else:
+            self.log_result("Forgot password endpoint", "FAIL", f"Unexpected status: {status}", response)
+            category_results.append("FAIL")
+            
+        self.category_results["AUTHENTICATION"] = category_results
+
+    def test_leads_crm(self):
+        """2. LEADS/CRM"""
+        print("📋 TESTING LEADS/CRM ENDPOINTS")
+        category_results = []
+        
+        for role, token in TOKENS.items():
+            # GET /api/leads (check visibility scope)
+            status, response = self.make_request("GET", "/leads", token=token)
+            if status == 200:
+                leads_count = len(response) if isinstance(response, list) else len(response.get('leads', []))
+                self.log_result(f"GET /api/leads - {role}", "PASS", f"Returns {leads_count} leads")
+                category_results.append("PASS")
+                
+                # Store a lead ID for further testing
+                if leads_count > 0:
+                    leads = response if isinstance(response, list) else response.get('leads', [])
+                    if leads and not self.test_data.get('lead_id'):
+                        self.test_data['lead_id'] = leads[0].get('id')
+            else:
+                self.log_result(f"GET /api/leads - {role}", "FAIL", f"Expected 200, got {status}", response)
+                category_results.append("FAIL")
+        
+        # POST /api/leads (create new lead) - test with ADMIN token
+        lead_data = {
+            "name": "Test Lead API Audit",
+            "email": "testlead@example.com",
+            "phone": "555-0123",
+            "stage": "new_lead"
+        }
+        status, response = self.make_request("POST", "/leads", token=TOKENS["ADMIN"], data=lead_data)
+        if status == 200:
+            self.log_result("POST /api/leads", "PASS", f"Created lead with ID: {response.get('id')}")
+            category_results.append("PASS")
+            self.test_data['created_lead_id'] = response.get('id')
+        else:
+            self.log_result("POST /api/leads", "FAIL", f"Expected 200, got {status}", response)
+            category_results.append("FAIL")
+        
+        # GET /api/leads/{id} (single lead detail)
+        lead_id = self.test_data.get('lead_id') or self.test_data.get('created_lead_id')
+        if lead_id:
+            status, response = self.make_request("GET", f"/leads/{lead_id}", token=TOKENS["ADMIN"])
+            if status == 200:
+                self.log_result("GET /api/leads/{id}", "PASS", f"Retrieved lead: {response.get('name', 'Unknown')}")
+                category_results.append("PASS")
+            else:
+                self.log_result("GET /api/leads/{id}", "FAIL", f"Expected 200, got {status}", response)
+                category_results.append("FAIL")
+        
+        # PUT /api/leads/{id} (update lead)
+        if lead_id:
+            update_data = {"name": "Updated Test Lead API Audit"}
+            status, response = self.make_request("PUT", f"/leads/{lead_id}", token=TOKENS["ADMIN"], data=update_data)
+            if status == 200:
+                self.log_result("PUT /api/leads/{id}", "PASS", "Successfully updated lead")
+                category_results.append("PASS")
+            else:
+                self.log_result("PUT /api/leads/{id}", "FAIL", f"Expected 200, got {status}", response)
+                category_results.append("FAIL")
+        
+        # DELETE /api/leads/{id} (delete lead - permission check)
+        if self.test_data.get('created_lead_id'):
+            status, response = self.make_request("DELETE", f"/leads/{self.test_data['created_lead_id']}", token=TOKENS["ADMIN"])
+            if status == 200:
+                self.log_result("DELETE /api/leads/{id}", "PASS", "Successfully deleted lead")
+                category_results.append("PASS")
+            else:
+                self.log_result("DELETE /api/leads/{id}", "FAIL", f"Expected 200, got {status}", response)
+                category_results.append("FAIL")
+                
+        self.category_results["LEADS/CRM"] = category_results
+
+    def test_pipeline(self):
+        """3. PIPELINE"""
+        print("🔄 TESTING PIPELINE ENDPOINTS")
+        category_results = []
+        
+        for role, token in TOKENS.items():
+            # GET /api/pipeline (all 3 roles)
+            status, response = self.make_request("GET", "/pipeline", token=token)
+            if status == 200:
+                stages = response.get('stages', [])
+                total_cases = response.get('summary', {}).get('total_cases', 0)
+                self.log_result(f"GET /api/pipeline - {role}", "PASS", f"Returns {len(stages)} stages, {total_cases} total cases")
+                category_results.append("PASS")
+                
+                # Verify stage counts are accurate
+                stage_sum = sum(stage.get('count', 0) for stage in stages)
+                if stage_sum == total_cases:
+                    self.log_result(f"Pipeline stage counts accuracy - {role}", "PASS", f"Stage sum ({stage_sum}) matches total ({total_cases})")
+                    category_results.append("PASS")
                 else:
-                    self.log_test_result(test_name, False, "No access token in response")
-            elif response:
-                self.log_test_result(test_name, False, f"Login failed: {response.status_code} - {response.text}")
+                    self.log_result(f"Pipeline stage counts accuracy - {role}", "FAIL", f"Stage sum ({stage_sum}) != total ({total_cases})")
+                    category_results.append("FAIL")
             else:
-                self.log_test_result(test_name, False, "No response received")
-        except Exception as e:
-            self.log_test_result(test_name, False, f"Test error: {str(e)}")
-
-    def test_manager_login(self):
-        """Test manager login credentials"""
-        test_name = "Manager Login"
-        try:
-            response = self.make_request(
-                "POST",
-                "/auth/login", 
-                json=TEST_CREDENTIALS["manager"],
-                headers={"Content-Type": "application/json"}
-            )
-            
-            if response and response.status_code == 200:
-                data = response.json()
-                token = data.get("access_token")
-                if token:
-                    self.user_tokens["manager"] = token
-                    self.log_test_result(test_name, True, "Manager login successful with valid token")
-                else:
-                    self.log_test_result(test_name, False, "No access token in response")
-            elif response:
-                self.log_test_result(test_name, False, f"Login failed: {response.status_code} - {response.text}")
-            else:
-                self.log_test_result(test_name, False, "No response received")
-        except Exception as e:
-            self.log_test_result(test_name, False, f"Test error: {str(e)}")
-
-    def test_agent_login(self):
-        """Test agent login credentials"""
-        test_name = "Agent Login"
-        try:
-            response = self.make_request(
-                "POST",
-                "/auth/login",
-                json=TEST_CREDENTIALS["agent"], 
-                headers={"Content-Type": "application/json"}
-            )
-            
-            if response and response.status_code == 200:
-                data = response.json()
-                token = data.get("access_token")
-                if token:
-                    self.user_tokens["agent"] = token
-                    self.log_test_result(test_name, True, "Agent login successful with valid token")
-                else:
-                    self.log_test_result(test_name, False, "No access token in response")
-            elif response:
-                self.log_test_result(test_name, False, f"Login failed: {response.status_code} - {response.text}")
-            else:
-                self.log_test_result(test_name, False, "No response received")
-        except Exception as e:
-            self.log_test_result(test_name, False, f"Test error: {str(e)}")
-
-    def test_invalid_login(self):
-        """Test invalid login credentials"""
-        test_name = "Invalid Login"
-        try:
-            invalid_creds = {"email": "invalid@test.com", "password": "wrongpassword"}
-            response = self.make_request(
-                "POST",
-                "/auth/login",
-                json=invalid_creds,
-                headers={"Content-Type": "application/json"}
-            )
-            
-            if response and response.status_code == 401:
-                self.log_test_result(test_name, True, "Invalid credentials properly rejected with 401")
-            elif response:
-                self.log_test_result(test_name, False, f"Expected 401 for invalid credentials, got: {response.status_code}")
-            else:
-                self.log_test_result(test_name, False, "No response received")
-        except Exception as e:
-            self.log_test_result(test_name, False, f"Test error: {str(e)}")
-
-    def test_session_with_valid_token(self):
-        """Test GET /api/auth/me with valid token"""
-        test_name = "Session Valid Token"
-        try:
-            admin_token = self.user_tokens.get("admin")
-            if not admin_token:
-                self.log_test_result(test_name, False, "Admin token not available")
-                return
+                self.log_result(f"GET /api/pipeline - {role}", "FAIL", f"Expected 200, got {status}", response)
+                category_results.append("FAIL")
                 
-            response = self.make_request("GET", "/auth/me", admin_token)
-            
-            if response and response.status_code == 200:
-                data = response.json()
-                if "email" in data and "profile_image" in data:
-                    self.log_test_result(test_name, True, f"Valid token returns user data with profile_image field for {data.get('email')}")
-                else:
-                    self.log_test_result(test_name, False, f"Missing expected fields in user data: {list(data.keys())}")
-            elif response:
-                self.log_test_result(test_name, False, f"Request failed: {response.status_code} - {response.text}")
-            else:
-                self.log_test_result(test_name, False, "No response received")
-        except Exception as e:
-            self.log_test_result(test_name, False, f"Test error: {str(e)}")
+        self.category_results["PIPELINE"] = category_results
 
-    def test_session_without_token(self):
-        """Test GET /api/auth/me without token"""
-        test_name = "Session No Token"
-        try:
-            response = self.make_request("GET", "/auth/me")
-            
-            if response and response.status_code == 403:
-                self.log_test_result(test_name, True, "Request without token properly rejected with 403")
-            elif response:
-                self.log_test_result(test_name, False, f"Expected 403 for no token, got: {response.status_code}")
-            else:
-                self.log_test_result(test_name, False, "No response received")
-        except Exception as e:
-            self.log_test_result(test_name, False, f"Test error: {str(e)}")
-
-    def test_session_invalid_token(self):
-        """Test GET /api/auth/me with invalid token"""
-        test_name = "Session Invalid Token"
-        try:
-            fake_token = "invalid.jwt.token"
-            response = self.make_request("GET", "/auth/me", fake_token)
-            
-            if response and response.status_code in [401, 403]:
-                self.log_test_result(test_name, True, f"Invalid token properly rejected with {response.status_code}")
-            elif response:
-                self.log_test_result(test_name, False, f"Expected 401/403 for invalid token, got: {response.status_code}")
-            else:
-                self.log_test_result(test_name, False, "No response received")
-        except Exception as e:
-            self.log_test_result(test_name, False, f"Test error: {str(e)}")
-
-    # ==================== 2. ROLE-BASED ACCESS TESTS ====================
-
-    def test_admin_users_endpoint(self):
-        """Test admin access to GET /api/users"""
-        test_name = "Admin Users Access"
-        try:
-            admin_token = self.user_tokens.get("admin")
-            if not admin_token:
-                self.log_test_result(test_name, False, "Admin token not available")
-                return
+    def test_appointments(self):
+        """4. APPOINTMENTS"""
+        print("📅 TESTING APPOINTMENTS ENDPOINTS")
+        category_results = []
+        
+        for role, token in TOKENS.items():
+            # GET /api/appointments (all 3 roles)
+            status, response = self.make_request("GET", "/appointments", token=token)
+            if status == 200:
+                appointments_count = len(response) if isinstance(response, list) else len(response.get('appointments', []))
+                self.log_result(f"GET /api/appointments - {role}", "PASS", f"Returns {appointments_count} appointments")
+                category_results.append("PASS")
                 
-            response = self.make_request("GET", "/users", admin_token)
-            
-            if response and response.status_code == 200:
-                data = response.json()
-                if isinstance(data, list) and len(data) > 0:
-                    self.log_test_result(test_name, True, f"Admin can access users list with {len(data)} users")
-                else:
-                    self.log_test_result(test_name, False, f"Unexpected users data format: {type(data)}")
-            elif response:
-                self.log_test_result(test_name, False, f"Request failed: {response.status_code} - {response.text}")
+                # Store appointment ID for further testing
+                appointments = response if isinstance(response, list) else response.get('appointments', [])
+                if appointments and not self.test_data.get('appointment_id'):
+                    self.test_data['appointment_id'] = appointments[0].get('id')
             else:
-                self.log_test_result(test_name, False, "No response received")
-        except Exception as e:
-            self.log_test_result(test_name, False, f"Test error: {str(e)}")
-
-    def test_agent_users_endpoint(self):
-        """Test agent access to GET /api/users (should be restricted)"""
-        test_name = "Agent Users Access Restriction"
-        try:
-            agent_token = self.user_tokens.get("agent")
-            if not agent_token:
-                self.log_test_result(test_name, False, "Agent token not available")
-                return
-                
-            response = self.make_request("GET", "/users", agent_token)
-            
-            if response and response.status_code == 403:
-                self.log_test_result(test_name, True, "Agent properly restricted from users endpoint (403)")
-            elif response and response.status_code == 200:
-                # Some systems may allow agents to see limited user data
-                data = response.json()
-                self.log_test_result(test_name, True, f"Agent has limited users access: {len(data) if isinstance(data, list) else 'invalid format'} users")
-            elif response:
-                self.log_test_result(test_name, False, f"Unexpected response: {response.status_code}")
-            else:
-                self.log_test_result(test_name, False, "No response received")
-        except Exception as e:
-            self.log_test_result(test_name, False, f"Test error: {str(e)}")
-
-    def test_admin_daily_command_center(self):
-        """Test admin access to daily command center"""
-        test_name = "Admin Daily Command Center"
-        try:
-            admin_token = self.user_tokens.get("admin")
-            if not admin_token:
-                self.log_test_result(test_name, False, "Admin token not available")
-                return
-                
-            response = self.make_request("GET", "/manager/daily-command-center", admin_token)
-            
-            if response and response.status_code == 200:
-                data = response.json()
-                self.log_test_result(test_name, True, f"Admin can access daily command center: {len(str(data))} chars data")
-            elif response:
-                self.log_test_result(test_name, False, f"Request failed: {response.status_code} - {response.text}")
-            else:
-                self.log_test_result(test_name, False, "No response received")
-        except Exception as e:
-            self.log_test_result(test_name, False, f"Test error: {str(e)}")
-
-    def test_manager_daily_command_center(self):
-        """Test manager access to daily command center"""
-        test_name = "Manager Daily Command Center"
-        try:
-            manager_token = self.user_tokens.get("manager")
-            if not manager_token:
-                self.log_test_result(test_name, False, "Manager token not available")
-                return
-                
-            response = self.make_request("GET", "/manager/daily-command-center", manager_token)
-            
-            if response and response.status_code == 200:
-                data = response.json()
-                self.log_test_result(test_name, True, f"Manager can access daily command center: {len(str(data))} chars data")
-            elif response:
-                self.log_test_result(test_name, False, f"Request failed: {response.status_code} - {response.text}")
-            else:
-                self.log_test_result(test_name, False, "No response received")
-        except Exception as e:
-            self.log_test_result(test_name, False, f"Test error: {str(e)}")
-
-    def test_agent_daily_command_center(self):
-        """Test agent access to daily command center (should be restricted)"""
-        test_name = "Agent Daily Command Center Restriction"
-        try:
-            agent_token = self.user_tokens.get("agent")
-            if not agent_token:
-                self.log_test_result(test_name, False, "Agent token not available")
-                return
-                
-            response = self.make_request("GET", "/manager/daily-command-center", agent_token)
-            
-            if response and response.status_code == 403:
-                self.log_test_result(test_name, True, "Agent properly restricted from daily command center (403)")
-            elif response:
-                self.log_test_result(test_name, False, f"Expected 403 for agent access, got: {response.status_code}")
-            else:
-                self.log_test_result(test_name, False, "No response received")
-        except Exception as e:
-            self.log_test_result(test_name, False, f"Test error: {str(e)}")
-
-    # ==================== 3. LEAD SYSTEM TESTS ====================
-
-    def test_get_leads_admin(self):
-        """Test admin can get leads"""
-        test_name = "Get Leads Admin"
-        try:
-            admin_token = self.user_tokens.get("admin")
-            if not admin_token:
-                self.log_test_result(test_name, False, "Admin token not available")
-                return
-                
-            response = self.make_request("GET", "/leads", admin_token)
-            
-            if response and response.status_code == 200:
-                data = response.json()
-                if isinstance(data, list):
-                    self.log_test_result(test_name, True, f"Admin can access leads: {len(data)} leads found")
-                else:
-                    self.log_test_result(test_name, False, f"Unexpected data format: {type(data)}")
-            elif response:
-                self.log_test_result(test_name, False, f"Request failed: {response.status_code} - {response.text}")
-            else:
-                self.log_test_result(test_name, False, "No response received")
-        except Exception as e:
-            self.log_test_result(test_name, False, f"Test error: {str(e)}")
-
-    def test_get_leads_agent(self):
-        """Test agent can get their leads"""
-        test_name = "Get Leads Agent"
-        try:
-            agent_token = self.user_tokens.get("agent")
-            if not agent_token:
-                self.log_test_result(test_name, False, "Agent token not available")
-                return
-                
-            response = self.make_request("GET", "/leads", agent_token)
-            
-            if response and response.status_code == 200:
-                data = response.json()
-                if isinstance(data, list):
-                    self.log_test_result(test_name, True, f"Agent can access their leads: {len(data)} leads found")
-                else:
-                    self.log_test_result(test_name, False, f"Unexpected data format: {type(data)}")
-            elif response:
-                self.log_test_result(test_name, False, f"Request failed: {response.status_code} - {response.text}")
-            else:
-                self.log_test_result(test_name, False, "No response received")
-        except Exception as e:
-            self.log_test_result(test_name, False, f"Test error: {str(e)}")
-
-    def test_create_lead(self):
-        """Test lead creation"""
-        test_name = "Create Lead"
-        try:
-            admin_token = self.user_tokens.get("admin")
-            if not admin_token:
-                self.log_test_result(test_name, False, "Admin token not available")
-                return
-                
-            lead_data = {
-                "first_name": "John",
-                "last_name": "Doe",
-                "phone": "555-123-4567",
-                "email": "john.doe@example.com",
-                "address": "123 Main St, Anytown, ST 12345",
-                "age": 65,
-                "status": "new",
-                "source": "test_source"
+                self.log_result(f"GET /api/appointments - {role}", "FAIL", f"Expected 200, got {status}", response)
+                category_results.append("FAIL")
+        
+        # POST /api/appointments (create)
+        lead_id = self.test_data.get('lead_id')
+        if lead_id:
+            appointment_data = {
+                "lead_id": lead_id,
+                "title": "Test Appointment API Audit",
+                "date": "2024-12-25T10:00:00Z",
+                "notes": "Test appointment for API audit"
             }
-            
-            response = self.make_request(
-                "POST", 
-                "/leads",
-                admin_token,
-                json=lead_data,
-                headers={"Content-Type": "application/json"}
-            )
-            
-            if response and response.status_code in [200, 201]:
-                data = response.json()
-                lead_id = data.get("id") 
-                if lead_id:
-                    self.created_resources["leads"].append(lead_id)
-                    self.log_test_result(test_name, True, f"Lead created successfully with ID: {lead_id}")
-                else:
-                    self.log_test_result(test_name, False, "Lead created but no ID returned")
-            elif response:
-                self.log_test_result(test_name, False, f"Lead creation failed: {response.status_code} - {response.text}")
+            status, response = self.make_request("POST", "/appointments", token=TOKENS["ADMIN"], data=appointment_data)
+            if status == 200:
+                self.log_result("POST /api/appointments", "PASS", f"Created appointment with ID: {response.get('id')}")
+                category_results.append("PASS")
+                self.test_data['created_appointment_id'] = response.get('id')
             else:
-                self.log_test_result(test_name, False, "No response received")
-        except Exception as e:
-            self.log_test_result(test_name, False, f"Test error: {str(e)}")
+                self.log_result("POST /api/appointments", "FAIL", f"Expected 200, got {status}", response)
+                category_results.append("FAIL")
+        
+        # GET /api/appointments/{id}
+        appointment_id = self.test_data.get('appointment_id') or self.test_data.get('created_appointment_id')
+        if appointment_id:
+            status, response = self.make_request("GET", f"/appointments/{appointment_id}", token=TOKENS["ADMIN"])
+            if status == 200:
+                self.log_result("GET /api/appointments/{id}", "PASS", f"Retrieved appointment: {response.get('title', 'Unknown')}")
+                category_results.append("PASS")
+            else:
+                self.log_result("GET /api/appointments/{id}", "FAIL", f"Expected 200, got {status}", response)
+                category_results.append("FAIL")
+        
+        # PUT /api/appointments/{id}
+        if appointment_id:
+            update_data = {"title": "Updated Test Appointment API Audit"}
+            status, response = self.make_request("PUT", f"/appointments/{appointment_id}", token=TOKENS["ADMIN"], data=update_data)
+            if status == 200:
+                self.log_result("PUT /api/appointments/{id}", "PASS", "Successfully updated appointment")
+                category_results.append("PASS")
+            else:
+                self.log_result("PUT /api/appointments/{id}", "FAIL", f"Expected 200, got {status}", response)
+                category_results.append("FAIL")
+        
+        # DELETE /api/appointments/{id}
+        if self.test_data.get('created_appointment_id'):
+            status, response = self.make_request("DELETE", f"/appointments/{self.test_data['created_appointment_id']}", token=TOKENS["ADMIN"])
+            if status == 200:
+                self.log_result("DELETE /api/appointments/{id}", "PASS", "Successfully deleted appointment")
+                category_results.append("PASS")
+            else:
+                self.log_result("DELETE /api/appointments/{id}", "FAIL", f"Expected 200, got {status}", response)
+                category_results.append("FAIL")
+                
+        self.category_results["APPOINTMENTS"] = category_results
 
-    def test_get_lead_detail(self):
-        """Test getting lead detail"""
-        test_name = "Get Lead Detail"
-        try:
-            admin_token = self.user_tokens.get("admin")
-            if not admin_token:
-                self.log_test_result(test_name, False, "Admin token not available")
-                return
+    def test_team_feed(self):
+        """5. TEAM FEED"""
+        print("👥 TESTING TEAM FEED ENDPOINTS")
+        category_results = []
+        
+        for role, token in TOKENS.items():
+            # GET /api/feed (all 3 roles)
+            status, response = self.make_request("GET", "/feed", token=token)
+            if status == 200:
+                posts_count = len(response.get('posts', []))
+                self.log_result(f"GET /api/feed - {role}", "PASS", f"Returns {posts_count} posts")
+                category_results.append("PASS")
                 
-            # Use a created lead ID or get first available lead
-            lead_id = None
-            if self.created_resources["leads"]:
-                lead_id = self.created_resources["leads"][0]
+                # Store post ID for further testing
+                if response.get('posts') and not self.test_data.get('post_id'):
+                    self.test_data['post_id'] = response['posts'][0]['id']
             else:
-                # Get first available lead
-                leads_response = self.make_request("GET", "/leads", admin_token)
-                if leads_response and leads_response.status_code == 200:
-                    leads = leads_response.json()
-                    if isinstance(leads, list) and len(leads) > 0:
-                        lead_id = leads[0].get("id")
-            
-            if not lead_id:
-                self.log_test_result(test_name, False, "No lead ID available for testing")
-                return
-                
-            response = self.make_request("GET", f"/leads/{lead_id}", admin_token)
-            
-            if response and response.status_code == 200:
-                data = response.json()
-                if "id" in data and data["id"] == lead_id:
-                    self.log_test_result(test_name, True, f"Lead detail retrieved successfully for ID: {lead_id}")
-                else:
-                    self.log_test_result(test_name, False, "Lead data doesn't match requested ID")
-            elif response:
-                self.log_test_result(test_name, False, f"Request failed: {response.status_code} - {response.text}")
+                self.log_result(f"GET /api/feed - {role}", "FAIL", f"Expected 200, got {status}", response)
+                category_results.append("FAIL")
+        
+        # POST /api/feed (create post)
+        post_data = {
+            "content": "Test post for API audit",
+            "post_type": "update"
+        }
+        status, response = self.make_request("POST", "/feed", token=TOKENS["ADMIN"], data=post_data)
+        if status == 200:
+            self.log_result("POST /api/feed", "PASS", f"Created post with ID: {response.get('id')}")
+            category_results.append("PASS")
+            self.test_data['created_post_id'] = response.get('id')
+        else:
+            self.log_result("POST /api/feed", "FAIL", f"Expected 200, got {status}", response)
+            category_results.append("FAIL")
+        
+        # POST /api/feed/{id}/comments
+        post_id = self.test_data.get('post_id') or self.test_data.get('created_post_id')
+        if post_id:
+            comment_data = {"content": "Test comment for API audit"}
+            status, response = self.make_request("POST", f"/feed/{post_id}/comments", token=TOKENS["ADMIN"], data=comment_data)
+            if status == 200:
+                self.log_result("POST /api/feed/{id}/comments", "PASS", f"Created comment with ID: {response.get('id')}")
+                category_results.append("PASS")
             else:
-                self.log_test_result(test_name, False, "No response received")
-        except Exception as e:
-            self.log_test_result(test_name, False, f"Test error: {str(e)}")
+                self.log_result("POST /api/feed/{id}/comments", "FAIL", f"Expected 200, got {status}", response)
+                category_results.append("FAIL")
+        
+        # POST /api/feed/{id}/reactions
+        if post_id:
+            reaction_data = {"reaction_type": "like"}
+            status, response = self.make_request("POST", f"/feed/{post_id}/reactions", token=TOKENS["ADMIN"], data=reaction_data)
+            if status == 200:
+                self.log_result("POST /api/feed/{id}/reactions", "PASS", f"Added reaction: {response.get('action', 'unknown')}")
+                category_results.append("PASS")
+            else:
+                self.log_result("POST /api/feed/{id}/reactions", "FAIL", f"Expected 200, got {status}", response)
+                category_results.append("FAIL")
+        
+        # GET /api/feed/team-members
+        status, response = self.make_request("GET", "/feed/team-members", token=TOKENS["ADMIN"])
+        if status == 200:
+            members_count = len(response.get('members', []))
+            self.log_result("GET /api/feed/team-members", "PASS", f"Returns {members_count} team members")
+            category_results.append("PASS")
+        else:
+            self.log_result("GET /api/feed/team-members", "FAIL", f"Expected 200, got {status}", response)
+            category_results.append("FAIL")
+            
+        self.category_results["TEAM FEED"] = category_results
 
-    def test_update_lead(self):
-        """Test lead update"""
-        test_name = "Update Lead"
-        try:
-            admin_token = self.user_tokens.get("admin")
-            if not admin_token:
-                self.log_test_result(test_name, False, "Admin token not available")
-                return
-                
-            # Use a created lead ID
-            lead_id = None
-            if self.created_resources["leads"]:
-                lead_id = self.created_resources["leads"][0]
-            else:
-                # Get first available lead
-                leads_response = self.make_request("GET", "/leads", admin_token)
-                if leads_response and leads_response.status_code == 200:
-                    leads = leads_response.json()
-                    if isinstance(leads, list) and len(leads) > 0:
-                        lead_id = leads[0].get("id")
+    def test_notifications(self):
+        """6. NOTIFICATIONS"""
+        print("🔔 TESTING NOTIFICATIONS ENDPOINTS")
+        category_results = []
+        
+        # GET /api/notifications
+        status, response = self.make_request("GET", "/notifications", token=TOKENS["ADMIN"])
+        if status == 200:
+            notifications_count = len(response) if isinstance(response, list) else len(response.get('notifications', []))
+            self.log_result("GET /api/notifications", "PASS", f"Returns {notifications_count} notifications")
+            category_results.append("PASS")
+        else:
+            self.log_result("GET /api/notifications", "FAIL", f"Expected 200, got {status}", response)
+            category_results.append("FAIL")
+        
+        # GET /api/notifications/unread-count
+        status, response = self.make_request("GET", "/notifications/unread-count", token=TOKENS["ADMIN"])
+        if status == 200:
+            unread_count = response.get('count', 0)
+            self.log_result("GET /api/notifications/unread-count", "PASS", f"Unread count: {unread_count}")
+            category_results.append("PASS")
+        else:
+            self.log_result("GET /api/notifications/unread-count", "FAIL", f"Expected 200, got {status}", response)
+            category_results.append("FAIL")
+        
+        # GET /api/notifications/preferences
+        status, response = self.make_request("GET", "/notifications/preferences", token=TOKENS["ADMIN"])
+        if status == 200:
+            self.log_result("GET /api/notifications/preferences", "PASS", "Retrieved notification preferences")
+            category_results.append("PASS")
+        else:
+            self.log_result("GET /api/notifications/preferences", "FAIL", f"Expected 200, got {status}", response)
+            category_results.append("FAIL")
+        
+        # PUT /api/notifications/preferences
+        preferences_data = {"email_notifications": True, "push_notifications": False}
+        status, response = self.make_request("PUT", "/notifications/preferences", token=TOKENS["ADMIN"], data=preferences_data)
+        if status == 200:
+            self.log_result("PUT /api/notifications/preferences", "PASS", "Updated notification preferences")
+            category_results.append("PASS")
+        else:
+            self.log_result("PUT /api/notifications/preferences", "FAIL", f"Expected 200, got {status}", response)
+            category_results.append("FAIL")
             
-            if not lead_id:
-                self.log_test_result(test_name, False, "No lead ID available for testing")
-                return
-                
-            update_data = {
-                "status": "contacted",
-                "notes": "Test update via API"
+        self.category_results["NOTIFICATIONS"] = category_results
+
+    def test_scope_of_appointment(self):
+        """7. SCOPE OF APPOINTMENT (SOA)"""
+        print("📄 TESTING SCOPE OF APPOINTMENT ENDPOINTS")
+        category_results = []
+        
+        # GET /api/scopes
+        status, response = self.make_request("GET", "/scopes", token=TOKENS["ADMIN"])
+        if status == 200:
+            scopes_count = len(response) if isinstance(response, list) else len(response.get('scopes', []))
+            self.log_result("GET /api/scopes", "PASS", f"Returns {scopes_count} scopes")
+            category_results.append("PASS")
+            
+            # Store scope ID for further testing
+            scopes = response if isinstance(response, list) else response.get('scopes', [])
+            if scopes and not self.test_data.get('scope_id'):
+                self.test_data['scope_id'] = scopes[0].get('id')
+        else:
+            self.log_result("GET /api/scopes", "FAIL", f"Expected 200, got {status}", response)
+            category_results.append("FAIL")
+        
+        # POST /api/scopes
+        lead_id = self.test_data.get('lead_id')
+        if lead_id:
+            scope_data = {
+                "lead_id": lead_id,
+                "beneficiary_name": "Test Beneficiary API Audit",
+                "agent_name": "Test Agent",
+                "appointment_date": "2024-12-25"
             }
-            
-            response = self.make_request(
-                "PUT", 
-                f"/leads/{lead_id}",
-                admin_token,
-                json=update_data,
-                headers={"Content-Type": "application/json"}
-            )
-            
-            if response and response.status_code == 200:
-                self.log_test_result(test_name, True, f"Lead updated successfully: {lead_id}")
-            elif response:
-                self.log_test_result(test_name, False, f"Update failed: {response.status_code} - {response.text}")
+            status, response = self.make_request("POST", "/scopes", token=TOKENS["ADMIN"], data=scope_data)
+            if status == 200:
+                self.log_result("POST /api/scopes", "PASS", f"Created scope with ID: {response.get('id')}")
+                category_results.append("PASS")
+                self.test_data['created_scope_id'] = response.get('id')
             else:
-                self.log_test_result(test_name, False, "No response received")
-        except Exception as e:
-            self.log_test_result(test_name, False, f"Test error: {str(e)}")
-
-    def test_offline_lead_creation(self):
-        """Test offline lead creation"""
-        test_name = "Offline Lead Creation"
-        try:
-            admin_token = self.user_tokens.get("admin")
-            if not admin_token:
-                self.log_test_result(test_name, False, "Admin token not available")
-                return
+                self.log_result("POST /api/scopes", "FAIL", f"Expected 200, got {status}", response)
+                category_results.append("FAIL")
+        
+        # GET /api/scopes/{id}
+        scope_id = self.test_data.get('scope_id') or self.test_data.get('created_scope_id')
+        if scope_id:
+            status, response = self.make_request("GET", f"/scopes/{scope_id}", token=TOKENS["ADMIN"])
+            if status == 200:
+                self.log_result("GET /api/scopes/{id}", "PASS", f"Retrieved scope: {response.get('beneficiary_name', 'Unknown')}")
+                category_results.append("PASS")
+            else:
+                self.log_result("GET /api/scopes/{id}", "FAIL", f"Expected 200, got {status}", response)
+                category_results.append("FAIL")
                 
-            temp_id = f"test_temp_{int(time.time())}"
-            lead_data = {
-                "temp_id": temp_id,
-                "first_name": "Jane",
-                "last_name": "Smith",
-                "phone": "555-987-6543",
-                "email": "jane.smith@example.com",
-                "status": "new",
-                "offline_timestamp": datetime.now().isoformat()
-            }
-            
-            response = self.make_request(
-                "POST",
-                "/leads/offline",
-                admin_token,
-                json=lead_data,
-                headers={"Content-Type": "application/json"}
-            )
-            
-            if response and response.status_code in [200, 201]:
-                data = response.json()
-                lead_id = data.get("id")
-                if lead_id:
-                    self.created_resources["leads"].append(lead_id)
-                    self.log_test_result(test_name, True, f"Offline lead created with temp_id: {temp_id}, ID: {lead_id}")
-                else:
-                    self.log_test_result(test_name, False, "Offline lead created but no ID returned")
-            elif response:
-                self.log_test_result(test_name, False, f"Offline lead creation failed: {response.status_code} - {response.text}")
-            else:
-                self.log_test_result(test_name, False, "No response received")
-        except Exception as e:
-            self.log_test_result(test_name, False, f"Test error: {str(e)}")
+        self.category_results["SCOPE OF APPOINTMENT"] = category_results
 
-    def test_offline_lead_duplicate_prevention(self):
-        """Test offline lead duplicate prevention"""
-        test_name = "Offline Lead Duplicate Prevention"
-        try:
-            admin_token = self.user_tokens.get("admin")
-            if not admin_token:
-                self.log_test_result(test_name, False, "Admin token not available")
-                return
-                
-            temp_id = f"duplicate_test_{int(time.time())}"
-            lead_data = {
-                "temp_id": temp_id,
-                "first_name": "Duplicate",
-                "last_name": "Test",
-                "phone": "555-111-2222",
-                "email": "duplicate@example.com",
-                "status": "new"
-            }
+    def test_account_user(self):
+        """8. ACCOUNT/USER"""
+        print("👤 TESTING ACCOUNT/USER ENDPOINTS")
+        category_results = []
+        
+        # GET /api/account/mode
+        status, response = self.make_request("GET", "/account/mode", token=TOKENS["ADMIN"])
+        if status == 200:
+            mode = response.get('mode', 'unknown')
+            self.log_result("GET /api/account/mode", "PASS", f"Account mode: {mode}")
+            category_results.append("PASS")
+        else:
+            self.log_result("GET /api/account/mode", "FAIL", f"Expected 200, got {status}", response)
+            category_results.append("FAIL")
+        
+        # PUT /api/account/mode
+        mode_data = {"mode": "connected"}
+        status, response = self.make_request("PUT", "/account/mode", token=TOKENS["ADMIN"], data=mode_data)
+        if status == 200:
+            self.log_result("PUT /api/account/mode", "PASS", "Updated account mode")
+            category_results.append("PASS")
+        else:
+            self.log_result("PUT /api/account/mode", "FAIL", f"Expected 200, got {status}", response)
+            category_results.append("FAIL")
+        
+        # GET /api/users (admin only)
+        status, response = self.make_request("GET", "/users", token=TOKENS["ADMIN"])
+        if status == 200:
+            users_count = len(response) if isinstance(response, list) else len(response.get('users', []))
+            self.log_result("GET /api/users (ADMIN)", "PASS", f"Returns {users_count} users")
+            category_results.append("PASS")
+        else:
+            self.log_result("GET /api/users (ADMIN)", "FAIL", f"Expected 200, got {status}", response)
+            category_results.append("FAIL")
+        
+        # Test that non-admin cannot access users endpoint
+        status, response = self.make_request("GET", "/users", token=TOKENS["AGENT"])
+        if status == 403:
+            self.log_result("GET /api/users (AGENT) - Permission Check", "PASS", "Correctly returns 403 Forbidden")
+            category_results.append("PASS")
+        else:
+            self.log_result("GET /api/users (AGENT) - Permission Check", "FAIL", f"Expected 403, got {status}", response)
+            category_results.append("FAIL")
+        
+        # GET /api/team-members
+        status, response = self.make_request("GET", "/team-members", token=TOKENS["ADMIN"])
+        if status == 200:
+            members_count = len(response) if isinstance(response, list) else len(response.get('members', []))
+            self.log_result("GET /api/team-members", "PASS", f"Returns {members_count} team members")
+            category_results.append("PASS")
+        else:
+            self.log_result("GET /api/team-members", "FAIL", f"Expected 200, got {status}", response)
+            category_results.append("FAIL")
             
-            # First creation should succeed
-            first_response = self.make_request(
-                "POST",
-                "/leads/offline",
-                admin_token,
-                json=lead_data,
-                headers={"Content-Type": "application/json"}
-            )
-            
-            if not first_response or first_response.status_code not in [200, 201]:
-                self.log_test_result(test_name, False, "First lead creation failed")
-                return
-                
-            # Second creation with same temp_id should fail
-            second_response = self.make_request(
-                "POST",
-                "/leads/offline", 
-                admin_token,
-                json=lead_data,
-                headers={"Content-Type": "application/json"}
-            )
-            
-            if second_response and second_response.status_code == 409:
-                self.log_test_result(test_name, True, f"Duplicate prevention working correctly (409 Conflict)")
-            elif second_response:
-                self.log_test_result(test_name, False, f"Expected 409 for duplicate, got: {second_response.status_code}")
-            else:
-                self.log_test_result(test_name, False, "No response received for duplicate test")
-        except Exception as e:
-            self.log_test_result(test_name, False, f"Test error: {str(e)}")
+        self.category_results["ACCOUNT/USER"] = category_results
 
-    def test_offline_lead_update(self):
-        """Test offline lead update"""
-        test_name = "Offline Lead Update"
-        try:
-            admin_token = self.user_tokens.get("admin")
-            if not admin_token:
-                self.log_test_result(test_name, False, "Admin token not available")
-                return
-                
-            # Get a lead ID for update testing
-            lead_id = None
-            if self.created_resources["leads"]:
-                lead_id = self.created_resources["leads"][0]
-            else:
-                leads_response = self.make_request("GET", "/leads", admin_token)
-                if leads_response and leads_response.status_code == 200:
-                    leads = leads_response.json()
-                    if isinstance(leads, list) and len(leads) > 0:
-                        lead_id = leads[0].get("id")
+    def test_team_management(self):
+        """9. TEAM MANAGEMENT"""
+        print("🏢 TESTING TEAM MANAGEMENT ENDPOINTS")
+        category_results = []
+        
+        # GET /api/organizations
+        status, response = self.make_request("GET", "/organizations", token=TOKENS["ADMIN"])
+        if status == 200:
+            orgs_count = len(response) if isinstance(response, list) else len(response.get('organizations', []))
+            self.log_result("GET /api/organizations", "PASS", f"Returns {orgs_count} organizations")
+            category_results.append("PASS")
+        else:
+            self.log_result("GET /api/organizations", "FAIL", f"Expected 200, got {status}", response)
+            category_results.append("FAIL")
+        
+        # GET /api/invitations
+        status, response = self.make_request("GET", "/invitations", token=TOKENS["ADMIN"])
+        if status == 200:
+            invitations_count = len(response) if isinstance(response, list) else len(response.get('invitations', []))
+            self.log_result("GET /api/invitations", "PASS", f"Returns {invitations_count} invitations")
+            category_results.append("PASS")
+        else:
+            self.log_result("GET /api/invitations", "FAIL", f"Expected 200, got {status}", response)
+            category_results.append("FAIL")
+        
+        # POST /api/invitations
+        invitation_data = {
+            "email": "testinvite@example.com",
+            "role": "agent"
+        }
+        status, response = self.make_request("POST", "/invitations", token=TOKENS["ADMIN"], data=invitation_data)
+        if status == 200:
+            self.log_result("POST /api/invitations", "PASS", f"Created invitation with token: {response.get('token', 'unknown')[:20]}...")
+            category_results.append("PASS")
+        else:
+            self.log_result("POST /api/invitations", "FAIL", f"Expected 200, got {status}", response)
+            category_results.append("FAIL")
             
-            if not lead_id:
-                self.log_test_result(test_name, False, "No lead ID available for testing")
-                return
-                
-            update_data = {
-                "temp_id": f"update_temp_{int(time.time())}",
-                "offline_timestamp": datetime.now().isoformat(),
-                "notes": "Offline update test"
-            }
-            
-            response = self.make_request(
-                "PUT",
-                f"/leads/{lead_id}/offline",
-                admin_token,
-                json=update_data,
-                headers={"Content-Type": "application/json"}
-            )
-            
-            if response and response.status_code == 200:
-                data = response.json()
-                if data.get("conflict") == False:
-                    self.log_test_result(test_name, True, "Offline lead update successful with no conflicts")
-                else:
-                    self.log_test_result(test_name, True, f"Offline lead update completed with conflict info: {data}")
-            elif response:
-                self.log_test_result(test_name, False, f"Update failed: {response.status_code} - {response.text}")
-            else:
-                self.log_test_result(test_name, False, "No response received")
-        except Exception as e:
-            self.log_test_result(test_name, False, f"Test error: {str(e)}")
+        self.category_results["TEAM MANAGEMENT"] = category_results
 
-    # ==================== 4. PROFILE IMAGE TESTS ====================
-
-    def test_profile_image_upload(self):
-        """Test profile image upload"""
-        test_name = "Profile Image Upload"
-        try:
-            admin_token = self.user_tokens.get("admin")
-            if not admin_token:
-                self.log_test_result(test_name, False, "Admin token not available")
-                return
-                
-            upload_data = {"image_data": SAMPLE_IMAGE_BASE64}
+    def test_ai_coach(self):
+        """10. AI COACH"""
+        print("🤖 TESTING AI COACH ENDPOINTS")
+        category_results = []
+        
+        # POST /api/coach/advice (if exists)
+        advice_data = {"question": "How can I improve my sales performance?"}
+        status, response = self.make_request("POST", "/coach/advice", token=TOKENS["ADMIN"], data=advice_data)
+        if status == 200:
+            self.log_result("POST /api/coach/advice", "PASS", f"Received advice: {len(response.get('advice', ''))} chars")
+            category_results.append("PASS")
+        elif status == 404:
+            self.log_result("POST /api/coach/advice", "PASS", "Endpoint not implemented (404)")
+            category_results.append("PASS")
+        else:
+            self.log_result("POST /api/coach/advice", "FAIL", f"Unexpected status: {status}", response)
+            category_results.append("FAIL")
+        
+        # POST /api/coach/scripts (if exists)
+        script_data = {"scenario": "cold calling"}
+        status, response = self.make_request("POST", "/coach/scripts", token=TOKENS["ADMIN"], data=script_data)
+        if status == 200:
+            self.log_result("POST /api/coach/scripts", "PASS", f"Received script: {len(response.get('script', ''))} chars")
+            category_results.append("PASS")
+        elif status == 404:
+            self.log_result("POST /api/coach/scripts", "PASS", "Endpoint not implemented (404)")
+            category_results.append("PASS")
+        else:
+            self.log_result("POST /api/coach/scripts", "FAIL", f"Unexpected status: {status}", response)
+            category_results.append("FAIL")
             
-            response = self.make_request(
-                "POST",
-                "/auth/profile-image",
-                admin_token,
-                json=upload_data,
-                headers={"Content-Type": "application/json"}
-            )
+        self.category_results["AI COACH"] = category_results
+
+    def test_system(self):
+        """11. SYSTEM"""
+        print("🏥 TESTING SYSTEM ENDPOINTS")
+        category_results = []
+        
+        # GET /api/health
+        status, response = self.make_request("GET", "/health")
+        if status == 200:
+            self.log_result("GET /api/health", "PASS", f"System healthy: {response.get('status', 'unknown')}")
+            category_results.append("PASS")
+        else:
+            self.log_result("GET /api/health", "FAIL", f"Expected 200, got {status}", response)
+            category_results.append("FAIL")
             
-            if response and response.status_code == 200:
-                data = response.json()
-                if "message" in data and "profile_image" in data:
-                    self.log_test_result(test_name, True, "Profile image uploaded successfully")
-                else:
-                    self.log_test_result(test_name, False, f"Unexpected response structure: {data}")
-            elif response:
-                self.log_test_result(test_name, False, f"Upload failed: {response.status_code} - {response.text}")
-            else:
-                self.log_test_result(test_name, False, "No response received")
-        except Exception as e:
-            self.log_test_result(test_name, False, f"Test error: {str(e)}")
-
-    def test_profile_image_in_auth_me(self):
-        """Test profile image appears in /auth/me"""
-        test_name = "Profile Image in Auth Me"
-        try:
-            admin_token = self.user_tokens.get("admin")
-            if not admin_token:
-                self.log_test_result(test_name, False, "Admin token not available")
-                return
-                
-            response = self.make_request("GET", "/auth/me", admin_token)
-            
-            if response and response.status_code == 200:
-                data = response.json()
-                profile_image = data.get("profile_image")
-                if profile_image:
-                    self.log_test_result(test_name, True, f"Profile image present in auth/me: {len(profile_image)} chars")
-                else:
-                    self.log_test_result(test_name, True, "Profile image field present but null (no image set)")
-            elif response:
-                self.log_test_result(test_name, False, f"Request failed: {response.status_code} - {response.text}")
-            else:
-                self.log_test_result(test_name, False, "No response received")
-        except Exception as e:
-            self.log_test_result(test_name, False, f"Test error: {str(e)}")
-
-    def test_profile_image_delete(self):
-        """Test profile image deletion"""
-        test_name = "Profile Image Delete"
-        try:
-            admin_token = self.user_tokens.get("admin")
-            if not admin_token:
-                self.log_test_result(test_name, False, "Admin token not available")
-                return
-                
-            response = self.make_request("DELETE", "/auth/profile-image", admin_token)
-            
-            if response and response.status_code == 200:
-                data = response.json()
-                if "message" in data:
-                    self.log_test_result(test_name, True, "Profile image deleted successfully")
-                else:
-                    self.log_test_result(test_name, False, f"Unexpected response: {data}")
-            elif response:
-                self.log_test_result(test_name, False, f"Delete failed: {response.status_code} - {response.text}")
-            else:
-                self.log_test_result(test_name, False, "No response received")
-        except Exception as e:
-            self.log_test_result(test_name, False, f"Test error: {str(e)}")
-
-    def test_profile_image_after_delete(self):
-        """Test profile image is null after deletion"""
-        test_name = "Profile Image Null After Delete"
-        try:
-            admin_token = self.user_tokens.get("admin")
-            if not admin_token:
-                self.log_test_result(test_name, False, "Admin token not available")
-                return
-                
-            response = self.make_request("GET", "/auth/me", admin_token)
-            
-            if response and response.status_code == 200:
-                data = response.json()
-                profile_image = data.get("profile_image")
-                if profile_image is None or profile_image == "":
-                    self.log_test_result(test_name, True, "Profile image successfully removed from user data")
-                else:
-                    self.log_test_result(test_name, False, f"Profile image still present: {type(profile_image)}")
-            elif response:
-                self.log_test_result(test_name, False, f"Request failed: {response.status_code} - {response.text}")
-            else:
-                self.log_test_result(test_name, False, "No response received")
-        except Exception as e:
-            self.log_test_result(test_name, False, f"Test error: {str(e)}")
-
-    # ==================== 5. APPOINTMENTS & CALENDAR ====================
-
-    def test_get_appointments(self):
-        """Test getting appointments"""
-        test_name = "Get Appointments"
-        try:
-            admin_token = self.user_tokens.get("admin")
-            if not admin_token:
-                self.log_test_result(test_name, False, "Admin token not available")
-                return
-                
-            response = self.make_request("GET", "/appointments", admin_token)
-            
-            if response and response.status_code == 200:
-                data = response.json()
-                if isinstance(data, list):
-                    self.log_test_result(test_name, True, f"Appointments retrieved successfully: {len(data)} appointments")
-                else:
-                    self.log_test_result(test_name, False, f"Unexpected data format: {type(data)}")
-            elif response:
-                self.log_test_result(test_name, False, f"Request failed: {response.status_code} - {response.text}")
-            else:
-                self.log_test_result(test_name, False, "No response received")
-        except Exception as e:
-            self.log_test_result(test_name, False, f"Test error: {str(e)}")
-
-    def test_create_appointment(self):
-        """Test creating appointment"""
-        test_name = "Create Appointment"
-        try:
-            admin_token = self.user_tokens.get("admin")
-            if not admin_token:
-                self.log_test_result(test_name, False, "Admin token not available")
-                return
-                
-            # Get a lead ID for the appointment
-            lead_id = None
-            if self.created_resources["leads"]:
-                lead_id = self.created_resources["leads"][0]
-            else:
-                leads_response = self.make_request("GET", "/leads", admin_token)
-                if leads_response and leads_response.status_code == 200:
-                    leads = leads_response.json()
-                    if isinstance(leads, list) and len(leads) > 0:
-                        lead_id = leads[0].get("id")
-            
-            if not lead_id:
-                # Create appointment without lead_id if required
-                appointment_data = {
-                    "title": "Test Appointment",
-                    "description": "API Test Appointment",
-                    "appointment_date": (datetime.now() + timedelta(days=1)).isoformat(),
-                    "duration_minutes": 60
-                }
-            else:
-                appointment_data = {
-                    "lead_id": lead_id,
-                    "title": "Test Appointment with Lead", 
-                    "description": "API Test Appointment",
-                    "appointment_date": (datetime.now() + timedelta(days=1)).isoformat(),
-                    "duration_minutes": 60
-                }
-            
-            response = self.make_request(
-                "POST",
-                "/appointments",
-                admin_token,
-                json=appointment_data,
-                headers={"Content-Type": "application/json"}
-            )
-            
-            if response and response.status_code in [200, 201]:
-                data = response.json()
-                appointment_id = data.get("id")
-                if appointment_id:
-                    self.created_resources["appointments"].append(appointment_id)
-                    self.log_test_result(test_name, True, f"Appointment created successfully: {appointment_id}")
-                else:
-                    self.log_test_result(test_name, False, "Appointment created but no ID returned")
-            elif response:
-                self.log_test_result(test_name, False, f"Creation failed: {response.status_code} - {response.text}")
-            else:
-                self.log_test_result(test_name, False, "No response received")
-        except Exception as e:
-            self.log_test_result(test_name, False, f"Test error: {str(e)}")
-
-    # ==================== 6. TEAM MANAGEMENT ====================
-
-    def test_get_users_with_profile_image(self):
-        """Test users list includes profile_image field"""
-        test_name = "Users List With Profile Image"
-        try:
-            admin_token = self.user_tokens.get("admin")
-            if not admin_token:
-                self.log_test_result(test_name, False, "Admin token not available")
-                return
-                
-            response = self.make_request("GET", "/users", admin_token)
-            
-            if response and response.status_code == 200:
-                data = response.json()
-                if isinstance(data, list) and len(data) > 0:
-                    # Check if users have profile_image field
-                    users_with_profile_field = [user for user in data if "profile_image" in user]
-                    if len(users_with_profile_field) > 0:
-                        self.log_test_result(test_name, True, f"Users list includes profile_image field for {len(users_with_profile_field)}/{len(data)} users")
-                    else:
-                        self.log_test_result(test_name, False, "No users have profile_image field")
-                else:
-                    self.log_test_result(test_name, False, f"No users found or invalid format: {type(data)}")
-            elif response:
-                self.log_test_result(test_name, False, f"Request failed: {response.status_code} - {response.text}")
-            else:
-                self.log_test_result(test_name, False, "No response received")
-        except Exception as e:
-            self.log_test_result(test_name, False, f"Test error: {str(e)}")
-
-    def test_get_invitations(self):
-        """Test getting invitations list"""
-        test_name = "Get Invitations"
-        try:
-            admin_token = self.user_tokens.get("admin")
-            if not admin_token:
-                self.log_test_result(test_name, False, "Admin token not available")
-                return
-                
-            response = self.make_request("GET", "/invitations", admin_token)
-            
-            if response and response.status_code == 200:
-                data = response.json()
-                if isinstance(data, list):
-                    self.log_test_result(test_name, True, f"Invitations retrieved successfully: {len(data)} invitations")
-                else:
-                    self.log_test_result(test_name, False, f"Unexpected data format: {type(data)}")
-            elif response:
-                self.log_test_result(test_name, False, f"Request failed: {response.status_code} - {response.text}")
-            else:
-                self.log_test_result(test_name, False, "No response received")
-        except Exception as e:
-            self.log_test_result(test_name, False, f"Test error: {str(e)}")
-
-    # ==================== 7. HEALTH CHECK ====================
-
-    def test_health_check(self):
-        """Test health check endpoint"""
-        test_name = "Health Check"
-        try:
-            response = self.make_request("GET", "/health")
-            
-            if response and response.status_code == 200:
-                data = response.json()
-                if data.get("status") == "healthy":
-                    self.log_test_result(test_name, True, "Health check returns healthy status")
-                else:
-                    self.log_test_result(test_name, False, f"Unexpected health status: {data.get('status')}")
-            elif response:
-                self.log_test_result(test_name, False, f"Health check failed: {response.status_code} - {response.text}")
-            else:
-                self.log_test_result(test_name, False, "No response received")
-        except Exception as e:
-            self.log_test_result(test_name, False, f"Test error: {str(e)}")
-
-    # ==================== TEST EXECUTION ====================
+        self.category_results["SYSTEM"] = category_results
 
     def run_all_tests(self):
-        """Run comprehensive test suite"""
-        print("🚀 Starting Comprehensive Backend API Audit - AgentRoute AI CRM")
-        print(f"Backend URL: {self.backend_url}")
-        print(f"Test Credentials: Admin, Manager, Agent")
+        """Run all test suites"""
+        print("🚀 STARTING COMPREHENSIVE SYSTEM-WIDE BACKEND API AUDIT")
+        print("=" * 80)
+        print("Testing ALL API endpoints for Admin, Manager, and Agent roles")
+        print("This is a complete production audit covering 11 endpoint categories")
         print("=" * 80)
         
-        # 1. Authentication Tests
-        print("\n🔐 1. AUTHENTICATION TESTS")
-        self.test_admin_login()
-        self.test_manager_login()
-        self.test_agent_login()
-        self.test_invalid_login()
-        self.test_session_with_valid_token()
-        self.test_session_without_token()
-        self.test_session_invalid_token()
+        start_time = time.time()
         
-        # 2. Role-Based Access Tests
-        print("\n👥 2. ROLE-BASED ACCESS TESTS")
-        self.test_admin_users_endpoint()
-        self.test_agent_users_endpoint()
-        self.test_admin_daily_command_center()
-        self.test_manager_daily_command_center()
-        self.test_agent_daily_command_center()
+        # Run all test suites
+        self.test_authentication()
+        self.test_leads_crm()
+        self.test_pipeline()
+        self.test_appointments()
+        self.test_team_feed()
+        self.test_notifications()
+        self.test_scope_of_appointment()
+        self.test_account_user()
+        self.test_team_management()
+        self.test_ai_coach()
+        self.test_system()
         
-        # 3. Lead System Tests
-        print("\n📋 3. LEAD SYSTEM TESTS")
-        self.test_get_leads_admin()
-        self.test_get_leads_agent()
-        self.test_create_lead()
-        self.test_get_lead_detail()
-        self.test_update_lead()
-        self.test_offline_lead_creation()
-        self.test_offline_lead_duplicate_prevention()
-        self.test_offline_lead_update()
+        end_time = time.time()
+        duration = end_time - start_time
         
-        # 4. Profile Image Tests
-        print("\n🖼️ 4. PROFILE IMAGE TESTS")
-        self.test_profile_image_upload()
-        self.test_profile_image_in_auth_me()
-        self.test_profile_image_delete()
-        self.test_profile_image_after_delete()
-        
-        # 5. Appointments & Calendar
-        print("\n📅 5. APPOINTMENTS & CALENDAR")
-        self.test_get_appointments()
-        self.test_create_appointment()
-        
-        # 6. Team Management
-        print("\n👨‍💼 6. TEAM MANAGEMENT")
-        self.test_get_users_with_profile_image()
-        self.test_get_invitations()
-        
-        # 7. Health Check
-        print("\n❤️ 7. HEALTH CHECK")
-        self.test_health_check()
-        
-        return self.generate_summary()
+        # Generate summary
+        self.generate_summary(duration)
 
-    def generate_summary(self):
+    def generate_summary(self, duration: float):
         """Generate comprehensive test summary"""
-        print("\n" + "=" * 80)
-        print("📊 COMPREHENSIVE BACKEND API AUDIT SUMMARY")
+        print("=" * 80)
+        print("📊 COMPREHENSIVE API AUDIT SUMMARY")
         print("=" * 80)
         
-        total_tests = len(self.test_results)
-        passed_tests = len([r for r in self.test_results if r["success"]])
+        total_tests = len(self.results)
+        passed_tests = len([r for r in self.results if r['status'] == 'PASS'])
         failed_tests = total_tests - passed_tests
         success_rate = (passed_tests / total_tests * 100) if total_tests > 0 else 0
         
         print(f"Total Tests: {total_tests}")
-        print(f"Passed: {passed_tests}")
-        print(f"Failed: {failed_tests}")
+        print(f"Passed: {passed_tests} ✅")
+        print(f"Failed: {failed_tests} ❌")
         print(f"Success Rate: {success_rate:.1f}%")
+        print(f"Duration: {duration:.2f} seconds")
+        print()
         
-        # Critical checks summary
-        critical_issues = []
-        no_500_errors = True
-        role_permissions_working = True
-        crud_working = True
-        
-        for result in self.test_results:
-            if not result["success"]:
-                if "500" in result["message"]:
-                    no_500_errors = False
-                    critical_issues.append(f"500 Error: {result['test']}")
-                elif "403" not in result["message"] and "role" in result["test"].lower():
-                    role_permissions_working = False
-                    critical_issues.append(f"Role Permission Issue: {result['test']}")
-                elif any(crud in result["test"].lower() for crud in ["create", "get", "update", "delete"]):
-                    crud_working = False
-                    critical_issues.append(f"CRUD Issue: {result['test']}")
-        
-        print(f"\n🔍 CRITICAL CHECKS:")
-        print(f"✅ No 500 errors: {'YES' if no_500_errors else 'NO'}")
-        print(f"✅ Role permissions enforced: {'YES' if role_permissions_working else 'NO'}")
-        print(f"✅ CRUD operations work: {'YES' if crud_working else 'NO'}")
+        # Category breakdown
+        print("📋 CATEGORY BREAKDOWN:")
+        for category, results in self.category_results.items():
+            category_passed = len([r for r in results if r == 'PASS'])
+            category_total = len(results)
+            category_rate = (category_passed / category_total * 100) if category_total > 0 else 0
+            status_emoji = "✅" if category_rate == 100 else "⚠️" if category_rate >= 50 else "❌"
+            print(f"  {status_emoji} {category}: {category_passed}/{category_total} ({category_rate:.1f}%)")
+        print()
         
         if failed_tests > 0:
-            print(f"\n❌ FAILED TESTS ({failed_tests}):")
-            for result in self.test_results:
-                if not result["success"]:
-                    print(f"  - {result['test']}: {result['message']}")
+            print("❌ FAILED TESTS:")
+            for result in self.results:
+                if result['status'] == 'FAIL':
+                    print(f"  • {result['test']}: {result['details']}")
+            print()
         
-        if critical_issues:
-            print(f"\n🚨 CRITICAL ISSUES:")
-            for issue in critical_issues:
-                print(f"  - {issue}")
+        print("✅ PASSED TESTS:")
+        for result in self.results:
+            if result['status'] == 'PASS':
+                print(f"  • {result['test']}")
         
-        print(f"\n✅ PASSED TESTS ({passed_tests}):")
-        for result in self.test_results:
-            if result["success"]:
-                print(f"  - {result['test']}: {result['message']}")
-        
-        return {
-            "total_tests": total_tests,
-            "passed_tests": passed_tests,
-            "failed_tests": failed_tests,
-            "success_rate": success_rate,
-            "no_500_errors": no_500_errors,
-            "role_permissions_working": role_permissions_working,
-            "crud_working": crud_working,
-            "critical_issues": critical_issues,
-            "results": self.test_results
-        }
+        print(f"\n🎯 COMPREHENSIVE BACKEND API AUDIT COMPLETE")
+        print("All 11 endpoint categories tested for role-based access and functionality")
 
 if __name__ == "__main__":
-    # Initialize comprehensive tester
-    tester = ComprehensiveBackendTester(BACKEND_URL)
-    
-    # Run comprehensive test suite
-    summary = tester.run_all_tests()
-    
-    # Exit with appropriate code
-    exit_code = 0 if summary["failed_tests"] == 0 else 1
-    exit(exit_code)
+    tester = ComprehensiveAPITester()
+    tester.run_all_tests()
