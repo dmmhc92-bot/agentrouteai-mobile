@@ -6,7 +6,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
 from pathlib import Path
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, Field, EmailStr, validator
 from typing import List, Optional, Dict, Any, Literal
 import uuid
 from datetime import datetime, timedelta
@@ -348,6 +348,19 @@ class FeedPostCreate(BaseModel):
     linked_lead_id: Optional[str] = None
     is_pinned: bool = False
     visibility: str = "team"  # team only
+    
+    @validator('content')
+    def content_not_empty(cls, v):
+        if not v or not v.strip():
+            raise ValueError('Content cannot be empty')
+        return v.strip()
+    
+    @validator('post_type')
+    def valid_post_type(cls, v):
+        valid_types = ['update', 'announcement', 'question', 'progress', 'activity']
+        if v not in valid_types:
+            raise ValueError(f'Invalid post type. Must be one of: {valid_types}')
+        return v
 
 class FeedPostUpdate(BaseModel):
     content: Optional[str] = None
@@ -355,9 +368,22 @@ class FeedPostUpdate(BaseModel):
 
 class FeedCommentCreate(BaseModel):
     content: str
+    
+    @validator('content')
+    def content_not_empty(cls, v):
+        if not v or not v.strip():
+            raise ValueError('Comment cannot be empty')
+        return v.strip()
 
 class FeedReactionCreate(BaseModel):
     reaction_type: str = "like"  # like, celebrate, support, insightful
+    
+    @validator('reaction_type')
+    def valid_reaction_type(cls, v):
+        valid_types = ['like', 'celebrate', 'support', 'insightful']
+        if v not in valid_types:
+            raise ValueError(f'Invalid reaction type. Must be one of: {valid_types}')
+        return v
 
 # Production/Policy Models
 class ProductionCreate(BaseModel):

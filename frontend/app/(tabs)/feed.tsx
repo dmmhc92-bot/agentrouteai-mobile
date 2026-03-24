@@ -96,6 +96,12 @@ export default function TeamFeedScreen() {
   const [newPostContent, setNewPostContent] = useState('');
   const [newPostType, setNewPostType] = useState('update');
   const [posting, setPosting] = useState(false);
+  const [linkedLeadId, setLinkedLeadId] = useState<string | null>(null);
+  const [linkedLeadName, setLinkedLeadName] = useState<string | null>(null);
+  const [showLeadPicker, setShowLeadPicker] = useState(false);
+  const [availableLeads, setAvailableLeads] = useState<{id: string; name: string; stage: string}[]>([]);
+  const [loadingLeads, setLoadingLeads] = useState(false);
+  const [leadSearchQuery, setLeadSearchQuery] = useState('');
   
   // Comments Modal
   const [showComments, setShowComments] = useState(false);
@@ -190,6 +196,45 @@ export default function TeamFeedScreen() {
     }
   };
 
+  const fetchLeadsForLinking = useCallback(async () => {
+    if (!token) return;
+    setLoadingLeads(true);
+    try {
+      const response = await api.get('/leads?limit=100');
+      const leads = response.data.map((lead: any) => ({
+        id: lead.id,
+        name: lead.name,
+        stage: lead.stage || 'new'
+      }));
+      setAvailableLeads(leads);
+    } catch (error) {
+      console.error('Error fetching leads for linking:', error);
+    } finally {
+      setLoadingLeads(false);
+    }
+  }, [token]);
+
+  const handleOpenLeadPicker = () => {
+    fetchLeadsForLinking();
+    setShowLeadPicker(true);
+  };
+
+  const handleSelectLead = (lead: {id: string; name: string; stage: string}) => {
+    setLinkedLeadId(lead.id);
+    setLinkedLeadName(lead.name);
+    setShowLeadPicker(false);
+    setLeadSearchQuery('');
+  };
+
+  const handleRemoveLinkedLead = () => {
+    setLinkedLeadId(null);
+    setLinkedLeadName(null);
+  };
+
+  const filteredLeads = availableLeads.filter(lead =>
+    lead.name.toLowerCase().includes(leadSearchQuery.toLowerCase())
+  );
+
   const handleCreatePost = async () => {
     if (!newPostContent.trim()) {
       Alert.alert('Error', 'Please enter some content');
@@ -198,15 +243,23 @@ export default function TeamFeedScreen() {
     
     setPosting(true);
     try {
-      const response = await api.post('/feed', {
+      const postData: any = {
         content: newPostContent.trim(),
         post_type: newPostType,
-      });
+      };
+      
+      if (linkedLeadId) {
+        postData.linked_lead_id = linkedLeadId;
+      }
+      
+      const response = await api.post('/feed', postData);
       
       // Add new post to the top
       setPosts(prev => [response.data, ...prev]);
       setNewPostContent('');
       setNewPostType('update');
+      setLinkedLeadId(null);
+      setLinkedLeadName(null);
       setShowNewPost(false);
       
     } catch (error: any) {
@@ -658,6 +711,94 @@ export default function TeamFeedScreen() {
             onChangeText={setNewPostContent}
             autoFocus
           />
+          
+          {/* Lead Linking Section */}
+          <View style={styles.leadLinkSection}>
+            {linkedLeadId ? (
+              <View style={styles.linkedLeadPreview}>
+                <View style={styles.linkedLeadInfo}>
+                  <Ionicons name="link" size={16} color="#3B82F6" />
+                  <Text style={styles.linkedLeadPreviewText}>{linkedLeadName}</Text>
+                </View>
+                <TouchableOpacity onPress={handleRemoveLinkedLead}>
+                  <Ionicons name="close-circle" size={20} color="#EF4444" />
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <TouchableOpacity 
+                style={styles.linkLeadButton}
+                onPress={handleOpenLeadPicker}
+              >
+                <Ionicons name="link-outline" size={18} color="#3B82F6" />
+                <Text style={styles.linkLeadButtonText}>Link a Lead</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </SafeAreaView>
+      </Modal>
+      
+      {/* Lead Picker Modal */}
+      <Modal
+        visible={showLeadPicker}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowLeadPicker(false)}
+      >
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={() => setShowLeadPicker(false)}>
+              <Ionicons name="close" size={24} color="#94A3B8" />
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>Select Lead</Text>
+            <View style={{ width: 24 }} />
+          </View>
+          
+          <View style={styles.leadSearchContainer}>
+            <Ionicons name="search" size={18} color="#64748B" />
+            <TextInput
+              style={styles.leadSearchInput}
+              placeholder="Search leads..."
+              placeholderTextColor="#64748B"
+              value={leadSearchQuery}
+              onChangeText={setLeadSearchQuery}
+            />
+          </View>
+          
+          {loadingLeads ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color="#3B82F6" />
+            </View>
+          ) : (
+            <FlatList
+              data={filteredLeads}
+              keyExtractor={item => item.id}
+              contentContainerStyle={styles.leadPickerList}
+              ListEmptyComponent={
+                <View style={styles.emptyComments}>
+                  <Text style={styles.emptyCommentsText}>No leads found</Text>
+                </View>
+              }
+              renderItem={({ item: lead }) => (
+                <TouchableOpacity
+                  style={styles.leadPickerItem}
+                  onPress={() => handleSelectLead(lead)}
+                >
+                  <View style={styles.leadPickerAvatar}>
+                    <Text style={styles.leadPickerAvatarText}>
+                      {lead.name.charAt(0).toUpperCase()}
+                    </Text>
+                  </View>
+                  <View style={styles.leadPickerInfo}>
+                    <Text style={styles.leadPickerName}>{lead.name}</Text>
+                    <View style={styles.leadPickerStageBadge}>
+                      <Text style={styles.leadPickerStageText}>{lead.stage}</Text>
+                    </View>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color="#64748B" />
+                </TouchableOpacity>
+              )}
+            />
+          )}
         </SafeAreaView>
       </Modal>
       
@@ -1149,5 +1290,108 @@ const styles = StyleSheet.create({
   },
   sendButton: {
     padding: 8,
+  },
+  // Lead Linking Styles
+  leadLinkSection: {
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#1E293B',
+  },
+  linkedLeadPreview: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#1E293B',
+    padding: 12,
+    borderRadius: 8,
+  },
+  linkedLeadInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  linkedLeadPreviewText: {
+    color: '#3B82F6',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  linkLeadButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    padding: 12,
+    backgroundColor: '#1E293B',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#334155',
+    borderStyle: 'dashed',
+  },
+  linkLeadButtonText: {
+    color: '#3B82F6',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  leadSearchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1E293B',
+    marginHorizontal: 16,
+    marginVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    gap: 8,
+  },
+  leadSearchInput: {
+    flex: 1,
+    paddingVertical: 12,
+    fontSize: 14,
+    color: '#FFFFFF',
+  },
+  leadPickerList: {
+    padding: 16,
+    paddingBottom: 40,
+  },
+  leadPickerItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1E293B',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  leadPickerAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#3B82F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  leadPickerAvatarText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  leadPickerInfo: {
+    flex: 1,
+  },
+  leadPickerName: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '500',
+    marginBottom: 4,
+  },
+  leadPickerStageBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#334155',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  leadPickerStageText: {
+    color: '#94A3B8',
+    fontSize: 11,
+    textTransform: 'capitalize',
   },
 });
