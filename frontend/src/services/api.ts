@@ -159,6 +159,27 @@ class ApiService {
     return this.authToken;
   }
 
+  // Generic HTTP methods for direct API calls
+  async get(url: string) {
+    return apiClient.get(url);
+  }
+
+  async post(url: string, data?: any) {
+    return apiClient.post(url, data);
+  }
+
+  async put(url: string, data?: any) {
+    return apiClient.put(url, data);
+  }
+
+  async delete(url: string) {
+    return apiClient.delete(url);
+  }
+
+  async patch(url: string, data?: any) {
+    return apiClient.patch(url, data);
+  }
+
   // Auth
   async register(name: string, email: string, password: string, inviteToken?: string) {
     const response = await apiClient.post('/auth/register', { 
