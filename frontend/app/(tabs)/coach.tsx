@@ -137,7 +137,12 @@ export default function CoachScreen() {
         </View>
       </View>
 
-      {messages.length === 0 ? (
+      {isLoadingHistory ? (
+        <View style={styles.welcomeContainer}>
+          <ActivityIndicator size="large" color="#3B82F6" />
+          <Text style={styles.loadingText}>Loading conversation history...</Text>
+        </View>
+      ) : messages.length === 0 ? (
         <View style={styles.welcomeContainer}>
           <View style={styles.welcomeIcon}>
             <Ionicons name="chatbubbles" size={60} color="#3B82F6" />
@@ -260,6 +265,12 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 32,
     lineHeight: 22,
+  },
+  loadingText: {
+    fontSize: 14,
+    color: '#94A3B8',
+    textAlign: 'center',
+    marginTop: 16,
   },
   quickPrompts: {
     width: '100%',

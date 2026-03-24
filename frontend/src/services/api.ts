@@ -543,7 +543,11 @@ class ApiService {
 
   async getChatHistory() {
     const response = await apiClient.get('/ai/chat-history');
-    return response.data;
+    // Handle both old (array) and new (object with messages) response formats
+    if (Array.isArray(response.data)) {
+      return response.data;
+    }
+    return response.data.messages || [];
   }
 
   // OCR

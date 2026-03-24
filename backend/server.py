@@ -4784,6 +4784,17 @@ async def ai_chat(request: dict, current_user: dict = Depends(get_current_user))
             if lead:
                 context = f"\nLead: {lead['name']}, Stage: {lead.get('stage')}, Notes: {lead.get('notes', 'None')}"
         
+        # Store user message in history
+        user_msg_doc = {
+            "id": str(uuid.uuid4()),
+            "user_id": current_user["id"],
+            "role": "user",
+            "content": message,
+            "lead_id": lead_id,
+            "timestamp": datetime.utcnow()
+        }
+        await db.chat_history.insert_one(user_msg_doc)
+        
         chat = LlmChat(
             api_key=api_key,
             session_id=f"chat_{current_user['id']}",
@@ -4791,6 +4802,18 @@ async def ai_chat(request: dict, current_user: dict = Depends(get_current_user))
         ).with_model("openai", "gpt-4.1")
         
         response = await chat.send_message(UserMessage(text=message))
+        
+        # Store assistant response in history
+        assistant_msg_doc = {
+            "id": str(uuid.uuid4()),
+            "user_id": current_user["id"],
+            "role": "assistant",
+            "content": response,
+            "lead_id": lead_id,
+            "timestamp": datetime.utcnow()
+        }
+        await db.chat_history.insert_one(assistant_msg_doc)
+        
         return {"response": response, "timestamp": datetime.utcnow().isoformat()}
     except Exception as e:
         logger.error(f"AI error: {e}")
@@ -4888,13 +4911,40 @@ Return JSON: {{"talking_points": [...], "documents_needed": [...], "focus_areas"
         return {"lead_name": "", "summary": "Error loading prep", "talking_points": [], "documents_needed": [], "notes": ""}
 
 @api_router.get("/ai/chat-history")
-async def get_chat_history(current_user: dict = Depends(get_current_user)):
-    messages = await db.chat_history.find({"user_id": current_user["id"]}).sort("timestamp", -1).limit(50).to_list(50)
-    # Convert ObjectId to string for JSON serialization
-    for msg in messages:
-        if "_id" in msg:
-            msg["_id"] = str(msg["_id"])
-    return list(reversed(messages))
+async def get_chat_history(
+    limit: int = 50,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get chat history for the current user"""
+    try:
+        messages = await db.chat_history.find(
+            {"user_id": current_user["id"]}
+        ).sort("timestamp", -1).limit(limit).to_list(limit)
+        
+        # Convert ObjectId to string and format response
+        formatted_messages = []
+        for msg in reversed(messages):  # Reverse to get chronological order
+            formatted_messages.append({
+                "id": msg.get("id", str(msg.get("_id", ""))),
+                "role": msg.get("role", "user"),
+                "content": msg.get("content", ""),
+                "timestamp": msg.get("timestamp", datetime.utcnow()).isoformat() if isinstance(msg.get("timestamp"), datetime) else msg.get("timestamp"),
+                "lead_id": msg.get("lead_id")
+            })
+        
+        return {
+            "messages": formatted_messages,
+            "count": len(formatted_messages),
+            "has_more": len(messages) >= limit
+        }
+    except Exception as e:
+        logger.error(f"Error fetching chat history: {e}")
+        # Return empty history on error instead of crashing
+        return {
+            "messages": [],
+            "count": 0,
+            "has_more": False
+        }
 
 # ==================== OCR/SCANNER ROUTES ====================
 
