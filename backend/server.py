@@ -340,6 +340,25 @@ class TaskResponse(BaseModel):
     created_date: datetime
     completed_date: Optional[datetime]
 
+# ==================== TEAM FEED MODELS ====================
+
+class FeedPostCreate(BaseModel):
+    content: str
+    post_type: str = "update"  # update, announcement, question, progress, activity
+    linked_lead_id: Optional[str] = None
+    is_pinned: bool = False
+    visibility: str = "team"  # team only
+
+class FeedPostUpdate(BaseModel):
+    content: Optional[str] = None
+    is_pinned: Optional[bool] = None
+
+class FeedCommentCreate(BaseModel):
+    content: str
+
+class FeedReactionCreate(BaseModel):
+    reaction_type: str = "like"  # like, celebrate, support, insightful
+
 # Production/Policy Models
 class ProductionCreate(BaseModel):
     lead_id: Optional[str] = None
@@ -9602,6 +9621,448 @@ async def admin_recovery_fix_orphan(
     )
     
     return {"status": "success", "message": message}
+
+# ==================== TEAM FEED ENDPOINTS ====================
+
+@api_router.get("/feed")
+async def get_team_feed(
+    limit: int = 50,
+    offset: int = 0,
+    filter_type: Optional[str] = None,
+    filter_user_id: Optional[str] = None,
+    filter_lead_id: Optional[str] = None,
+    pinned_only: bool = False,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get team feed posts. Strictly scoped to user's organization.
+    Posts are visible only to authenticated team members.
+    """
+    org_id = current_user.get("organization_id")
+    if not org_id:
+        return {"posts": [], "total": 0, "message": "No team feed available for solo accounts"}
+    
+    # Build query - strictly team-scoped
+    query = {"organization_id": org_id, "deleted_at": None}
+    
+    if filter_type and filter_type != "all":
+        query["post_type"] = filter_type
+    if filter_user_id:
+        query["author_id"] = filter_user_id
+    if filter_lead_id:
+        query["linked_lead_id"] = filter_lead_id
+    if pinned_only:
+        query["is_pinned"] = True
+    
+    # Get total count
+    total = await db.feed_posts.count_documents(query)
+    
+    # Get posts with pagination
+    posts = await db.feed_posts.find(query).sort([
+        ("is_pinned", -1),
+        ("created_at", -1)
+    ]).skip(offset).limit(limit).to_list(limit)
+    
+    # Batch fetch authors
+    author_ids = list(set([p.get("author_id") for p in posts if p.get("author_id")]))
+    authors_map = {}
+    if author_ids:
+        async for user in db.users.find({"id": {"$in": author_ids}}, {"id": 1, "name": 1, "role": 1, "profile_image": 1}):
+            authors_map[user["id"]] = {
+                "name": user.get("name", "Unknown"),
+                "role": user.get("role", "agent"),
+                "profile_image": user.get("profile_image")
+            }
+    
+    # Batch fetch linked leads (name only, no sensitive data)
+    lead_ids = list(set([p.get("linked_lead_id") for p in posts if p.get("linked_lead_id")]))
+    leads_map = {}
+    if lead_ids:
+        async for lead in db.leads.find({"id": {"$in": lead_ids}}, {"id": 1, "name": 1, "stage": 1}):
+            leads_map[lead["id"]] = {
+                "name": lead.get("name", "Unknown"),
+                "stage": lead.get("stage")
+            }
+    
+    # Batch fetch comment counts and reactions
+    post_ids = [p.get("id") for p in posts]
+    
+    # Get comment counts
+    comment_pipeline = [
+        {"$match": {"post_id": {"$in": post_ids}, "deleted_at": None}},
+        {"$group": {"_id": "$post_id", "count": {"$sum": 1}}}
+    ]
+    comment_counts = {}
+    async for result in db.feed_comments.aggregate(comment_pipeline):
+        comment_counts[result["_id"]] = result["count"]
+    
+    # Get reaction counts
+    reaction_pipeline = [
+        {"$match": {"post_id": {"$in": post_ids}}},
+        {"$group": {"_id": {"post_id": "$post_id", "type": "$reaction_type"}, "count": {"$sum": 1}}}
+    ]
+    reaction_counts = {}
+    async for result in db.feed_reactions.aggregate(reaction_pipeline):
+        post_id = result["_id"]["post_id"]
+        reaction_type = result["_id"]["type"]
+        if post_id not in reaction_counts:
+            reaction_counts[post_id] = {}
+        reaction_counts[post_id][reaction_type] = result["count"]
+    
+    # Get current user's reactions
+    user_reactions = {}
+    user_reactions_cursor = db.feed_reactions.find({
+        "post_id": {"$in": post_ids},
+        "user_id": current_user["id"]
+    })
+    async for reaction in user_reactions_cursor:
+        user_reactions[reaction["post_id"]] = reaction["reaction_type"]
+    
+    # Format response
+    result_posts = []
+    for post in posts:
+        post_id = post.get("id")
+        author = authors_map.get(post.get("author_id"), {"name": "Unknown", "role": "agent"})
+        linked_lead = leads_map.get(post.get("linked_lead_id")) if post.get("linked_lead_id") else None
+        
+        result_posts.append({
+            "id": post_id,
+            "content": post.get("content"),
+            "post_type": post.get("post_type", "update"),
+            "is_pinned": post.get("is_pinned", False),
+            "author_id": post.get("author_id"),
+            "author_name": author.get("name"),
+            "author_role": author.get("role"),
+            "author_image": author.get("profile_image"),
+            "linked_lead_id": post.get("linked_lead_id"),
+            "linked_lead_name": linked_lead.get("name") if linked_lead else None,
+            "linked_lead_stage": linked_lead.get("stage") if linked_lead else None,
+            "comment_count": comment_counts.get(post_id, 0),
+            "reactions": reaction_counts.get(post_id, {}),
+            "user_reaction": user_reactions.get(post_id),
+            "created_at": post.get("created_at").isoformat() if post.get("created_at") else None,
+            "updated_at": post.get("updated_at").isoformat() if post.get("updated_at") else None,
+            "edited": post.get("edited", False)
+        })
+    
+    return {"posts": result_posts, "total": total, "limit": limit, "offset": offset}
+
+@api_router.post("/feed")
+async def create_feed_post(
+    post_data: FeedPostCreate,
+    current_user: dict = Depends(get_current_user)
+):
+    """Create a new team feed post"""
+    org_id = current_user.get("organization_id")
+    if not org_id:
+        raise HTTPException(status_code=400, detail="Team feed requires an organization membership")
+    
+    # Validate linked lead if provided
+    if post_data.linked_lead_id:
+        lead = await db.leads.find_one({"id": post_data.linked_lead_id})
+        if not lead:
+            raise HTTPException(status_code=404, detail="Linked lead not found")
+    
+    # Only admins/managers can pin posts
+    if post_data.is_pinned and current_user.get("role") == "agent":
+        post_data.is_pinned = False
+    
+    post_id = str(uuid.uuid4())
+    post_doc = {
+        "id": post_id,
+        "content": post_data.content,
+        "post_type": post_data.post_type,
+        "linked_lead_id": post_data.linked_lead_id,
+        "is_pinned": post_data.is_pinned,
+        "organization_id": org_id,
+        "author_id": current_user["id"],
+        "created_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow(),
+        "edited": False,
+        "deleted_at": None
+    }
+    
+    await db.feed_posts.insert_one(post_doc)
+    
+    # Log activity
+    await log_activity(
+        current_user["id"],
+        "feed_post_created",
+        f"Created feed post: {post_data.post_type}",
+        metadata={"post_id": post_id, "post_type": post_data.post_type}
+    )
+    
+    # Get author info for response
+    return {
+        "id": post_id,
+        "content": post_data.content,
+        "post_type": post_data.post_type,
+        "is_pinned": post_data.is_pinned,
+        "author_id": current_user["id"],
+        "author_name": current_user.get("name", "Unknown"),
+        "author_role": current_user.get("role"),
+        "linked_lead_id": post_data.linked_lead_id,
+        "comment_count": 0,
+        "reactions": {},
+        "created_at": post_doc["created_at"].isoformat()
+    }
+
+@api_router.put("/feed/{post_id}")
+async def update_feed_post(
+    post_id: str,
+    post_data: FeedPostUpdate,
+    current_user: dict = Depends(get_current_user)
+):
+    """Update a feed post (author can edit content, admin/manager can pin)"""
+    post = await db.feed_posts.find_one({"id": post_id, "deleted_at": None})
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    
+    # Check organization access
+    if post.get("organization_id") != current_user.get("organization_id"):
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    update_data = {"updated_at": datetime.utcnow()}
+    
+    # Content can only be edited by author
+    if post_data.content is not None:
+        if post.get("author_id") != current_user["id"]:
+            raise HTTPException(status_code=403, detail="Only the author can edit post content")
+        update_data["content"] = post_data.content
+        update_data["edited"] = True
+    
+    # Pinning can be done by admin/manager
+    if post_data.is_pinned is not None:
+        if current_user.get("role") == "agent":
+            raise HTTPException(status_code=403, detail="Only managers and admins can pin posts")
+        update_data["is_pinned"] = post_data.is_pinned
+    
+    await db.feed_posts.update_one({"id": post_id}, {"$set": update_data})
+    
+    return {"message": "Post updated", "post_id": post_id}
+
+@api_router.delete("/feed/{post_id}")
+async def delete_feed_post(
+    post_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Delete a feed post (author or admin/manager can delete)"""
+    post = await db.feed_posts.find_one({"id": post_id, "deleted_at": None})
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    
+    # Check organization access
+    if post.get("organization_id") != current_user.get("organization_id"):
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    # Author can delete their own post, admin/manager can delete any
+    is_author = post.get("author_id") == current_user["id"]
+    is_moderator = current_user.get("role") in ["admin", "manager"]
+    
+    if not is_author and not is_moderator:
+        raise HTTPException(status_code=403, detail="Not authorized to delete this post")
+    
+    # Soft delete
+    await db.feed_posts.update_one(
+        {"id": post_id},
+        {"$set": {"deleted_at": datetime.utcnow(), "deleted_by": current_user["id"]}}
+    )
+    
+    # Log activity
+    await log_activity(
+        current_user["id"],
+        "feed_post_deleted",
+        f"Deleted feed post",
+        metadata={"post_id": post_id, "was_author": is_author}
+    )
+    
+    return {"message": "Post deleted"}
+
+# Feed Comments
+@api_router.get("/feed/{post_id}/comments")
+async def get_post_comments(
+    post_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get comments for a post"""
+    post = await db.feed_posts.find_one({"id": post_id, "deleted_at": None})
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    
+    # Check organization access
+    if post.get("organization_id") != current_user.get("organization_id"):
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    comments = await db.feed_comments.find({
+        "post_id": post_id,
+        "deleted_at": None
+    }).sort("created_at", 1).to_list(100)
+    
+    # Batch fetch authors
+    author_ids = list(set([c.get("author_id") for c in comments if c.get("author_id")]))
+    authors_map = {}
+    if author_ids:
+        async for user in db.users.find({"id": {"$in": author_ids}}, {"id": 1, "name": 1, "role": 1, "profile_image": 1}):
+            authors_map[user["id"]] = {
+                "name": user.get("name", "Unknown"),
+                "role": user.get("role", "agent"),
+                "profile_image": user.get("profile_image")
+            }
+    
+    result = []
+    for comment in comments:
+        author = authors_map.get(comment.get("author_id"), {"name": "Unknown", "role": "agent"})
+        result.append({
+            "id": comment.get("id"),
+            "content": comment.get("content"),
+            "author_id": comment.get("author_id"),
+            "author_name": author.get("name"),
+            "author_role": author.get("role"),
+            "author_image": author.get("profile_image"),
+            "created_at": comment.get("created_at").isoformat() if comment.get("created_at") else None,
+            "edited": comment.get("edited", False)
+        })
+    
+    return {"comments": result, "total": len(result)}
+
+@api_router.post("/feed/{post_id}/comments")
+async def create_comment(
+    post_id: str,
+    comment_data: FeedCommentCreate,
+    current_user: dict = Depends(get_current_user)
+):
+    """Add a comment to a post"""
+    post = await db.feed_posts.find_one({"id": post_id, "deleted_at": None})
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    
+    # Check organization access
+    if post.get("organization_id") != current_user.get("organization_id"):
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    comment_id = str(uuid.uuid4())
+    comment_doc = {
+        "id": comment_id,
+        "post_id": post_id,
+        "content": comment_data.content,
+        "author_id": current_user["id"],
+        "organization_id": current_user.get("organization_id"),
+        "created_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow(),
+        "edited": False,
+        "deleted_at": None
+    }
+    
+    await db.feed_comments.insert_one(comment_doc)
+    
+    return {
+        "id": comment_id,
+        "content": comment_data.content,
+        "author_id": current_user["id"],
+        "author_name": current_user.get("name", "Unknown"),
+        "author_role": current_user.get("role"),
+        "created_at": comment_doc["created_at"].isoformat()
+    }
+
+@api_router.delete("/feed/{post_id}/comments/{comment_id}")
+async def delete_comment(
+    post_id: str,
+    comment_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Delete a comment (author or moderator)"""
+    comment = await db.feed_comments.find_one({"id": comment_id, "post_id": post_id, "deleted_at": None})
+    if not comment:
+        raise HTTPException(status_code=404, detail="Comment not found")
+    
+    # Check organization access
+    if comment.get("organization_id") != current_user.get("organization_id"):
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    is_author = comment.get("author_id") == current_user["id"]
+    is_moderator = current_user.get("role") in ["admin", "manager"]
+    
+    if not is_author and not is_moderator:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    await db.feed_comments.update_one(
+        {"id": comment_id},
+        {"$set": {"deleted_at": datetime.utcnow(), "deleted_by": current_user["id"]}}
+    )
+    
+    return {"message": "Comment deleted"}
+
+# Feed Reactions
+@api_router.post("/feed/{post_id}/reactions")
+async def add_reaction(
+    post_id: str,
+    reaction_data: FeedReactionCreate,
+    current_user: dict = Depends(get_current_user)
+):
+    """Add or update a reaction to a post"""
+    post = await db.feed_posts.find_one({"id": post_id, "deleted_at": None})
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    
+    # Check organization access
+    if post.get("organization_id") != current_user.get("organization_id"):
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    # Check if user already has a reaction
+    existing = await db.feed_reactions.find_one({
+        "post_id": post_id,
+        "user_id": current_user["id"]
+    })
+    
+    if existing:
+        # Update existing reaction
+        if existing.get("reaction_type") == reaction_data.reaction_type:
+            # Same reaction - remove it (toggle)
+            await db.feed_reactions.delete_one({"id": existing["id"]})
+            return {"message": "Reaction removed", "action": "removed"}
+        else:
+            # Different reaction - update
+            await db.feed_reactions.update_one(
+                {"id": existing["id"]},
+                {"$set": {"reaction_type": reaction_data.reaction_type, "updated_at": datetime.utcnow()}}
+            )
+            return {"message": "Reaction updated", "action": "updated", "reaction_type": reaction_data.reaction_type}
+    else:
+        # New reaction
+        reaction_id = str(uuid.uuid4())
+        reaction_doc = {
+            "id": reaction_id,
+            "post_id": post_id,
+            "user_id": current_user["id"],
+            "reaction_type": reaction_data.reaction_type,
+            "organization_id": current_user.get("organization_id"),
+            "created_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow()
+        }
+        await db.feed_reactions.insert_one(reaction_doc)
+        return {"message": "Reaction added", "action": "added", "reaction_type": reaction_data.reaction_type}
+
+@api_router.get("/feed/team-members")
+async def get_team_members_for_feed(current_user: dict = Depends(get_current_user)):
+    """Get team members for filtering feed posts"""
+    org_id = current_user.get("organization_id")
+    if not org_id:
+        return {"members": []}
+    
+    members = await db.users.find({
+        "organization_id": org_id,
+        "deleted_at": None,
+        "is_active": {"$ne": False}
+    }, {"id": 1, "name": 1, "role": 1, "profile_image": 1}).to_list(100)
+    
+    return {"members": [
+        {
+            "id": m.get("id"),
+            "name": m.get("name", "Unknown"),
+            "role": m.get("role"),
+            "profile_image": m.get("profile_image")
+        } for m in members
+    ]}
 
 # ==================== ACTIVITY LOG ENDPOINTS ====================
 

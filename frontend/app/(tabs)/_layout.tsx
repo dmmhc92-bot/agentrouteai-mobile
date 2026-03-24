@@ -19,7 +19,7 @@ export default function TabsLayout() {
           height: Platform.OS === 'ios' ? 88 : 64,
         },
         tabBarLabelStyle: {
-          fontSize: 12,
+          fontSize: 11,
           fontWeight: '500',
         },
       }}
@@ -39,6 +39,15 @@ export default function TabsLayout() {
           title: 'Leads',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="people" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="feed"
+        options={{
+          title: 'Team Feed',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="chatbox-ellipses" size={size} color={color} />
           ),
         }}
       />
