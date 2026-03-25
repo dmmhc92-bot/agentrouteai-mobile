@@ -127,7 +127,6 @@ async function loadCachedUserData(): Promise<{ user: User | null; teamInfo: Team
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  // Start with null user, load from storage
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -135,7 +134,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [teamInfo, setTeamInfo] = useState<TeamInfo | null>(null);
 
   useEffect(() => {
-    loadStoredAuth();
+    // Add a timeout to prevent infinite loading
+    const loadTimeout = setTimeout(() => {
+      console.log('[Auth] Load timeout reached, forcing loading complete');
+      setIsLoading(false);
+    }, 5000); // 5 second timeout
+    
+    loadStoredAuth().finally(() => {
+      clearTimeout(loadTimeout);
+    });
+    
+    return () => clearTimeout(loadTimeout);
   }, []);
 
   const loadStoredAuth = async () => {
