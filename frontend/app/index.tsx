@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
+import React, { useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useRouter, useRootNavigationState } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../src/contexts/AuthContext';
@@ -8,8 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 export default function WelcomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { user, isLoading, isAdmin, isManager } = useAuth();
-  const [canNavigate, setCanNavigate] = useState(false);
+  const { user, isLoading } = useAuth();
   
   // Check if navigation is ready
   const rootNavigationState = useRootNavigationState();
@@ -27,50 +26,27 @@ export default function WelcomeScreen() {
     }
   };
 
-  // Wait for navigation to be ready before allowing any navigation
-  useEffect(() => {
-    if (rootNavigationState?.key) {
-      // Navigation is ready, set a small delay to be safe
-      const timer = setTimeout(() => {
-        setCanNavigate(true);
-      }, 300);
-      return () => clearTimeout(timer);
-    }
-  }, [rootNavigationState?.key]);
-
   // Auto-redirect when navigation is ready AND user is authenticated
   useEffect(() => {
-    if (canNavigate && !isLoading && user) {
-      const route = getRouteForRole(user.role);
-      router.replace(route as any);
+    if (!rootNavigationState?.key) return;
+    
+    if (!isLoading && user) {
+      // Small delay to ensure layout is fully mounted
+      const timer = setTimeout(() => {
+        const route = getRouteForRole(user.role);
+        router.replace(route as any);
+      }, 100);
+      return () => clearTimeout(timer);
     }
-  }, [canNavigate, user, isLoading]);
+  }, [user, isLoading, rootNavigationState?.key]);
 
-  // DIRECT DASHBOARD ACCESS FUNCTION - BYPASS AUTH
-  const goToDashboard = () => {
-    if (canNavigate) {
-      router.replace('/(tabs)/dashboard' as any);
-    }
-  };
-
-  // Show loading while waiting
-  if (isLoading || !canNavigate) {
+  // Show loading spinner while checking authentication
+  if (isLoading) {
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
         <View style={styles.loadingContainer}>
           <Ionicons name="briefcase" size={60} color="#3B82F6" />
           <Text style={styles.loadingText}>Loading...</Text>
-          {/* BYPASS BUTTON even during loading */}
-          <TouchableOpacity
-            style={[styles.bypassButton, { marginTop: 24 }]}
-            onPress={() => {
-              if (rootNavigationState?.key) {
-                router.replace('/(tabs)/dashboard' as any);
-              }
-            }}
-          >
-            <Text style={styles.bypassButtonText}>Skip to Dashboard</Text>
-          </TouchableOpacity>
         </View>
       </View>
     );
@@ -109,14 +85,6 @@ export default function WelcomeScreen() {
           onPress={() => router.push('/(auth)/onboarding')}
         >
           <Text style={styles.secondaryButtonText}>Get Started</Text>
-        </TouchableOpacity>
-        
-        {/* BYPASS: Direct Dashboard Access */}
-        <TouchableOpacity
-          style={[styles.secondaryButton, { borderColor: '#10B981', marginTop: 8 }]}
-          onPress={goToDashboard}
-        >
-          <Text style={[styles.secondaryButtonText, { color: '#10B981' }]}>View Dashboard (Bypass)</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -217,18 +185,6 @@ const styles = StyleSheet.create({
   secondaryButtonText: {
     color: '#3B82F6',
     fontSize: 18,
-    fontWeight: '600',
-  },
-  bypassButton: {
-    backgroundColor: '#10B981',
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  bypassButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
     fontWeight: '600',
   },
 });
