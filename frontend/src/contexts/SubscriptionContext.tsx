@@ -36,13 +36,18 @@ const SubscriptionContext = createContext<SubscriptionContextType | undefined>(u
 export function SubscriptionProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   
-  const [isLoading, setIsLoading] = useState(true);
-  const [isPremium, setIsPremium] = useState(false);
-  const [subscriptionStatus, setSubscriptionStatus] = useState<SubscriptionStatus | null>(null);
+  const [isLoading, setIsLoading] = useState(false); // BYPASS: Set to false immediately
+  const [isPremium, setIsPremium] = useState(true);  // BYPASS: Force premium to true
+  const [subscriptionStatus, setSubscriptionStatus] = useState<SubscriptionStatus | null>({
+    isActive: true,
+    willRenew: true,
+    expirationDate: '2099-12-31',
+    productIdentifier: 'agentroute.monthly',
+  } as SubscriptionStatus); // BYPASS: Mock active subscription
   const [currentOffering, setCurrentOffering] = useState<PurchasesOffering | null>(null);
   const [monthlyPackage, setMonthlyPackage] = useState<PurchasesPackage | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [isInitialized, setIsInitialized] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(true); // BYPASS: Force initialized
 
   /**
    * Initialize RevenueCat SDK

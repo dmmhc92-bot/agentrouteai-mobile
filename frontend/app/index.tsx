@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useRootNavigationState } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../src/contexts/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,7 +9,10 @@ export default function WelcomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user, isLoading, isAdmin, isManager } = useAuth();
-  const [bypassTimer, setBypassTimer] = useState(false);
+  const [canNavigate, setCanNavigate] = useState(false);
+  
+  // Check if navigation is ready
+  const rootNavigationState = useRootNavigationState();
 
   // Helper function to get the correct route based on role
   const getRouteForRole = (role: string): string => {
@@ -24,50 +27,49 @@ export default function WelcomeScreen() {
     }
   };
 
+  // Wait for navigation to be ready before allowing any navigation
   useEffect(() => {
-    // AUTHENTICATION BYPASS: If user exists, route immediately
-    if (!isLoading && user) {
+    if (rootNavigationState?.key) {
+      // Navigation is ready, set a small delay to be safe
+      const timer = setTimeout(() => {
+        setCanNavigate(true);
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [rootNavigationState?.key]);
+
+  // Auto-redirect when navigation is ready AND user is authenticated
+  useEffect(() => {
+    if (canNavigate && !isLoading && user) {
       const route = getRouteForRole(user.role);
       router.replace(route as any);
-      return;
     }
-    
-    // BYPASS TIMER: After 2 seconds of loading, allow direct dashboard access
-    const timer = setTimeout(() => {
-      setBypassTimer(true);
-    }, 2000);
-    
-    return () => clearTimeout(timer);
-  }, [user, isLoading]);
+  }, [canNavigate, user, isLoading]);
 
-  // DIRECT DASHBOARD ACCESS FUNCTION
+  // DIRECT DASHBOARD ACCESS FUNCTION - BYPASS AUTH
   const goToDashboard = () => {
-    router.replace('/(tabs)/dashboard' as any);
+    if (canNavigate) {
+      router.replace('/(tabs)/dashboard' as any);
+    }
   };
 
-  if (isLoading && !bypassTimer) {
+  // Show loading while waiting
+  if (isLoading || !canNavigate) {
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
         <View style={styles.loadingContainer}>
           <Ionicons name="briefcase" size={60} color="#3B82F6" />
           <Text style={styles.loadingText}>Loading...</Text>
-        </View>
-      </View>
-    );
-  }
-  
-  // Show bypass option if loading takes too long
-  if (isLoading && bypassTimer) {
-    return (
-      <View style={[styles.container, { paddingTop: insets.top }]}>
-        <View style={styles.loadingContainer}>
-          <Ionicons name="briefcase" size={60} color="#3B82F6" />
-          <Text style={styles.loadingText}>Still loading...</Text>
+          {/* BYPASS BUTTON even during loading */}
           <TouchableOpacity
-            style={[styles.primaryButton, { marginTop: 24, paddingHorizontal: 32 }]}
-            onPress={goToDashboard}
+            style={[styles.bypassButton, { marginTop: 24 }]}
+            onPress={() => {
+              if (rootNavigationState?.key) {
+                router.replace('/(tabs)/dashboard' as any);
+              }
+            }}
           >
-            <Text style={styles.primaryButtonText}>Go to Dashboard</Text>
+            <Text style={styles.bypassButtonText}>Skip to Dashboard</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -215,6 +217,18 @@ const styles = StyleSheet.create({
   secondaryButtonText: {
     color: '#3B82F6',
     fontSize: 18,
+    fontWeight: '600',
+  },
+  bypassButton: {
+    backgroundColor: '#10B981',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  bypassButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
     fontWeight: '600',
   },
 });

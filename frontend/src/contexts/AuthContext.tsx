@@ -127,6 +127,7 @@ async function loadCachedUserData(): Promise<{ user: User | null; teamInfo: Team
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  // Start with null user, load from storage
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
