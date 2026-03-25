@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { useRouter, useRootNavigationState } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../src/contexts/AuthContext';
@@ -73,19 +73,25 @@ export default function WelcomeScreen() {
       </View>
 
       <View style={styles.buttonContainer}>
-        <TouchableOpacity
-          style={styles.primaryButton}
+        <Pressable
+          style={({ pressed }) => [
+            styles.primaryButton,
+            pressed && { opacity: 0.7 }
+          ]}
           onPress={() => router.push('/(auth)/signin')}
         >
           <Text style={styles.primaryButtonText}>Sign In</Text>
-        </TouchableOpacity>
+        </Pressable>
 
-        <TouchableOpacity
-          style={styles.secondaryButton}
+        <Pressable
+          style={({ pressed }) => [
+            styles.secondaryButton,
+            pressed && { opacity: 0.7 }
+          ]}
           onPress={() => router.push('/(auth)/onboarding')}
         >
           <Text style={styles.secondaryButtonText}>Get Started</Text>
-        </TouchableOpacity>
+        </Pressable>
       </View>
     </View>
   );
