@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -9,6 +9,7 @@ export default function WelcomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user, isLoading, isAdmin, isManager } = useAuth();
+  const [bypassTimer, setBypassTimer] = useState(false);
 
   // Helper function to get the correct route based on role
   const getRouteForRole = (role: string): string => {
@@ -24,19 +25,50 @@ export default function WelcomeScreen() {
   };
 
   useEffect(() => {
+    // AUTHENTICATION BYPASS: If user exists, route immediately
     if (!isLoading && user) {
-      // Route based on user role
       const route = getRouteForRole(user.role);
       router.replace(route as any);
+      return;
     }
+    
+    // BYPASS TIMER: After 2 seconds of loading, allow direct dashboard access
+    const timer = setTimeout(() => {
+      setBypassTimer(true);
+    }, 2000);
+    
+    return () => clearTimeout(timer);
   }, [user, isLoading]);
 
-  if (isLoading) {
+  // DIRECT DASHBOARD ACCESS FUNCTION
+  const goToDashboard = () => {
+    router.replace('/(tabs)/dashboard' as any);
+  };
+
+  if (isLoading && !bypassTimer) {
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
         <View style={styles.loadingContainer}>
           <Ionicons name="briefcase" size={60} color="#3B82F6" />
           <Text style={styles.loadingText}>Loading...</Text>
+        </View>
+      </View>
+    );
+  }
+  
+  // Show bypass option if loading takes too long
+  if (isLoading && bypassTimer) {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        <View style={styles.loadingContainer}>
+          <Ionicons name="briefcase" size={60} color="#3B82F6" />
+          <Text style={styles.loadingText}>Still loading...</Text>
+          <TouchableOpacity
+            style={[styles.primaryButton, { marginTop: 24, paddingHorizontal: 32 }]}
+            onPress={goToDashboard}
+          >
+            <Text style={styles.primaryButtonText}>Go to Dashboard</Text>
+          </TouchableOpacity>
         </View>
       </View>
     );
@@ -75,6 +107,14 @@ export default function WelcomeScreen() {
           onPress={() => router.push('/(auth)/onboarding')}
         >
           <Text style={styles.secondaryButtonText}>Get Started</Text>
+        </TouchableOpacity>
+        
+        {/* BYPASS: Direct Dashboard Access */}
+        <TouchableOpacity
+          style={[styles.secondaryButton, { borderColor: '#10B981', marginTop: 8 }]}
+          onPress={goToDashboard}
+        >
+          <Text style={[styles.secondaryButtonText, { color: '#10B981' }]}>View Dashboard (Bypass)</Text>
         </TouchableOpacity>
       </View>
     </View>
