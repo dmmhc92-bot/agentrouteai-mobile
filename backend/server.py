@@ -1,5 +1,6 @@
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, WebSocket, WebSocketDisconnect
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.responses import FileResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -10432,6 +10433,34 @@ async def get_lead_stage_history(
 @api_router.get("/")
 async def root():
     return {"message": "AgentRoute AI - Insurance Agency Platform", "version": "3.0.0"}
+
+# ==================== CERTIFICATE DOWNLOAD ROUTES ====================
+
+@api_router.get("/download/csr")
+async def download_csr():
+    """Download the Certificate Signing Request file for Apple Developer Portal"""
+    csr_path = ROOT_DIR / "static" / "CertificateSigningRequest.certSigningRequest"
+    if not csr_path.exists():
+        raise HTTPException(status_code=404, detail="CSR file not found")
+    return FileResponse(
+        path=str(csr_path),
+        filename="CertificateSigningRequest.certSigningRequest",
+        media_type="application/x-pem-file"
+    )
+
+@api_router.get("/download/private-key")
+async def download_private_key():
+    """Download the private key file (KEEP THIS SECURE!)"""
+    key_path = ROOT_DIR / "static" / "ios_distribution.key"
+    if not key_path.exists():
+        raise HTTPException(status_code=404, detail="Private key file not found")
+    return FileResponse(
+        path=str(key_path),
+        filename="ios_distribution.key",
+        media_type="application/x-pem-file"
+    )
+
+
 
 @api_router.get("/health")
 async def health_check():
