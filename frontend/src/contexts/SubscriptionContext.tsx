@@ -19,6 +19,8 @@ interface SubscriptionContextType {
   // State
   isLoading: boolean;
   isPremium: boolean;
+  isAppleTester: boolean;
+  hasFullAccess: boolean; // isPremium OR isAppleTester
   subscriptionStatus: SubscriptionStatus | null;
   currentOffering: PurchasesOffering | null;
   monthlyPackage: PurchasesPackage | null;
@@ -36,18 +38,39 @@ const SubscriptionContext = createContext<SubscriptionContextType | undefined>(u
 export function SubscriptionProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   
-  const [isLoading, setIsLoading] = useState(false); // BYPASS: Set to false immediately
-  const [isPremium, setIsPremium] = useState(true);  // BYPASS: Force premium to true
-  const [subscriptionStatus, setSubscriptionStatus] = useState<SubscriptionStatus | null>({
-    isActive: true,
-    willRenew: true,
-    expirationDate: '2099-12-31',
-    productIdentifier: 'agentroute.monthly',
-  } as SubscriptionStatus); // BYPASS: Mock active subscription
+  const [isLoading, setIsLoading] = useState(false);
+  const [isPremium, setIsPremium] = useState(false);
+  const [isAppleTester, setIsAppleTester] = useState(false);
+  const [subscriptionStatus, setSubscriptionStatus] = useState<SubscriptionStatus | null>(null);
   const [currentOffering, setCurrentOffering] = useState<PurchasesOffering | null>(null);
   const [monthlyPackage, setMonthlyPackage] = useState<PurchasesPackage | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [isInitialized, setIsInitialized] = useState(true); // BYPASS: Force initialized
+  const [isInitialized, setIsInitialized] = useState(false);
+
+  // Apple Tester emails - these get full access for App Store review
+  const APPLE_TESTER_EMAILS = [
+    'appstore_admin@agentroute.com',
+    'appstore_manager@agentroute.com', 
+    'appstore_agent@agentroute.com',
+    'apple@example.com',
+    'review@apple.com',
+  ];
+
+  // Check if current user is an Apple tester
+  useEffect(() => {
+    if (user?.email) {
+      const isTester = APPLE_TESTER_EMAILS.some(
+        testerEmail => user.email.toLowerCase() === testerEmail.toLowerCase()
+      );
+      setIsAppleTester(isTester);
+      if (isTester) {
+        console.log('[Subscription] Apple Tester detected - granting full access');
+      }
+    }
+  }, [user?.email]);
+
+  // Full access = subscribed OR Apple tester
+  const hasFullAccess = isPremium || isAppleTester;
 
   /**
    * Initialize RevenueCat SDK
@@ -213,6 +236,8 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
   const value: SubscriptionContextType = {
     isLoading,
     isPremium,
+    isAppleTester,
+    hasFullAccess,
     subscriptionStatus,
     currentOffering,
     monthlyPackage,
