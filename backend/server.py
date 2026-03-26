@@ -498,7 +498,7 @@ class ScopeResponse(BaseModel):
 
 # SOA Delivery Models
 class ScopeDeliveryLog(BaseModel):
-    scope_id: str
+    scope_id: Optional[str] = None  # Optional since it's in the URL path
     delivery_method: str  # "email", "sms", "share", "airdrop", "other"
     recipient_contact: Optional[str] = None  # email or phone if available
     notes: Optional[str] = None
