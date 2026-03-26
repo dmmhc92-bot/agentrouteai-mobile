@@ -114,8 +114,7 @@
       "router": {},
       "eas": {
         "projectId": "eefbd239-52d3-4e01-a66c-5def0f39831e"
-      },
-      "EXPO_PUBLIC_BACKEND_URL": "https://crm-final-build.preview.emergentagent.com"
+      }
     },
     "owner": "dmmhc92",
     "runtimeVersion": {
