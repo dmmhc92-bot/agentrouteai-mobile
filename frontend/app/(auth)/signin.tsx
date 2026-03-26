@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -15,27 +15,18 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../src/contexts/AuthContext';
-import * as AppleAuthentication from 'expo-apple-authentication';
+// Note: Sign in with Apple requires provisioning profile update
+// import * as AppleAuthentication from 'expo-apple-authentication';
 
 export default function SignInScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { signIn, signInWithApple } = useAuth();
+  const { signIn } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [isAppleAvailable, setIsAppleAvailable] = useState(false);
-
-  // Check if Apple Sign In is available
-  useEffect(() => {
-    const checkAppleAvailability = async () => {
-      const available = await AppleAuthentication.isAvailableAsync();
-      setIsAppleAvailable(available);
-    };
-    checkAppleAvailability();
-  }, []);
 
   const getRouteForRole = (role: string): string => {
     switch (role) {
@@ -69,37 +60,6 @@ export default function SignInScreen() {
     } catch (error: any) {
       const message = error.response?.data?.detail || 'Invalid email or password';
       Alert.alert('Sign In Failed', message);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleAppleSignIn = async () => {
-    try {
-      setIsLoading(true);
-      const credential = await AppleAuthentication.signInAsync({
-        requestedScopes: [
-          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
-          AppleAuthentication.AppleAuthenticationScope.EMAIL,
-        ],
-      });
-      
-      // Send credential to backend for authentication
-      if (signInWithApple) {
-        const user = await signInWithApple(credential);
-        const route = getRouteForRole(user.role);
-        router.replace(route as any);
-      } else {
-        // Fallback: Create/login user with Apple credential on backend
-        Alert.alert('Apple Sign In', 'Apple authentication successful. Please complete your profile.');
-        router.push('/(auth)/onboarding');
-      }
-    } catch (error: any) {
-      if (error.code === 'ERR_REQUEST_CANCELED') {
-        // User canceled the sign-in flow
-        return;
-      }
-      Alert.alert('Apple Sign In Failed', error.message || 'An error occurred');
     } finally {
       setIsLoading(false);
     }
@@ -195,24 +155,6 @@ export default function SignInScreen() {
               <Text style={styles.signUpLink}>Accept Invite</Text>
             </TouchableOpacity>
           </View>
-
-          {/* Sign in with Apple - iOS only */}
-          {Platform.OS === 'ios' && isAppleAvailable && (
-            <View style={styles.appleContainer}>
-              <View style={styles.divider}>
-                <View style={styles.dividerLine} />
-                <Text style={styles.dividerText}>or</Text>
-                <View style={styles.dividerLine} />
-              </View>
-              <AppleAuthentication.AppleAuthenticationButton
-                buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
-                buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE}
-                cornerRadius={12}
-                style={styles.appleButton}
-                onPress={handleAppleSignIn}
-              />
-            </View>
-          )}
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -316,27 +258,5 @@ const styles = StyleSheet.create({
     color: '#3B82F6',
     fontSize: 14,
     fontWeight: '600',
-  },
-  appleContainer: {
-    marginTop: 24,
-  },
-  divider: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: '#334155',
-  },
-  dividerText: {
-    color: '#64748B',
-    marginHorizontal: 16,
-    fontSize: 14,
-  },
-  appleButton: {
-    width: '100%',
-    height: 50,
   },
 });
