@@ -111,8 +111,7 @@
       "typedRoutes": true
     },
     "extra": {
-      "router": {},
-      "eas": {}
+      "router": {}
     },
     "owner": "dmmhc92",
     "runtimeVersion": {
