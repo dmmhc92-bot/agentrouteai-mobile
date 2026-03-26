@@ -2,7 +2,7 @@
   "expo": {
     "name": "AgentRoute AI",
     "slug": "agentroute-ai",
-    "version": "2.0.9",
+    "version": "2.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "agentroute",
@@ -11,7 +11,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "app.emergent.agentrouteai2dd9b4e9",
-      "buildNumber": "20",
+      "buildNumber": "21",
       "entitlements": {
         "com.apple.developer.associated-domains": [
           "applinks:app.agentrouteai.com"
