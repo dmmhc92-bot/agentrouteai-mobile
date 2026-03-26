@@ -111,7 +111,10 @@
       "typedRoutes": true
     },
     "extra": {
-      "router": {}
+      "router": {},
+      "eas": {
+        "projectId": "ce8dd309-1234-5678-9abc-def012345678"
+      }
     },
     "owner": "dmmhc92",
     "runtimeVersion": {
