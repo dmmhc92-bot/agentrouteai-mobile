@@ -29,7 +29,9 @@
   "submit": {
     "production": {
       "ios": {
+        "appleId": "dmmhc92@gmail.com",
         "ascAppId": "6760625749",
+        "appleTeamId": "NTZB3ZFKXK",
         "ascApiKeyId": "M6A62982PB",
         "ascApiKeyIssuerId": "e05d02ae-8a38-478e-a195-ffe1d868ef44",
         "ascApiKeyPath": "./AuthKey_M6A62982PB.p8"
