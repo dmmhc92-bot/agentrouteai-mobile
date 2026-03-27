@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "AgentRouteAI",
-    "slug": "agentrouteai",
+    "slug": "agentroute-ai",
     "version": "2.1.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
