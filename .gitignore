@@ -106,3 +106,7 @@ memory/
 
 expo-env.d.ts
 # @end expo-cli.metro-cache/
+-e 
+# Environment files
+*.env
+*.env.*
