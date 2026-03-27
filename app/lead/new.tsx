@@ -19,6 +19,7 @@ import { useNetwork } from '../../src/contexts/NetworkContext';
 import { offlineStorage } from '../../src/services/offlineStorage';
 import { syncService } from '../../src/services/syncService';
 import SyncStatusIndicator from '../../src/components/SyncStatusIndicator';
+import { useUsage } from '../../src/contexts/UsageContext';
 
 // Stage configuration for display labels
 const STAGE_LABELS: Record<string, string> = {
@@ -46,6 +47,7 @@ export default function NewLeadScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { isOnline } = useNetwork();
+  const { incrementUsage, checkAndPrompt } = useUsage();
   
   // Get stage from URL params - this enables stage-aware lead creation
   const { stage: stageParam } = useLocalSearchParams<{ stage?: string }>();
@@ -99,6 +101,9 @@ export default function NewLeadScreen() {
         } else {
           console.log(`[NewLead] Lead created successfully with stage: ${lead.stage}`);
         }
+        
+        // Track usage for 3-use trial
+        await incrementUsage();
         
         // Navigate back to the stage detail screen to see the new lead
         if (targetStage) {
