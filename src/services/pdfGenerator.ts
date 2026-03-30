@@ -590,11 +590,11 @@ export async function generateSOAPdf(formData, signatures) {
 /**
  * Save PDF to device file system
  */
-export async function savePdfToDevice(pdfBase64, filename) {
+export async function savePdfToDevice(pdfBase64: string, filename: string) {
   console.log('[PDFGenerator] Saving PDF to device:', filename);
-  const fileUri = `${FileSystem.documentDirectory}${filename}`;
+  const fileUri = `${FileSystem.documentDirectory || ''}${filename}`;
   await FileSystem.writeAsStringAsync(fileUri, pdfBase64, {
-    encoding: FileSystem.EncodingType.Base64,
+    encoding: 'base64' as any,
   });
   console.log('[PDFGenerator] Saved to:', fileUri);
   return fileUri;
@@ -624,14 +624,14 @@ export async function sharePdf(pdfBase64, filename) {
 /**
  * Print PDF
  */
-export async function printPdf(pdfBase64) {
+export async function printPdf(pdfBase64: string) {
   console.log('[PDFGenerator] Printing PDF...');
   
   const filename = `SOA_Print_${Date.now()}.pdf`;
-  const fileUri = `${FileSystem.cacheDirectory}${filename}`;
+  const fileUri = `${FileSystem.cacheDirectory || ''}${filename}`;
   
   await FileSystem.writeAsStringAsync(fileUri, pdfBase64, {
-    encoding: FileSystem.EncodingType.Base64,
+    encoding: 'base64' as any,
   });
   
   await Print.printAsync({ uri: fileUri });
