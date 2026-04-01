@@ -45,3 +45,7 @@ build/
 *.ipa
 *.apk
 *.aab
+-e 
+# Environment files
+*.env
+*.env.*
