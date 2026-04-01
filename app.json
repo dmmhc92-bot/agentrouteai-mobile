@@ -11,7 +11,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "app.emergent.agentrouteai2dd9b4e9",
-      "buildNumber": "31",
+      "buildNumber": "32",
       "entitlements": {
         "com.apple.developer.associated-domains": [
           "applinks:app.agentrouteai.com"
@@ -73,7 +73,7 @@
       },
       "edgeToEdgeEnabled": true,
       "package": "app.emergent.agentrouteai2dd9b4e9",
-      "versionCode": 2,
+      "versionCode": 3,
       "permissions": [
         "CAMERA",
         "READ_EXTERNAL_STORAGE",
