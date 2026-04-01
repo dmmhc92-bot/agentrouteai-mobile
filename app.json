@@ -11,7 +11,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "app.emergent.agentrouteai2dd9b4e9",
-      "buildNumber": "30",
+      "buildNumber": "31",
       "entitlements": {
         "com.apple.developer.associated-domains": [
           "applinks:app.agentrouteai.com"
@@ -115,7 +115,7 @@
       "eas": {
         "projectId": "eefbd239-52d3-4e01-a66c-5def0f39831e"
       },
-      "EXPO_PUBLIC_BACKEND_URL": "https://crm-final-build.preview.emergentagent.com"
+      "EXPO_PUBLIC_BACKEND_URL": "https://crm-final-build.emergent.host"
     },
     "owner": "dmmhc92",
     "runtimeVersion": {

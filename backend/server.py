@@ -1289,7 +1289,13 @@ async def login(credentials: dict):
         logger.warning(f"Login blocked: account deactivated for email='{email}'")
         raise HTTPException(status_code=403, detail="Account is deactivated. Contact your administrator.")
     
-    await db.users.update_one({"id": user["id"]}, {"$set": {"last_login": datetime.utcnow()}})
+    # Auto-approve pending users on login (fixes production deployment lag)
+    update_fields = {"last_login": datetime.utcnow()}
+    if user.get("approval_status") == "pending":
+        update_fields["approval_status"] = "approved"
+        logger.info(f"Auto-approving pending user on login: {user['id'][:8]}...")
+    
+    await db.users.update_one({"id": user["id"]}, {"$set": update_fields})
     await log_activity(user["id"], "login", "User logged in")
     
     # Log successful login
