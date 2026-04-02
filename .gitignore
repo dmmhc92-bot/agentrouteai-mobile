@@ -59,3 +59,12 @@ expo-env.d.ts
 backend/.env
 .env.*
 
+
+# Cache and build artifacts
+.metro-cache/
+.emergent/
+.gitconfig
+
+# Backup files
+*.backup
+.env.backup
