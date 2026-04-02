@@ -53,3 +53,9 @@ build/
 
 expo-env.d.ts
 # @end expo-cli
+# Environment files - DO NOT COMMIT
+.env
+*.env
+backend/.env
+.env.*
+
