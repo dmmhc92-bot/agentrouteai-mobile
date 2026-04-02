@@ -47,13 +47,13 @@ export default function LegalScreen() {
       case 'terms':
         return {
           title: 'Terms of Service',
-          url: 'https://crm-final-build.preview.emergentagent.com/api/terms-of-service',
+          url: `${BASE_URL}/api/terms-of-service`,
         };
       case 'privacy':
       default:
         return {
           title: 'Privacy Policy',
-          url: 'https://crm-final-build.preview.emergentagent.com/api/privacy-policy',
+          url: `${BASE_URL}/api/privacy-policy`,
         };
     }
   };

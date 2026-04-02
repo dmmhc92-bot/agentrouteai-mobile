@@ -17,6 +17,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import Constants from 'expo-constants';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { api } from '../../src/services/api';
 import Animated, { FadeInUp, Layout } from 'react-native-reanimated';
@@ -183,8 +184,10 @@ export default function TeamFeedScreen() {
       return;
     }
 
-    // Construct WebSocket URL
-    const backendUrl = process.env.EXPO_PUBLIC_BACKEND_URL || 'https://crm-final-build.preview.emergentagent.com';
+    // Construct WebSocket URL - get from app config for production builds
+    const extraUrl = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL;
+    const envUrl = process.env.EXPO_PUBLIC_BACKEND_URL;
+    const backendUrl = extraUrl || envUrl || (typeof window !== 'undefined' ? window.location?.origin : '');
     const wsUrl = backendUrl.replace('https://', 'wss://').replace('http://', 'ws://');
     const fullWsUrl = `${wsUrl}/api/ws/feed?token=${token}`;
 

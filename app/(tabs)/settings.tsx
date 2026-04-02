@@ -37,9 +37,9 @@ const getBaseUrl = () => {
   return '';
 };
 const BASE_URL = getBaseUrl();
-const PRIVACY_POLICY_URL = 'https://crm-final-build.preview.emergentagent.com/api/privacy-policy';
-const TERMS_OF_SERVICE_URL = 'https://crm-final-build.preview.emergentagent.com/api/terms-of-service';
-const SUPPORT_URL = 'https://crm-final-build.preview.emergentagent.com/api/support';
+const PRIVACY_POLICY_URL = `${BASE_URL}/api/privacy-policy`;
+const TERMS_OF_SERVICE_URL = `${BASE_URL}/api/terms-of-service`;
+const SUPPORT_URL = `${BASE_URL}/api/support`;
 const SUPPORT_EMAIL = 'agentrouteai@gmail.com';
 const SUPPORT_SUBJECT = 'AgentRoute Support Request';
 
