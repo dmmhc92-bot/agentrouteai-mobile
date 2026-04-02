@@ -73,3 +73,7 @@ backend/.env
 # Backup files
 *.backup
 .env.backup
+-e 
+# Environment files
+*.env
+*.env.*
