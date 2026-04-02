@@ -703,7 +703,8 @@ class ApiService {
 
   async getTeamLeaderboard(period: 'day' | 'week' | 'month' = 'month') {
     const response = await apiClient.get(`/team/leaderboard?period=${period}`);
-    return response.data;
+    // API returns {period, leaderboard: [...]} - extract the array
+    return response.data.leaderboard || [];
   }
 
   // Territory Management

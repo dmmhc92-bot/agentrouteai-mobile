@@ -76,11 +76,11 @@ export default function DashboardScreen() {
   const loadData = async () => {
     try {
       const [leadsData, appointmentsData] = await Promise.all([
-        api.getLeads(),
-        api.getAppointments(),
+        api.getLeads().catch(() => []),
+        api.getAppointments().catch(() => []),
       ]);
-      setLeads(leadsData);
-      setAppointments(appointmentsData);
+      setLeads(Array.isArray(leadsData) ? leadsData : []);
+      setAppointments(Array.isArray(appointmentsData) ? appointmentsData : []);
       
       // Load compliance cards for admin/manager (check role inside the function)
       const userRole = user?.role;

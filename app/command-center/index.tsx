@@ -82,13 +82,13 @@ export default function CommandCenterScreen() {
     
     try {
       const [agentsData, snapshotData, leaderboardData] = await Promise.all([
-        api.getTeamAgents(),
-        api.getTeamSnapshot(),
-        api.getTeamLeaderboard(leaderboardPeriod),
+        api.getTeamAgents().catch(() => []),
+        api.getTeamSnapshot().catch(() => null),
+        api.getTeamLeaderboard(leaderboardPeriod).catch(() => []),
       ]);
-      setAgents(agentsData);
+      setAgents(Array.isArray(agentsData) ? agentsData : []);
       setSnapshot(snapshotData);
-      setLeaderboard(leaderboardData);
+      setLeaderboard(Array.isArray(leaderboardData) ? leaderboardData : []);
     } catch (error: any) {
       console.error('Error loading command center:', error);
       if (error.response?.status === 403) {

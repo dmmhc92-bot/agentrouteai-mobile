@@ -29,18 +29,9 @@ export default function SignInScreen() {
   const [isLoading, setIsLoading] = useState(false);
 
   const getRouteForRole = (role: string): string => {
-    switch (role) {
-      case 'admin':
-        // Admin goes to Command Center (full organization view)
-        return '/command-center';
-      case 'manager':
-        // Manager goes to Command Center (shows their downline)
-        return '/command-center';
-      case 'agent':
-      default:
-        // Agent goes to standard dashboard
-        return '/(tabs)/dashboard';
-    }
+    // All roles go to dashboard as the primary entry point
+    // Admin/Manager can access Command Center from dashboard
+    return '/(tabs)/dashboard';
   };
 
   const handleSignIn = async () => {

@@ -14,16 +14,10 @@ export default function WelcomeScreen() {
   const rootNavigationState = useRootNavigationState();
 
   // Helper function to get the correct route based on role
+  // ALL users go to dashboard first - they can access Command Center from there
   const getRouteForRole = (role: string): string => {
-    switch (role) {
-      case 'admin':
-        return '/command-center';
-      case 'manager':
-        return '/command-center';
-      case 'agent':
-      default:
-        return '/(tabs)/dashboard';
-    }
+    // All roles go to dashboard as the primary entry point
+    return '/(tabs)/dashboard';
   };
 
   // Auto-redirect when navigation is ready AND user is authenticated
