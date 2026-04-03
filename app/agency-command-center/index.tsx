@@ -756,8 +756,6 @@ export default function AgencyCommandCenterScreen() {
       default:
         return null;
     }
-
-    return null;
   };
 
   // Section Tabs

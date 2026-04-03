@@ -266,12 +266,6 @@ const styles = StyleSheet.create({
     marginBottom: 32,
     lineHeight: 22,
   },
-  loadingText: {
-    fontSize: 14,
-    color: '#94A3B8',
-    textAlign: 'center',
-    marginTop: 16,
-  },
   quickPrompts: {
     width: '100%',
     gap: 8,

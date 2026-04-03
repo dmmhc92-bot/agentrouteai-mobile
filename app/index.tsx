@@ -60,7 +60,7 @@ export default function WelcomeScreen() {
         <View style={styles.features}>
           <FeatureItem icon="people" text="Manage Leads Efficiently" />
           <FeatureItem icon="calendar" text="Schedule Appointments" />
-          <FeatureItem icon="document-text" text="Digital Scope Forms" />
+          <FeatureItem icon="document-text" text="Smart Pipeline" />
           <FeatureItem icon="scan" text="Scan Business Cards" />
           <FeatureItem icon="chatbubbles" text="AI Sales Coach" />
         </View>

@@ -35,9 +35,6 @@ interface Appointment {
 }
 
 interface ComplianceCards {
-  missing_soa: { count: number; label: string; color: string; icon: string };
-  signed_soa: { count: number; label: string; color: string; icon: string };
-  pending_no_soa: { count: number; label: string; color: string; icon: string };
   compliant_appointments: { count: number; label: string; color: string; icon: string };
   total_leads: number;
   total_upcoming_appointments: number;
@@ -484,12 +481,12 @@ export default function DashboardScreen() {
               </TouchableOpacity>
               <TouchableOpacity 
                 style={styles.managementCard}
-                onPress={() => router.push('/compliance')}
+                onPress={() => router.push('/pipeline')}
               >
                 <View style={[styles.managementIcon, { backgroundColor: '#22C55E20' }]}>
-                  <Ionicons name="shield-checkmark" size={24} color="#22C55E" />
+                  <Ionicons name="stats-chart" size={24} color="#22C55E" />
                 </View>
-                <Text style={styles.managementText}>Compliance</Text>
+                <Text style={styles.managementText}>Pipeline</Text>
               </TouchableOpacity>
               <TouchableOpacity 
                 style={styles.managementCard}
