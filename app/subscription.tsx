@@ -1,11 +1,11 @@
 /**
  * Subscription/Paywall Screen for AgentRoute AI CRM
+ * PRODUCTION-READY - Full Error Handling & Diagnostics
  * 
- * Real Apple Subscription Implementation:
+ * Configuration:
  * - Bundle ID: app.emergent.agentrouteai2dd9b4e9
  * - Product ID: agentroute.monthly
  * - Price: $30/month (loaded from App Store)
- * - Subscription Group: AgentRoute premium
  */
 
 import React, { useEffect, useState } from 'react';
@@ -68,42 +68,38 @@ export default function SubscriptionScreen() {
     restorePurchases,
     subscriptionStatus,
     error,
-    initializeRevenueCat,
+    diagnostics,
+    retryInitialization,
   } = useSubscription();
 
   const [isPurchasing, setIsPurchasing] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
-  const [initAttempted, setInitAttempted] = useState(false);
-  const [retryCount, setRetryCount] = useState(0);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
 
-  // Refresh subscription data when screen loads
+  // Auto-retry on mount if no package loaded
   useEffect(() => {
-    const init = async () => {
-      await initializeRevenueCat();
-      setInitAttempted(true);
-    };
-    init();
-  }, [retryCount]);
+    if (!monthlyPackage && !isLoading && !error) {
+      retryInitialization();
+    }
+  }, []);
 
   // Get price from package or show default
   const priceString = monthlyPackage?.product?.priceString || '$29.99';
   const productTitle = monthlyPackage?.product?.title || 'AgentRoute Premium';
-  
-  // Determine if products loaded successfully
-  const productsLoaded = monthlyPackage !== null;
-  const showRetry = initAttempted && !isLoading && !productsLoaded && !isPremium;
 
-  const handleRetry = () => {
-    setRetryCount(prev => prev + 1);
-    setInitAttempted(false);
-  };
+  // Determine UI state
+  const productsLoaded = monthlyPackage !== null;
+  const showError = !isLoading && !productsLoaded && error;
+  const showRetry = !isLoading && !productsLoaded && !isPremium;
 
   const handlePurchase = async () => {
+    if (!monthlyPackage) {
+      return;
+    }
     setIsPurchasing(true);
     try {
       const success = await purchaseMonthly();
       if (success) {
-        // Navigate back after successful purchase
         router.back();
       }
     } finally {
@@ -123,6 +119,10 @@ export default function SubscriptionScreen() {
     }
   };
 
+  const handleRetry = async () => {
+    await retryInitialization();
+  };
+
   // If user is already premium, show success state
   if (isPremium && !isLoading) {
     return (
@@ -132,7 +132,7 @@ export default function SubscriptionScreen() {
             <Ionicons name="close" size={28} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
-        
+
         <View style={styles.premiumContainer}>
           <View style={styles.premiumIconContainer}>
             <Ionicons name="checkmark-circle" size={80} color="#22C55E" />
@@ -146,7 +146,7 @@ export default function SubscriptionScreen() {
               {subscriptionStatus.willRenew ? 'Renews' : 'Expires'}: {new Date(subscriptionStatus.expirationDate).toLocaleDateString()}
             </Text>
           )}
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.doneButton}
             onPress={() => router.back()}
           >
@@ -166,7 +166,7 @@ export default function SubscriptionScreen() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView 
+      <ScrollView
         style={styles.content}
         contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}
@@ -210,18 +210,26 @@ export default function SubscriptionScreen() {
               <Text style={styles.pricePeriod}>/month</Text>
             </View>
             <Text style={styles.priceNote}>Billed monthly. Cancel anytime.</Text>
+            {!productsLoaded && !isLoading && (
+              <Text style={styles.priceLoadingNote}>
+                Price shown is default. Actual price loading...
+              </Text>
+            )}
           </View>
         </View>
 
-        {/* Error Message */}
-        {error && (
+        {/* Error Display */}
+        {showError && (
           <View style={styles.errorContainer}>
-            <Ionicons name="alert-circle" size={20} color="#EF4444" />
-            <Text style={styles.errorText}>{error}</Text>
+            <Ionicons name="alert-circle" size={24} color="#EF4444" />
+            <View style={styles.errorTextContainer}>
+              <Text style={styles.errorTitle}>Connection Issue</Text>
+              <Text style={styles.errorText}>{error}</Text>
+            </View>
           </View>
         )}
 
-        {/* Retry Section - shown when products fail to load */}
+        {/* Retry Section */}
         {showRetry && (
           <View style={styles.retryContainer}>
             <Ionicons name="cloud-offline-outline" size={48} color="#64748B" />
@@ -233,6 +241,49 @@ export default function SubscriptionScreen() {
               <Ionicons name="refresh-outline" size={20} color="#FFFFFF" />
               <Text style={styles.retryButtonText}>Try Again</Text>
             </TouchableOpacity>
+
+            {/* Diagnostics Toggle */}
+            <TouchableOpacity
+              style={styles.diagnosticsToggle}
+              onPress={() => setShowDiagnostics(!showDiagnostics)}
+            >
+              <Text style={styles.diagnosticsToggleText}>
+                {showDiagnostics ? 'Hide Details' : 'Show Technical Details'}
+              </Text>
+            </TouchableOpacity>
+
+            {/* Diagnostics Panel */}
+            {showDiagnostics && diagnostics && (
+              <View style={styles.diagnosticsPanel}>
+                <Text style={styles.diagnosticsTitle}>Diagnostics</Text>
+                <Text style={styles.diagnosticsItem}>
+                  Platform: {diagnostics.platform}
+                </Text>
+                <Text style={styles.diagnosticsItem}>
+                  SDK Initialized: {diagnostics.isInitialized ? 'Yes' : 'No'}
+                </Text>
+                <Text style={styles.diagnosticsItem}>
+                  API Key Set: {diagnostics.apiKeySet ? 'Yes' : 'No'}
+                </Text>
+                <Text style={styles.diagnosticsItem}>
+                  Offerings Available: {diagnostics.offeringsAvailable ? 'Yes' : 'No'}
+                </Text>
+                <Text style={styles.diagnosticsItem}>
+                  Current Offering: {diagnostics.currentOfferingId || 'None'}
+                </Text>
+                <Text style={styles.diagnosticsItem}>
+                  Packages Count: {diagnostics.packagesCount}
+                </Text>
+                <Text style={styles.diagnosticsItem}>
+                  Monthly Package Found: {diagnostics.monthlyPackageFound ? 'Yes' : 'No'}
+                </Text>
+                {diagnostics.lastError && (
+                  <Text style={styles.diagnosticsError}>
+                    Error: {diagnostics.lastError}
+                  </Text>
+                )}
+              </View>
+            )}
           </View>
         )}
 
@@ -247,11 +298,16 @@ export default function SubscriptionScreen() {
         >
           {isPurchasing ? (
             <ActivityIndicator color="#FFFFFF" />
+          ) : isLoading ? (
+            <>
+              <ActivityIndicator color="#FFFFFF" size="small" style={{ marginRight: 8 }} />
+              <Text style={styles.subscribeButtonText}>Loading...</Text>
+            </>
           ) : (
             <>
               <Ionicons name="card-outline" size={20} color="#FFFFFF" style={styles.buttonIcon} />
               <Text style={styles.subscribeButtonText}>
-                {monthlyPackage ? `Subscribe for ${priceString}/month` : 'Loading...'}
+                {monthlyPackage ? `Subscribe for ${priceString}/month` : 'Subscription Unavailable'}
               </Text>
             </>
           )}
@@ -290,11 +346,11 @@ export default function SubscriptionScreen() {
         </View>
       </ScrollView>
 
-      {/* Loading Overlay */}
-      {isLoading && (
+      {/* Loading Overlay - Only show during initial load */}
+      {isLoading && !monthlyPackage && (
         <View style={styles.loadingOverlay}>
           <ActivityIndicator size="large" color="#3B82F6" />
-          <Text style={styles.loadingText}>Loading subscription...</Text>
+          <Text style={styles.loadingText}>Loading subscription options...</Text>
         </View>
       )}
     </SafeAreaView>
@@ -431,19 +487,33 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#64748B',
   },
+  priceLoadingNote: {
+    fontSize: 12,
+    color: '#F59E0B',
+    marginTop: 8,
+  },
   errorContainer: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     backgroundColor: '#EF444420',
-    padding: 12,
-    borderRadius: 8,
+    padding: 16,
+    borderRadius: 12,
     marginBottom: 16,
   },
-  errorText: {
-    color: '#EF4444',
-    fontSize: 14,
-    marginLeft: 8,
+  errorTextContainer: {
     flex: 1,
+    marginLeft: 12,
+  },
+  errorTitle: {
+    color: '#EF4444',
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  errorText: {
+    color: '#FCA5A5',
+    fontSize: 14,
+    lineHeight: 20,
   },
   subscribeButton: {
     flexDirection: 'row',
@@ -498,7 +568,7 @@ const styles = StyleSheet.create({
   },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(15, 23, 42, 0.9)',
+    backgroundColor: 'rgba(15, 23, 42, 0.95)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -578,5 +648,39 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     marginLeft: 8,
+  },
+  diagnosticsToggle: {
+    marginTop: 16,
+    padding: 8,
+  },
+  diagnosticsToggleText: {
+    color: '#64748B',
+    fontSize: 12,
+    textDecorationLine: 'underline',
+  },
+  diagnosticsPanel: {
+    marginTop: 16,
+    backgroundColor: '#0F172A',
+    borderRadius: 8,
+    padding: 16,
+    width: '100%',
+  },
+  diagnosticsTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#94A3B8',
+    marginBottom: 12,
+  },
+  diagnosticsItem: {
+    fontSize: 12,
+    color: '#64748B',
+    marginBottom: 4,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  diagnosticsError: {
+    fontSize: 12,
+    color: '#EF4444',
+    marginTop: 8,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
 });

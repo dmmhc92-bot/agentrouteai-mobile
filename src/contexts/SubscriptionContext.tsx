@@ -1,7 +1,6 @@
 /**
  * Subscription Context for AgentRoute AI CRM
- * 
- * Manages subscription state across the app using RevenueCat
+ * PRODUCTION-READY - Full Error Handling & Diagnostics
  * 
  * Configuration:
  * - Bundle ID: app.emergent.agentrouteai2dd9b4e9
@@ -12,7 +11,13 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { Alert, Platform } from 'react-native';
 import { PurchasesPackage, PurchasesOffering } from 'react-native-purchases';
-import { revenueCatService, SubscriptionStatus, ENTITLEMENT_ID, PRODUCT_ID } from '../services/revenuecat';
+import { 
+  revenueCatService, 
+  SubscriptionStatus, 
+  RevenueCatDiagnostics,
+  ENTITLEMENT_ID, 
+  PRODUCT_ID 
+} from '../services/revenuecat';
 import { useAuth } from './AuthContext';
 
 interface SubscriptionContextType {
@@ -20,24 +25,33 @@ interface SubscriptionContextType {
   isLoading: boolean;
   isPremium: boolean;
   isAppleTester: boolean;
-  hasFullAccess: boolean; // isPremium OR isAppleTester
+  hasFullAccess: boolean;
   subscriptionStatus: SubscriptionStatus | null;
   currentOffering: PurchasesOffering | null;
   monthlyPackage: PurchasesPackage | null;
   error: string | null;
+  diagnostics: RevenueCatDiagnostics | null;
 
   // Actions
   purchaseMonthly: () => Promise<boolean>;
   restorePurchases: () => Promise<boolean>;
   refreshStatus: () => Promise<void>;
   initializeRevenueCat: () => Promise<void>;
+  retryInitialization: () => Promise<void>;
 }
 
 const SubscriptionContext = createContext<SubscriptionContextType | undefined>(undefined);
 
+// Apple Test Accounts - for App Store Review
+const APPLE_TESTER_EMAILS = [
+  'appstore_admin@agentroute.com',
+  'appstore_manager@agentroute.com',
+  'appstore_agent@agentroute.com',
+];
+
 export function SubscriptionProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
-  
+
   const [isLoading, setIsLoading] = useState(false);
   const [isPremium, setIsPremium] = useState(false);
   const [isAppleTester, setIsAppleTester] = useState(false);
@@ -45,18 +59,11 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
   const [currentOffering, setCurrentOffering] = useState<PurchasesOffering | null>(null);
   const [monthlyPackage, setMonthlyPackage] = useState<PurchasesPackage | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [diagnostics, setDiagnostics] = useState<RevenueCatDiagnostics | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
+  const [initializationAttempted, setInitializationAttempted] = useState(false);
 
-  // Apple Tester emails - these get full access for App Store review
-  const APPLE_TESTER_EMAILS = [
-    'appstore_admin@agentroute.com',
-    'appstore_manager@agentroute.com', 
-    'appstore_agent@agentroute.com',
-    'apple@example.com',
-    'review@apple.com',
-  ];
-
-  // Check if current user is an Apple tester
+  // Check if current user is an Apple tester (for bypass only, not for blocking)
   useEffect(() => {
     if (user?.email) {
       const isTester = APPLE_TESTER_EMAILS.some(
@@ -64,8 +71,10 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       );
       setIsAppleTester(isTester);
       if (isTester) {
-        console.log('[Subscription] Apple Tester detected - granting full access');
+        console.log('[Subscription] Apple Tester detected:', user.email);
       }
+    } else {
+      setIsAppleTester(false);
     }
   }, [user?.email]);
 
@@ -73,40 +82,10 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
   const hasFullAccess = isPremium || isAppleTester;
 
   /**
-   * Initialize RevenueCat SDK
-   */
-  const initializeRevenueCat = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
-
-      const userId = user?.id || undefined;
-      const success = await revenueCatService.initialize(userId);
-      
-      if (!success) {
-        console.log('[Subscription] RevenueCat not configured, running in free mode');
-        setIsInitialized(false);
-        setIsLoading(false);
-        return;
-      }
-
-      setIsInitialized(true);
-
-      // Load offerings and status
-      await loadOfferings();
-      await refreshStatus();
-    } catch (err: any) {
-      console.error('[Subscription] Initialization error:', err);
-      setError(err.message || 'Failed to initialize subscriptions');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [user?.id]);
-
-  /**
    * Load available offerings from RevenueCat
    */
-  const loadOfferings = async () => {
+  const loadOfferings = useCallback(async (): Promise<boolean> => {
+    console.log('[Subscription] Loading offerings...');
     try {
       const offering = await revenueCatService.getOfferings();
       setCurrentOffering(offering);
@@ -114,19 +93,33 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       if (offering) {
         const monthly = await revenueCatService.getMonthlyPackage();
         setMonthlyPackage(monthly);
+
+        if (monthly) {
+          console.log('[Subscription] Monthly package loaded:', monthly.product.priceString);
+          return true;
+        } else {
+          const diag = revenueCatService.getDiagnostics();
+          setError(diag.lastError || 'Monthly package not found in offerings');
+          return false;
+        }
+      } else {
+        const diag = revenueCatService.getDiagnostics();
+        setError(diag.lastError || 'No offerings available');
+        return false;
       }
     } catch (err: any) {
       console.error('[Subscription] Error loading offerings:', err);
+      setError(err.message || 'Failed to load subscription options');
+      return false;
     }
-  };
+  }, []);
 
   /**
    * Refresh subscription status
    */
   const refreshStatus = useCallback(async () => {
-    if (!isInitialized) {
-      setIsPremium(false);
-      setSubscriptionStatus(null);
+    if (!revenueCatService.isReady()) {
+      console.log('[Subscription] SDK not ready, skipping status refresh');
       return;
     }
 
@@ -134,18 +127,93 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       const status = await revenueCatService.getSubscriptionStatus();
       setSubscriptionStatus(status);
       setIsPremium(status.isActive);
-      console.log('[Subscription] Status refreshed:', status.isActive ? 'Premium' : 'Free');
+      console.log('[Subscription] Status:', status.isActive ? 'Premium' : 'Free');
     } catch (err: any) {
       console.error('[Subscription] Error refreshing status:', err);
     }
-  }, [isInitialized]);
+  }, []);
+
+  /**
+   * Initialize RevenueCat SDK and load offerings
+   * This is the main initialization function
+   */
+  const initializeRevenueCat = useCallback(async () => {
+    if (isLoading) {
+      console.log('[Subscription] Initialization already in progress');
+      return;
+    }
+
+    console.log('[Subscription] Starting initialization...');
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const userId = user?.id || undefined;
+      
+      // Step 1: Initialize SDK
+      console.log('[Subscription] Step 1: Initialize SDK');
+      const sdkInitialized = await revenueCatService.initialize(userId);
+      
+      if (!sdkInitialized) {
+        const diag = revenueCatService.getDiagnostics();
+        setDiagnostics(diag);
+        setError(diag.lastError || 'Failed to initialize RevenueCat SDK');
+        setIsInitialized(false);
+        setInitializationAttempted(true);
+        console.error('[Subscription] SDK initialization failed');
+        return;
+      }
+
+      setIsInitialized(true);
+      console.log('[Subscription] SDK initialized successfully');
+
+      // Step 2: Load offerings (products)
+      console.log('[Subscription] Step 2: Load offerings');
+      const offeringsLoaded = await loadOfferings();
+      
+      if (!offeringsLoaded) {
+        console.warn('[Subscription] Offerings not loaded - subscription may not work');
+        // Don't return early - still allow status refresh
+      }
+
+      // Step 3: Check subscription status
+      console.log('[Subscription] Step 3: Check subscription status');
+      await refreshStatus();
+
+      // Update diagnostics
+      setDiagnostics(revenueCatService.getDiagnostics());
+      setInitializationAttempted(true);
+
+      console.log('[Subscription] Initialization complete');
+    } catch (err: any) {
+      console.error('[Subscription] Initialization error:', err);
+      setError(err.message || 'Failed to initialize subscriptions');
+      setDiagnostics(revenueCatService.getDiagnostics());
+    } finally {
+      setIsLoading(false);
+      setInitializationAttempted(true);
+    }
+  }, [user?.id, loadOfferings, refreshStatus, isLoading]);
+
+  /**
+   * Retry initialization (for manual retry button)
+   */
+  const retryInitialization = useCallback(async () => {
+    setError(null);
+    setInitializationAttempted(false);
+    await initializeRevenueCat();
+  }, [initializeRevenueCat]);
 
   /**
    * Purchase monthly subscription
    */
   const purchaseMonthly = useCallback(async (): Promise<boolean> => {
     if (!monthlyPackage) {
-      Alert.alert('Error', 'Subscription not available. Please try again later.');
+      const diag = revenueCatService.getDiagnostics();
+      Alert.alert(
+        'Subscription Not Available',
+        diag.lastError || 'Unable to load subscription options. Please try again later.'
+      );
       return false;
     }
 
@@ -153,10 +221,11 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       setIsLoading(true);
       setError(null);
 
+      console.log('[Subscription] Starting purchase...');
       const result = await revenueCatService.purchasePackage(monthlyPackage);
 
       if (result.error === 'cancelled') {
-        // User cancelled - no alert needed
+        console.log('[Subscription] Purchase cancelled by user');
         return false;
       }
 
@@ -192,6 +261,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       setIsLoading(true);
       setError(null);
 
+      console.log('[Subscription] Restoring purchases...');
       const result = await revenueCatService.restorePurchases();
 
       if (result.success) {
@@ -221,12 +291,12 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
 
   // Initialize when user changes
   useEffect(() => {
-    if (user?.id) {
+    if (user?.id && !initializationAttempted) {
       initializeRevenueCat();
     }
-  }, [user?.id]);
+  }, [user?.id, initializationAttempted, initializeRevenueCat]);
 
-  // Identify user when they log in
+  // Identify user when SDK is ready
   useEffect(() => {
     if (isInitialized && user?.id) {
       revenueCatService.identifyUser(user.id);
@@ -242,10 +312,12 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
     currentOffering,
     monthlyPackage,
     error,
+    diagnostics,
     purchaseMonthly,
     restorePurchases,
     refreshStatus,
     initializeRevenueCat,
+    retryInitialization,
   };
 
   return (
