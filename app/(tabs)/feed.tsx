@@ -412,6 +412,9 @@ export default function TeamFeedScreen() {
   );
 
   const handleCreatePost = async () => {
+    // Prevent double submission
+    if (posting) return;
+    
     if (!newPostContent.trim()) {
       Alert.alert('Error', 'Please enter some content');
       return;
@@ -429,9 +432,18 @@ export default function TeamFeedScreen() {
       }
       
       const response = await api.post('/feed', postData);
+      const newPost = response.data;
       
-      // Add new post to the top
-      setPosts(prev => [response.data, ...prev]);
+      // Add new post to the top, but check for duplicates first
+      setPosts(prev => {
+        // Check if post already exists (from WebSocket or previous add)
+        if (prev.some(p => p.id === newPost.id)) {
+          return prev;
+        }
+        return [newPost, ...prev];
+      });
+      
+      // Clear form
       setNewPostContent('');
       setNewPostType('update');
       setLinkedLeadId(null);
