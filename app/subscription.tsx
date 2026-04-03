@@ -1,6 +1,6 @@
 /**
  * Subscription/Paywall Screen for AgentRoute AI CRM
- * Uses RevenueCat Paywalls UI for native paywall experience
+ * Uses RevenueCat for native purchases
  * 
  * Configuration:
  * - Bundle ID: app.emergent.agentrouteai2dd9b4e9
@@ -24,13 +24,13 @@ import {
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import RevenueCatUI, { PAYWALL_RESULT } from 'react-native-purchases-ui';
 import Purchases from 'react-native-purchases';
 import { useSubscription } from '../src/contexts/SubscriptionContext';
 import { useAuth } from '../src/contexts/AuthContext';
+import { LinearGradient } from 'expo-linear-gradient';
 
-// Features to display if RevenueCat paywall fails
-const FALLBACK_FEATURES = [
+// Features to display
+const PREMIUM_FEATURES = [
   {
     icon: 'infinite-outline' as const,
     title: 'Unlimited Leads',
@@ -51,6 +51,16 @@ const FALLBACK_FEATURES = [
     title: 'AI Sales Coach',
     description: 'Personalized AI coaching for better results',
   },
+  {
+    icon: 'calendar-outline' as const,
+    title: 'Smart Scheduling',
+    description: 'Intelligent appointment management',
+  },
+  {
+    icon: 'shield-checkmark-outline' as const,
+    title: 'Priority Support',
+    description: '24/7 premium customer support',
+  },
 ];
 
 export default function SubscriptionScreen() {
@@ -68,107 +78,35 @@ export default function SubscriptionScreen() {
     diagnostics,
     retryInitialization,
     refreshStatus,
+    initializeRevenueCat,
   } = useSubscription();
 
-  const [isShowingPaywall, setIsShowingPaywall] = useState(false);
-  const [paywallError, setPaywallError] = useState<string | null>(null);
-  const [isInitializing, setIsInitializing] = useState(true);
-  const [showFallback, setShowFallback] = useState(false);
   const [isPurchasing, setIsPurchasing] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const [initAttempted, setInitAttempted] = useState(false);
 
-  // Try to show RevenueCat paywall on mount
+  // Initialize subscription on mount
   useEffect(() => {
-    const showPaywall = async () => {
-      setIsInitializing(true);
-      setPaywallError(null);
-      
-      try {
-        console.log('[Subscription] Attempting to show RevenueCat paywall...');
-        
-        // Present paywall if user doesn't have premium entitlement
-        const result = await RevenueCatUI.presentPaywallIfNeeded({
-          requiredEntitlementIdentifier: 'premium',
-        });
-
-        console.log('[Subscription] Paywall result:', result);
-
-        switch (result) {
-          case PAYWALL_RESULT.PURCHASED:
-            console.log('[Subscription] Purchase completed via paywall');
-            await refreshStatus();
-            router.back();
-            break;
-          case PAYWALL_RESULT.RESTORED:
-            console.log('[Subscription] Purchases restored via paywall');
-            await refreshStatus();
-            router.back();
-            break;
-          case PAYWALL_RESULT.NOT_PRESENTED:
-            // User already has entitlement
-            console.log('[Subscription] Paywall not presented - user is premium');
-            router.back();
-            break;
-          case PAYWALL_RESULT.CANCELLED:
-            console.log('[Subscription] Paywall dismissed by user');
-            // Stay on screen, show fallback
-            setShowFallback(true);
-            break;
-          case PAYWALL_RESULT.ERROR:
-            console.log('[Subscription] Paywall error');
-            setPaywallError('Unable to load subscription options');
-            setShowFallback(true);
-            break;
-          default:
-            setShowFallback(true);
-        }
-      } catch (error: any) {
-        console.error('[Subscription] Paywall error:', error);
-        
-        // Check if it's a "no paywall configured" error
-        if (error.message?.includes('no paywall') || 
-            error.message?.includes('No current offering') ||
-            error.code === 'CONFIGURATION_ERROR') {
-          setPaywallError('Paywall not configured in RevenueCat dashboard');
-        } else {
-          setPaywallError(error.message || 'Failed to load paywall');
-        }
-        setShowFallback(true);
-      } finally {
-        setIsInitializing(false);
+    const init = async () => {
+      if (!initAttempted) {
+        setInitAttempted(true);
+        await initializeRevenueCat();
       }
     };
+    init();
+  }, [initAttempted, initializeRevenueCat]);
 
-    // Small delay to ensure SDK is configured
-    const timer = setTimeout(showPaywall, 500);
-    return () => clearTimeout(timer);
-  }, []);
-
-  // Manual paywall trigger
-  const handleShowPaywall = async () => {
-    setIsShowingPaywall(true);
-    try {
-      const result = await RevenueCatUI.presentPaywall();
-      
-      if (result === PAYWALL_RESULT.PURCHASED || result === PAYWALL_RESULT.RESTORED) {
-        await refreshStatus();
-        router.back();
-      }
-    } catch (error: any) {
-      console.error('[Subscription] Manual paywall error:', error);
-      Alert.alert('Error', error.message || 'Failed to show subscription options');
-    } finally {
-      setIsShowingPaywall(false);
-    }
-  };
-
-  // Fallback purchase using our custom flow
-  const handleFallbackPurchase = async () => {
+  // Handle purchase
+  const handlePurchase = async () => {
     if (!monthlyPackage) {
       Alert.alert(
         'Subscription Unavailable',
-        'Unable to load subscription options. Please try again later.'
+        'Unable to load subscription options. Please try again later.',
+        [
+          { text: 'Retry', onPress: () => retryInitialization() },
+          { text: 'Cancel', style: 'cancel' },
+        ]
       );
       return;
     }
@@ -177,14 +115,18 @@ export default function SubscriptionScreen() {
     try {
       const success = await purchaseMonthly();
       if (success) {
-        router.back();
+        Alert.alert('Success!', 'Welcome to AgentRoute Premium!', [
+          { text: 'OK', onPress: () => router.back() }
+        ]);
       }
+    } catch (error: any) {
+      Alert.alert('Purchase Failed', error.message || 'Please try again.');
     } finally {
       setIsPurchasing(false);
     }
   };
 
-  // Restore purchases
+  // Handle restore
   const handleRestore = async () => {
     setIsRestoring(true);
     try {
@@ -193,48 +135,21 @@ export default function SubscriptionScreen() {
       
       if (hasPremium) {
         await refreshStatus();
-        Alert.alert('Success', 'Your subscription has been restored!');
-        router.back();
+        Alert.alert('Success!', 'Your subscription has been restored!', [
+          { text: 'OK', onPress: () => router.back() }
+        ]);
       } else {
         Alert.alert('No Subscription Found', 'No active subscription was found to restore.');
       }
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to restore purchases');
+      Alert.alert('Restore Failed', error.message || 'Please try again.');
     } finally {
       setIsRestoring(false);
     }
   };
 
-  // Retry initialization
-  const handleRetry = async () => {
-    setPaywallError(null);
-    setShowFallback(false);
-    setIsInitializing(true);
-    
-    try {
-      await retryInitialization();
-      
-      // Try paywall again
-      const result = await RevenueCatUI.presentPaywallIfNeeded({
-        requiredEntitlementIdentifier: 'premium',
-      });
-      
-      if (result === PAYWALL_RESULT.PURCHASED || result === PAYWALL_RESULT.RESTORED) {
-        await refreshStatus();
-        router.back();
-      } else {
-        setShowFallback(true);
-      }
-    } catch (error: any) {
-      setPaywallError(error.message || 'Failed to load paywall');
-      setShowFallback(true);
-    } finally {
-      setIsInitializing(false);
-    }
-  };
-
-  // If user is already premium, show success state
-  if (isPremium && !isInitializing) {
+  // If user is already premium
+  if (isPremium) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
@@ -244,9 +159,12 @@ export default function SubscriptionScreen() {
         </View>
 
         <View style={styles.premiumContainer}>
-          <View style={styles.premiumIconContainer}>
-            <Ionicons name="checkmark-circle" size={80} color="#22C55E" />
-          </View>
+          <LinearGradient
+            colors={['#22C55E', '#16A34A']}
+            style={styles.premiumBadge}
+          >
+            <Ionicons name="checkmark-circle" size={48} color="#FFFFFF" />
+          </LinearGradient>
           <Text style={styles.premiumTitle}>You're Premium!</Text>
           <Text style={styles.premiumSubtitle}>
             You have full access to all AgentRoute features.
@@ -267,195 +185,167 @@ export default function SubscriptionScreen() {
     );
   }
 
-  // Loading state
-  if (isInitializing) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#3B82F6" />
-          <Text style={styles.loadingText}>Loading subscription options...</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
+  const priceString = monthlyPackage?.product?.priceString || '$29.99';
+  const isProductsLoaded = monthlyPackage !== null;
 
-  // Fallback UI when RevenueCat paywall fails
-  if (showFallback) {
-    const priceString = monthlyPackage?.product?.priceString || '$29.99';
-    const productsLoaded = monthlyPackage !== null;
-
-    return (
-      <SafeAreaView style={styles.container}>
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.closeButton}>
-            <Ionicons name="close" size={28} color="#FFFFFF" />
-          </TouchableOpacity>
-        </View>
-
-        <ScrollView
-          style={styles.content}
-          contentContainerStyle={styles.contentContainer}
-          showsVerticalScrollIndicator={false}
-        >
-          {/* Hero Section */}
-          <View style={styles.heroSection}>
-            <View style={styles.iconContainer}>
-              <Ionicons name="star" size={40} color="#3B82F6" />
-            </View>
-            <Text style={styles.heroTitle}>Upgrade to Premium</Text>
-            <Text style={styles.heroSubtitle}>
-              Unlock the full potential of AgentRoute AI
-            </Text>
-          </View>
-
-          {/* Error Message */}
-          {paywallError && (
-            <View style={styles.errorContainer}>
-              <Ionicons name="alert-circle" size={24} color="#F59E0B" />
-              <View style={styles.errorTextContainer}>
-                <Text style={styles.errorTitle}>Native Paywall Unavailable</Text>
-                <Text style={styles.errorText}>{paywallError}</Text>
-              </View>
-            </View>
-          )}
-
-          {/* Features List */}
-          <View style={styles.featuresSection}>
-            <Text style={styles.featuresTitle}>Premium Features</Text>
-            {FALLBACK_FEATURES.map((feature, index) => (
-              <View key={index} style={styles.featureItem}>
-                <View style={styles.featureIconContainer}>
-                  <Ionicons name={feature.icon} size={24} color="#3B82F6" />
-                </View>
-                <View style={styles.featureTextContainer}>
-                  <Text style={styles.featureTitle}>{feature.title}</Text>
-                  <Text style={styles.featureDescription}>{feature.description}</Text>
-                </View>
-              </View>
-            ))}
-          </View>
-
-          {/* Pricing Card */}
-          <View style={styles.pricingSection}>
-            <View style={styles.pricingCard}>
-              <Text style={styles.planName}>AgentRoute Premium</Text>
-              <View style={styles.priceContainer}>
-                <Text style={styles.priceAmount}>{priceString}</Text>
-                <Text style={styles.pricePeriod}>/month</Text>
-              </View>
-              <Text style={styles.priceNote}>Cancel anytime</Text>
-            </View>
-          </View>
-
-          {/* Try RevenueCat Paywall Button */}
-          <TouchableOpacity
-            style={styles.primaryButton}
-            onPress={handleShowPaywall}
-            disabled={isShowingPaywall}
-          >
-            {isShowingPaywall ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              <>
-                <Ionicons name="card-outline" size={20} color="#FFFFFF" style={styles.buttonIcon} />
-                <Text style={styles.primaryButtonText}>Show Subscription Options</Text>
-              </>
-            )}
-          </TouchableOpacity>
-
-          {/* Fallback Purchase Button (if products loaded) */}
-          {productsLoaded && (
-            <TouchableOpacity
-              style={[styles.secondaryButton, isPurchasing && styles.buttonDisabled]}
-              onPress={handleFallbackPurchase}
-              disabled={isPurchasing}
-            >
-              {isPurchasing ? (
-                <ActivityIndicator color="#3B82F6" />
-              ) : (
-                <Text style={styles.secondaryButtonText}>
-                  Subscribe for {priceString}/month
-                </Text>
-              )}
-            </TouchableOpacity>
-          )}
-
-          {/* Restore Purchases */}
-          <TouchableOpacity
-            style={styles.restoreButton}
-            onPress={handleRestore}
-            disabled={isRestoring}
-          >
-            {isRestoring ? (
-              <ActivityIndicator color="#3B82F6" size="small" />
-            ) : (
-              <Text style={styles.restoreButtonText}>Restore Purchases</Text>
-            )}
-          </TouchableOpacity>
-
-          {/* Retry Button */}
-          <TouchableOpacity style={styles.retryButton} onPress={handleRetry}>
-            <Ionicons name="refresh-outline" size={16} color="#64748B" />
-            <Text style={styles.retryButtonText}>Retry Loading Paywall</Text>
-          </TouchableOpacity>
-
-          {/* Diagnostics Toggle */}
-          <TouchableOpacity
-            style={styles.diagnosticsToggle}
-            onPress={() => setShowDiagnostics(!showDiagnostics)}
-          >
-            <Text style={styles.diagnosticsToggleText}>
-              {showDiagnostics ? 'Hide Technical Details' : 'Show Technical Details'}
-            </Text>
-          </TouchableOpacity>
-
-          {/* Diagnostics Panel */}
-          {showDiagnostics && diagnostics && (
-            <View style={styles.diagnosticsPanel}>
-              <Text style={styles.diagnosticsTitle}>Diagnostics</Text>
-              <Text style={styles.diagnosticsItem}>Platform: {diagnostics.platform}</Text>
-              <Text style={styles.diagnosticsItem}>SDK Initialized: {diagnostics.isInitialized ? 'Yes' : 'No'}</Text>
-              <Text style={styles.diagnosticsItem}>API Key Set: {diagnostics.apiKeySet ? 'Yes' : 'No'}</Text>
-              <Text style={styles.diagnosticsItem}>Offerings Available: {diagnostics.offeringsAvailable ? 'Yes' : 'No'}</Text>
-              <Text style={styles.diagnosticsItem}>Current Offering: {diagnostics.currentOfferingId || 'None'}</Text>
-              <Text style={styles.diagnosticsItem}>Packages Count: {diagnostics.packagesCount}</Text>
-              <Text style={styles.diagnosticsItem}>Monthly Package: {diagnostics.monthlyPackageFound ? 'Found' : 'Not Found'}</Text>
-              {diagnostics.lastError && (
-                <Text style={styles.diagnosticsError}>Error: {diagnostics.lastError}</Text>
-              )}
-            </View>
-          )}
-
-          {/* Legal Links */}
-          <View style={styles.legalSection}>
-            <Text style={styles.legalText}>
-              By subscribing, you agree to our{' '}
-              <Text style={styles.legalLink} onPress={() => router.push('/legal/terms')}>
-                Terms of Service
-              </Text>
-              {' '}and{' '}
-              <Text style={styles.legalLink} onPress={() => router.push('/legal/privacy')}>
-                Privacy Policy
-              </Text>
-            </Text>
-          </View>
-        </ScrollView>
-      </SafeAreaView>
-    );
-  }
-
-  // Default: empty state while waiting
   return (
     <SafeAreaView style={styles.container}>
+      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.closeButton}>
           <Ionicons name="close" size={28} color="#FFFFFF" />
         </TouchableOpacity>
       </View>
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#3B82F6" />
-      </View>
+
+      <ScrollView
+        style={styles.content}
+        contentContainerStyle={styles.contentContainer}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Hero Section */}
+        <View style={styles.heroSection}>
+          <LinearGradient
+            colors={['#3B82F6', '#2563EB']}
+            style={styles.iconContainer}
+          >
+            <Ionicons name="star" size={36} color="#FFFFFF" />
+          </LinearGradient>
+          <Text style={styles.heroTitle}>Upgrade to Premium</Text>
+          <Text style={styles.heroSubtitle}>
+            Unlock the full potential of AgentRoute AI
+          </Text>
+        </View>
+
+        {/* Loading indicator if still loading */}
+        {contextLoading && !isProductsLoaded && (
+          <View style={styles.loadingSection}>
+            <ActivityIndicator size="small" color="#3B82F6" />
+            <Text style={styles.loadingText}>Loading subscription options...</Text>
+          </View>
+        )}
+
+        {/* Error Message */}
+        {contextError && !isProductsLoaded && (
+          <View style={styles.errorContainer}>
+            <Ionicons name="alert-circle" size={24} color="#F59E0B" />
+            <View style={styles.errorTextContainer}>
+              <Text style={styles.errorTitle}>Unable to Load Products</Text>
+              <Text style={styles.errorText}>{contextError}</Text>
+            </View>
+            <TouchableOpacity style={styles.retrySmallButton} onPress={() => retryInitialization()}>
+              <Ionicons name="refresh" size={18} color="#3B82F6" />
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Features List */}
+        <View style={styles.featuresSection}>
+          <Text style={styles.sectionTitle}>Premium Features</Text>
+          {PREMIUM_FEATURES.map((feature, index) => (
+            <View key={index} style={styles.featureItem}>
+              <View style={styles.featureIconContainer}>
+                <Ionicons name={feature.icon} size={22} color="#3B82F6" />
+              </View>
+              <View style={styles.featureTextContainer}>
+                <Text style={styles.featureTitle}>{feature.title}</Text>
+                <Text style={styles.featureDescription}>{feature.description}</Text>
+              </View>
+              <Ionicons name="checkmark-circle" size={20} color="#22C55E" />
+            </View>
+          ))}
+        </View>
+
+        {/* Pricing Card */}
+        <View style={styles.pricingCard}>
+          <View style={styles.pricingBadge}>
+            <Text style={styles.pricingBadgeText}>BEST VALUE</Text>
+          </View>
+          <Text style={styles.planName}>AgentRoute Premium</Text>
+          <View style={styles.priceRow}>
+            <Text style={styles.priceAmount}>{priceString}</Text>
+            <Text style={styles.pricePeriod}>/month</Text>
+          </View>
+          <Text style={styles.priceNote}>Cancel anytime • No commitment</Text>
+        </View>
+
+        {/* Purchase Button */}
+        <TouchableOpacity
+          style={[styles.purchaseButton, (!isProductsLoaded || isPurchasing) && styles.buttonDisabled]}
+          onPress={handlePurchase}
+          disabled={!isProductsLoaded || isPurchasing}
+        >
+          {isPurchasing ? (
+            <ActivityIndicator color="#FFFFFF" />
+          ) : (
+            <>
+              <Ionicons name="diamond" size={20} color="#FFFFFF" style={styles.buttonIcon} />
+              <Text style={styles.purchaseButtonText}>
+                {isProductsLoaded ? `Subscribe for ${priceString}/month` : 'Loading...'}
+              </Text>
+            </>
+          )}
+        </TouchableOpacity>
+
+        {/* Restore Purchases */}
+        <TouchableOpacity
+          style={styles.restoreButton}
+          onPress={handleRestore}
+          disabled={isRestoring}
+        >
+          {isRestoring ? (
+            <ActivityIndicator color="#3B82F6" size="small" />
+          ) : (
+            <Text style={styles.restoreButtonText}>Restore Purchases</Text>
+          )}
+        </TouchableOpacity>
+
+        {/* Diagnostics Toggle (for debugging) */}
+        {__DEV__ && (
+          <>
+            <TouchableOpacity
+              style={styles.diagnosticsToggle}
+              onPress={() => setShowDiagnostics(!showDiagnostics)}
+            >
+              <Text style={styles.diagnosticsToggleText}>
+                {showDiagnostics ? 'Hide' : 'Show'} Debug Info
+              </Text>
+            </TouchableOpacity>
+
+            {showDiagnostics && diagnostics && (
+              <View style={styles.diagnosticsPanel}>
+                <Text style={styles.diagnosticsTitle}>Diagnostics</Text>
+                <Text style={styles.diagnosticsItem}>Platform: {diagnostics.platform}</Text>
+                <Text style={styles.diagnosticsItem}>SDK Ready: {diagnostics.isInitialized ? 'Yes' : 'No'}</Text>
+                <Text style={styles.diagnosticsItem}>API Key: {diagnostics.apiKeySet ? 'Set' : 'Missing'}</Text>
+                <Text style={styles.diagnosticsItem}>Offerings: {diagnostics.offeringsAvailable ? 'Yes' : 'No'}</Text>
+                <Text style={styles.diagnosticsItem}>Offering ID: {diagnostics.currentOfferingId || 'None'}</Text>
+                <Text style={styles.diagnosticsItem}>Packages: {diagnostics.packagesCount}</Text>
+                <Text style={styles.diagnosticsItem}>Monthly Found: {diagnostics.monthlyPackageFound ? 'Yes' : 'No'}</Text>
+                {diagnostics.lastError && (
+                  <Text style={styles.diagnosticsError}>Error: {diagnostics.lastError}</Text>
+                )}
+              </View>
+            )}
+          </>
+        )}
+
+        {/* Legal Links */}
+        <View style={styles.legalSection}>
+          <Text style={styles.legalText}>
+            By subscribing, you agree to our{' '}
+            <Text style={styles.legalLink} onPress={() => router.push('/legal/terms')}>
+              Terms of Service
+            </Text>
+            {' '}and{' '}
+            <Text style={styles.legalLink} onPress={() => router.push('/legal/privacy')}>
+              Privacy Policy
+            </Text>
+          </Text>
+          <Text style={styles.legalDisclaimer}>
+            Payment will be charged to your Apple ID account. Subscription automatically renews unless canceled at least 24 hours before the end of the current period.
+          </Text>
+        </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -481,28 +371,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingBottom: 40,
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    color: '#FFFFFF',
-    marginTop: 16,
-    fontSize: 16,
-  },
   heroSection: {
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 32,
   },
   iconContainer: {
     width: 80,
     height: 80,
-    borderRadius: 40,
-    backgroundColor: '#3B82F620',
+    borderRadius: 24,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 20,
   },
   heroTitle: {
     fontSize: 28,
@@ -516,33 +395,52 @@ const styles = StyleSheet.create({
     color: '#94A3B8',
     textAlign: 'center',
   },
-  errorContainer: {
+  loadingSection: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: '#F59E0B20',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#1E293B',
     padding: 16,
     borderRadius: 12,
     marginBottom: 24,
+    gap: 12,
+  },
+  loadingText: {
+    color: '#94A3B8',
+    fontSize: 14,
+  },
+  errorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F59E0B15',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 24,
+    gap: 12,
   },
   errorTextContainer: {
     flex: 1,
-    marginLeft: 12,
   },
   errorTitle: {
     color: '#F59E0B',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
     marginBottom: 4,
   },
   errorText: {
     color: '#FCD34D',
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  retrySmallButton: {
+    padding: 8,
+    backgroundColor: '#1E293B',
+    borderRadius: 8,
   },
   featuresSection: {
     marginBottom: 24,
   },
-  featuresTitle: {
+  sectionTitle: {
     fontSize: 18,
     fontWeight: '600',
     color: '#FFFFFF',
@@ -550,55 +448,72 @@ const styles = StyleSheet.create({
   },
   featureItem: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 16,
+    alignItems: 'center',
+    backgroundColor: '#1E293B',
+    padding: 14,
+    borderRadius: 12,
+    marginBottom: 10,
   },
   featureIconContainer: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     borderRadius: 12,
     backgroundColor: '#3B82F615',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    marginRight: 14,
   },
   featureTextContainer: {
     flex: 1,
   },
   featureTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
     color: '#FFFFFF',
     marginBottom: 2,
   },
   featureDescription: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#94A3B8',
-  },
-  pricingSection: {
-    marginBottom: 24,
   },
   pricingCard: {
     backgroundColor: '#1E293B',
     borderRadius: 16,
     padding: 24,
     alignItems: 'center',
+    marginBottom: 24,
     borderWidth: 2,
     borderColor: '#3B82F6',
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  pricingBadge: {
+    position: 'absolute',
+    top: 12,
+    right: -32,
+    backgroundColor: '#22C55E',
+    paddingHorizontal: 32,
+    paddingVertical: 4,
+    transform: [{ rotate: '45deg' }],
+  },
+  pricingBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '700',
   },
   planName: {
     fontSize: 20,
     fontWeight: '600',
     color: '#FFFFFF',
-    marginBottom: 8,
+    marginBottom: 12,
   },
-  priceContainer: {
+  priceRow: {
     flexDirection: 'row',
     alignItems: 'baseline',
     marginBottom: 8,
   },
   priceAmount: {
-    fontSize: 40,
+    fontSize: 44,
     fontWeight: '700',
     color: '#FFFFFF',
   },
@@ -611,67 +526,40 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#64748B',
   },
-  primaryButton: {
+  purchaseButton: {
     flexDirection: 'row',
     backgroundColor: '#3B82F6',
-    paddingVertical: 16,
-    borderRadius: 12,
+    paddingVertical: 18,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 12,
+    marginBottom: 16,
   },
-  primaryButtonText: {
+  purchaseButtonText: {
     color: '#FFFFFF',
     fontSize: 18,
     fontWeight: '600',
   },
   buttonIcon: {
-    marginRight: 8,
-  },
-  secondaryButton: {
-    backgroundColor: '#1E293B',
-    paddingVertical: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#3B82F6',
-  },
-  secondaryButtonText: {
-    color: '#3B82F6',
-    fontSize: 16,
-    fontWeight: '600',
+    marginRight: 10,
   },
   buttonDisabled: {
-    opacity: 0.5,
+    opacity: 0.6,
   },
   restoreButton: {
-    paddingVertical: 12,
+    paddingVertical: 14,
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 24,
   },
   restoreButtonText: {
     color: '#3B82F6',
     fontSize: 16,
     fontWeight: '500',
   },
-  retryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    marginBottom: 16,
-  },
-  retryButtonText: {
-    color: '#64748B',
-    fontSize: 14,
-    marginLeft: 6,
-  },
   diagnosticsToggle: {
     alignItems: 'center',
     paddingVertical: 8,
-    marginBottom: 16,
+    marginBottom: 12,
   },
   diagnosticsToggleText: {
     color: '#64748B',
@@ -713,10 +601,16 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#64748B',
     textAlign: 'center',
+    marginBottom: 12,
   },
   legalLink: {
     color: '#3B82F6',
-    textDecorationLine: 'underline',
+  },
+  legalDisclaimer: {
+    fontSize: 11,
+    color: '#475569',
+    textAlign: 'center',
+    lineHeight: 16,
   },
   premiumContainer: {
     flex: 1,
@@ -724,7 +618,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 24,
   },
-  premiumIconContainer: {
+  premiumBadge: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    justifyContent: 'center',
+    alignItems: 'center',
     marginBottom: 24,
   },
   premiumTitle: {

@@ -845,7 +845,7 @@ export default function TeamFeedScreen() {
         />
       )}
       
-      {/* New Post Modal */}
+      {/* New Post Modal - Redesigned for cleaner UI */}
       <Modal
         visible={showNewPost}
         animationType="slide"
@@ -853,80 +853,101 @@ export default function TeamFeedScreen() {
         onRequestClose={() => setShowNewPost(false)}
       >
         <SafeAreaView style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={() => setShowNewPost(false)}>
-              <Text style={styles.cancelButton}>Cancel</Text>
+          {/* Clean Header */}
+          <View style={styles.composeHeader}>
+            <TouchableOpacity 
+              onPress={() => setShowNewPost(false)}
+              style={styles.composeCloseBtn}
+            >
+              <Ionicons name="close" size={24} color="#94A3B8" />
             </TouchableOpacity>
-            <Text style={styles.modalTitle}>New Post</Text>
+            <Text style={styles.composeTitle}>Create Post</Text>
             <TouchableOpacity 
               onPress={handleCreatePost}
               disabled={posting || !newPostContent.trim()}
+              style={[
+                styles.composePostBtn,
+                (!newPostContent.trim() || posting) && styles.composePostBtnDisabled
+              ]}
             >
               {posting ? (
-                <ActivityIndicator size="small" color="#3B82F6" />
+                <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
-                <Text style={[
-                  styles.postButton,
-                  !newPostContent.trim() && styles.postButtonDisabled
-                ]}>Post</Text>
+                <Text style={styles.composePostBtnText}>Post</Text>
               )}
             </TouchableOpacity>
           </View>
           
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.typeSelector}>
-            {POST_TYPES.filter(t => t.id !== 'all').map(type => (
-              <TouchableOpacity
-                key={type.id}
-                style={[
-                  styles.typeChip,
-                  newPostType === type.id && styles.typeChipActive
-                ]}
-                onPress={() => setNewPostType(type.id)}
-              >
-                <Ionicons 
-                  name={type.icon as any} 
-                  size={16} 
-                  color={newPostType === type.id ? '#FFFFFF' : '#94A3B8'} 
-                />
-                <Text style={[
-                  styles.typeChipText,
-                  newPostType === type.id && styles.typeChipTextActive
-                ]}>
-                  {type.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+          {/* Compact Post Type Pills */}
+          <View style={styles.composeTypeRow}>
+            <ScrollView 
+              horizontal 
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.composeTypePills}
+            >
+              {POST_TYPES.filter(t => t.id !== 'all').map(type => (
+                <TouchableOpacity
+                  key={type.id}
+                  style={[
+                    styles.composeTypePill,
+                    newPostType === type.id && styles.composeTypePillActive
+                  ]}
+                  onPress={() => setNewPostType(type.id)}
+                >
+                  <Ionicons 
+                    name={type.icon as any} 
+                    size={14} 
+                    color={newPostType === type.id ? '#FFFFFF' : '#64748B'} 
+                  />
+                  <Text style={[
+                    styles.composeTypePillText,
+                    newPostType === type.id && styles.composeTypePillTextActive
+                  ]}>
+                    {type.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
           
-          <TextInput
-            style={styles.postInput}
-            placeholder="Share an update with your team..."
-            placeholderTextColor="#64748B"
-            multiline
-            value={newPostContent}
-            onChangeText={setNewPostContent}
-            autoFocus
-          />
+          {/* Text Input Area */}
+          <View style={styles.composeInputArea}>
+            <View style={styles.composeAvatar}>
+              <Text style={styles.composeAvatarText}>
+                {user?.name?.charAt(0)?.toUpperCase() || 'U'}
+              </Text>
+            </View>
+            <TextInput
+              style={styles.composeTextInput}
+              placeholder="What's happening with your team?"
+              placeholderTextColor="#64748B"
+              multiline
+              value={newPostContent}
+              onChangeText={setNewPostContent}
+              autoFocus
+              textAlignVertical="top"
+            />
+          </View>
           
-          {/* Lead Linking Section */}
-          <View style={styles.leadLinkSection}>
+          {/* Bottom Action Bar */}
+          <View style={styles.composeBottomBar}>
             {linkedLeadId ? (
-              <View style={styles.linkedLeadPreview}>
-                <View style={styles.linkedLeadInfo}>
-                  <Ionicons name="link" size={16} color="#3B82F6" />
-                  <Text style={styles.linkedLeadPreviewText}>{linkedLeadName}</Text>
-                </View>
+              <View style={styles.composeLinkedLead}>
+                <Ionicons name="link" size={14} color="#3B82F6" />
+                <Text style={styles.composeLinkedLeadText} numberOfLines={1}>
+                  {linkedLeadName}
+                </Text>
                 <TouchableOpacity onPress={handleRemoveLinkedLead}>
-                  <Ionicons name="close-circle" size={20} color="#EF4444" />
+                  <Ionicons name="close-circle" size={18} color="#64748B" />
                 </TouchableOpacity>
               </View>
             ) : (
               <TouchableOpacity 
-                style={styles.linkLeadButton}
+                style={styles.composeActionBtn}
                 onPress={handleOpenLeadPicker}
               >
-                <Ionicons name="link-outline" size={18} color="#3B82F6" />
-                <Text style={styles.linkLeadButtonText}>Link a Lead</Text>
+                <Ionicons name="link-outline" size={20} color="#64748B" />
+                <Text style={styles.composeActionText}>Link Lead</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -1615,5 +1636,131 @@ const styles = StyleSheet.create({
     color: '#94A3B8',
     fontSize: 11,
     textTransform: 'capitalize',
+  },
+  // New Compose Screen Styles
+  composeHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1E293B',
+  },
+  composeCloseBtn: {
+    padding: 4,
+  },
+  composeTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  composePostBtn: {
+    backgroundColor: '#3B82F6',
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  composePostBtnDisabled: {
+    backgroundColor: '#334155',
+  },
+  composePostBtnText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  composeTypeRow: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#1E293B',
+  },
+  composeTypePills: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 8,
+  },
+  composeTypePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: '#1E293B',
+    gap: 5,
+  },
+  composeTypePillActive: {
+    backgroundColor: '#3B82F6',
+  },
+  composeTypePillText: {
+    fontSize: 12,
+    color: '#64748B',
+    fontWeight: '500',
+  },
+  composeTypePillTextActive: {
+    color: '#FFFFFF',
+  },
+  composeInputArea: {
+    flex: 1,
+    flexDirection: 'row',
+    padding: 16,
+    alignItems: 'flex-start',
+  },
+  composeAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#3B82F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  composeAvatarText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  composeTextInput: {
+    flex: 1,
+    fontSize: 16,
+    color: '#FFFFFF',
+    lineHeight: 24,
+    minHeight: 120,
+    textAlignVertical: 'top',
+  },
+  composeBottomBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#1E293B',
+    backgroundColor: '#0F172A',
+  },
+  composeLinkedLead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1E3A5F',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    gap: 8,
+    flex: 1,
+  },
+  composeLinkedLeadText: {
+    color: '#3B82F6',
+    fontSize: 14,
+    fontWeight: '500',
+    flex: 1,
+  },
+  composeActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    padding: 8,
+  },
+  composeActionText: {
+    color: '#64748B',
+    fontSize: 14,
+    fontWeight: '500',
   },
 });
