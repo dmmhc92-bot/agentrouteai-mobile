@@ -1,0 +1,11 @@
+# Ignore .env files during EAS Build
+# Production values are in app.json extra section
+.env
+.env.local
+.env.development
+.env.production
+
+# Other files not needed in build
+*.log
+.git
+__tests__
