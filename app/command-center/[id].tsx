@@ -258,9 +258,9 @@ export default function AgentDetailScreen() {
                   <Text style={styles.metricLabel}>Completed</Text>
                 </View>
                 <View style={styles.metricCard}>
-                  <Ionicons name="document-text" size={20} color="#F59E0B" />
-                  <Text style={styles.metricValue}>{summary.total_scopes}</Text>
-                  <Text style={styles.metricLabel}>SOAs</Text>
+                  <Ionicons name="trending-up" size={20} color="#F59E0B" />
+                  <Text style={styles.metricValue}>{summary.total_leads || 0}</Text>
+                  <Text style={styles.metricLabel}>Total Leads</Text>
                 </View>
               </View>
             </View>
@@ -394,37 +394,6 @@ export default function AgentDetailScreen() {
                 </View>
               );
             })}
-
-            {/* Scope of Appointment Documents */}
-            <Text style={[styles.sectionTitle, { marginTop: 24 }]}>
-              Scope of Appointment Documents ({scopes.length})
-            </Text>
-            {scopes.length === 0 ? (
-              <View style={styles.emptyState}>
-                <Ionicons name="document-text-outline" size={40} color="#64748B" />
-                <Text style={styles.emptyText}>No SOA documents</Text>
-              </View>
-            ) : (
-              scopes.slice(0, 10).map((scope) => (
-                <View key={scope.id} style={styles.scopeCard}>
-                  <Ionicons name="document-text" size={24} color="#8B5CF6" />
-                  <View style={styles.scopeInfo}>
-                    <Text style={styles.scopeName}>
-                      {scope.typed_name || 'Unsigned'}
-                    </Text>
-                    <Text style={styles.scopeDate}>
-                      Created {formatDate(scope.created_date)}
-                    </Text>
-                  </View>
-                  {scope.pdf_base64 && (
-                    <View style={styles.scopePdfBadge}>
-                      <Ionicons name="checkmark" size={12} color="#22C55E" />
-                      <Text style={styles.scopePdfText}>PDF</Text>
-                    </View>
-                  )}
-                </View>
-              ))
-            )}
           </View>
         )}
 
