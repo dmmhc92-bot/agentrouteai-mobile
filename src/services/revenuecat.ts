@@ -18,7 +18,7 @@ import Purchases, {
 import { Platform } from 'react-native';
 
 // RevenueCat Configuration - PRODUCTION
-const REVENUECAT_API_KEY_IOS = 'appl_CQgM11NfshsgSfUtCGgmlFpKEzw';
+const REVENUECAT_API_KEY_IOS = 'appl_CQgMllNfsHsgSfUtCGgmiFpKEzw';
 const REVENUECAT_API_KEY_ANDROID = 'goog_YOUR_REVENUECAT_ANDROID_API_KEY';
 
 // Product Configuration - MUST MATCH App Store Connect & RevenueCat Dashboard
