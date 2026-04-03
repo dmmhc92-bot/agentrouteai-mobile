@@ -2278,9 +2278,16 @@ async def reassign_user(user_id: str, reassign_data: UserReassign, current_user:
     old_manager_id = target_user.get("manager_id")
     old_manager = await db.users.find_one({"id": old_manager_id}, {"name": 1}) if old_manager_id else None
     
+    # Get the manager's organization_id to assign to the agent
+    manager_org_id = new_manager.get("organization_id")
+    
     await db.users.update_one(
         {"id": user_id},
-        {"$set": {"manager_id": reassign_data.new_manager_id, "updated_at": datetime.utcnow()}}
+        {"$set": {
+            "manager_id": reassign_data.new_manager_id, 
+            "organization_id": manager_org_id,  # Inherit organization from manager
+            "updated_at": datetime.utcnow()
+        }}
     )
     
     await log_activity(
