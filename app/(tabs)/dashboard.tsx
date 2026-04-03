@@ -63,7 +63,7 @@ export default function DashboardScreen() {
     if (isAdmin) return 'Admin Dashboard';
     if (isManager) return 'Manager Dashboard';
     if (isConnectedMode) return 'Team Dashboard';
-    return 'Solo Dashboard';
+    return 'My Dashboard';
   };
 
   // Role badge color
@@ -72,6 +72,38 @@ export default function DashboardScreen() {
     if (isManager) return '#3B82F6';
     return '#22C55E';
   };
+
+  // Calculate action-driven metrics
+  const getTodaysAppointments = () => {
+    const today = new Date().toISOString().split('T')[0];
+    return appointments.filter(apt => 
+      apt.appointment_date === today && apt.status === 'scheduled'
+    );
+  };
+
+  const getHotLeads = () => {
+    // Hot leads = contacted but no appointment scheduled yet
+    return leads.filter(lead => 
+      lead.stage === 'contacted' || lead.stage === 'follow_up'
+    ).slice(0, 5);
+  };
+
+  const getFollowUpsDue = () => {
+    // Leads that need follow-up (last contact > 3 days ago or no contact)
+    const threeDaysAgo = new Date();
+    threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+    
+    return leads.filter(lead => {
+      if (!lead.last_contact_date) return lead.stage === 'new_lead' || lead.stage === 'new';
+      const lastContact = new Date(lead.last_contact_date);
+      return lastContact < threeDaysAgo && 
+        !['closed_won', 'closed_lost', 'commission_paid'].includes(lead.stage || '');
+    }).slice(0, 5);
+  };
+
+  const todaysAppointments = getTodaysAppointments();
+  const hotLeads = getHotLeads();
+  const followUpsDue = getFollowUpsDue();
 
   const loadData = async () => {
     try {
@@ -296,6 +328,115 @@ export default function DashboardScreen() {
             </TouchableOpacity>
           </View>
         </View>
+
+        {/* TODAY'S PRIORITY - Appointments Today */}
+        {todaysAppointments.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <View style={styles.sectionTitleRow}>
+                <View style={styles.urgentBadge}>
+                  <Ionicons name="time" size={14} color="#FFFFFF" />
+                </View>
+                <Text style={styles.sectionTitle}>Today's Appointments</Text>
+              </View>
+              <TouchableOpacity onPress={() => router.push('/(tabs)/calendar')}>
+                <Text style={styles.seeAll}>View All</Text>
+              </TouchableOpacity>
+            </View>
+            {todaysAppointments.map((apt) => (
+              <TouchableOpacity
+                key={apt.id}
+                style={styles.todayAppointmentCard}
+                onPress={() => router.push(`/appointment/${apt.id}`)}
+              >
+                <View style={styles.appointmentTimeBlock}>
+                  <Text style={styles.appointmentTimeText}>{apt.appointment_time}</Text>
+                </View>
+                <View style={styles.appointmentInfo}>
+                  <Text style={styles.appointmentName}>{getLeadName(apt.lead_id)}</Text>
+                  <Text style={styles.appointmentStatus}>Tap to view details</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color="#64748B" />
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
+        {/* HOT LEADS - Need Attention */}
+        {hotLeads.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <View style={styles.sectionTitleRow}>
+                <View style={[styles.urgentBadge, { backgroundColor: '#F59E0B' }]}>
+                  <Ionicons name="flame" size={14} color="#FFFFFF" />
+                </View>
+                <Text style={styles.sectionTitle}>Hot Leads</Text>
+              </View>
+              <TouchableOpacity onPress={() => router.push('/(tabs)/leads')}>
+                <Text style={styles.seeAll}>View All</Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.sectionSubtitle}>Ready to schedule an appointment</Text>
+            {hotLeads.map((lead) => (
+              <TouchableOpacity
+                key={lead.id}
+                style={styles.hotLeadCard}
+                onPress={() => router.push(`/lead/${lead.id}`)}
+              >
+                <View style={[styles.leadStageIndicator, { backgroundColor: '#F59E0B' }]} />
+                <View style={styles.leadInfo}>
+                  <Text style={styles.leadName}>{lead.name}</Text>
+                  <Text style={styles.leadStage}>
+                    {lead.stage === 'contacted' ? 'Contacted - needs follow-up' : 'Follow-up required'}
+                  </Text>
+                </View>
+                <TouchableOpacity 
+                  style={styles.quickScheduleButton}
+                  onPress={() => router.push(`/appointment/new?leadId=${lead.id}`)}
+                >
+                  <Ionicons name="calendar" size={18} color="#F59E0B" />
+                </TouchableOpacity>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
+        {/* FOLLOW-UPS DUE */}
+        {followUpsDue.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <View style={styles.sectionTitleRow}>
+                <View style={[styles.urgentBadge, { backgroundColor: '#EF4444' }]}>
+                  <Ionicons name="alert-circle" size={14} color="#FFFFFF" />
+                </View>
+                <Text style={styles.sectionTitle}>Follow-ups Due</Text>
+              </View>
+              <TouchableOpacity onPress={() => router.push('/(tabs)/leads')}>
+                <Text style={styles.seeAll}>View All</Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.sectionSubtitle}>Haven't been contacted recently</Text>
+            {followUpsDue.map((lead) => (
+              <TouchableOpacity
+                key={lead.id}
+                style={styles.followUpCard}
+                onPress={() => router.push(`/lead/${lead.id}`)}
+              >
+                <View style={[styles.leadStageIndicator, { backgroundColor: '#EF4444' }]} />
+                <View style={styles.leadInfo}>
+                  <Text style={styles.leadName}>{lead.name}</Text>
+                  <Text style={styles.leadStage}>
+                    {lead.last_contact_date 
+                      ? `Last contact: ${format(new Date(lead.last_contact_date), 'MMM d')}`
+                      : 'Never contacted'
+                    }
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color="#64748B" />
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
 
         {/* Compliance Dashboard Cards for Admin/Manager */}
         {isAdminOrManager && complianceCards && (
@@ -811,5 +952,86 @@ const styles = StyleSheet.create({
     color: '#64748B',
     fontSize: 12,
     marginTop: 2,
+  },
+  // New action-driven styles
+  sectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  urgentBadge: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#22C55E',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  sectionSubtitle: {
+    color: '#64748B',
+    fontSize: 13,
+    marginBottom: 12,
+  },
+  todayAppointmentCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1E293B',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: '#22C55E',
+  },
+  appointmentTimeBlock: {
+    backgroundColor: '#22C55E20',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginRight: 12,
+  },
+  appointmentTimeText: {
+    color: '#22C55E',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  appointmentName: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  hotLeadCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1E293B',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 8,
+  },
+  followUpCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1E293B',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 8,
+  },
+  leadStageIndicator: {
+    width: 4,
+    height: 40,
+    borderRadius: 2,
+    marginRight: 12,
+  },
+  leadStage: {
+    color: '#94A3B8',
+    fontSize: 13,
+    marginTop: 2,
+  },
+  quickScheduleButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#F59E0B20',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

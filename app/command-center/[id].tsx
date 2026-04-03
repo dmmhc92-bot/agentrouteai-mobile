@@ -24,7 +24,7 @@ const STAGE_CONFIG: Record<string, { label: string; color: string }> = {
   follow_up: { label: 'Follow Up', color: '#F59E0B' },
   appointment_set: { label: 'Appointment Set', color: '#3B82F6' },
   appointment_scheduled: { label: 'Appointment Set', color: '#3B82F6' },
-  soa_completed: { label: 'SOA Completed', color: '#8B5CF6' },
+  qualified: { label: 'Qualified', color: '#06B6D4' },
   policy_submitted: { label: 'Policy Submitted', color: '#8B5CF6' },
   application_submitted: { label: 'Policy Submitted', color: '#8B5CF6' },
   underwriting_review: { label: 'Underwriting', color: '#F59E0B' },

@@ -29,7 +29,7 @@ const STAGE_LABELS: Record<string, string> = {
   follow_up: 'Follow Up',
   appointment_set: 'Appointment Set',
   appointment_scheduled: 'Appointment Set',
-  soa_completed: 'SOA Completed',
+  qualified: 'Qualified',
   policy_submitted: 'Policy Submitted',
   application_submitted: 'Application Submitted',
   underwriting_review: 'Underwriting',

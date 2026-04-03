@@ -43,7 +43,7 @@ const STAGE_CONFIG: Record<string, { color: string; icon: string; label: string 
   follow_up: { color: '#F59E0B', icon: 'time', label: 'Follow Up' },
   appointment_set: { color: '#8B5CF6', icon: 'calendar', label: 'Appointment Set' },
   appointment_scheduled: { color: '#8B5CF6', icon: 'calendar', label: 'Appointment Set' },
-  soa_completed: { color: '#06B6D4', icon: 'document-text', label: 'SOA Completed' },
+  qualified: { color: '#06B6D4', icon: 'checkmark-done', label: 'Qualified' },
   policy_submitted: { color: '#8B5CF6', icon: 'paper-plane', label: 'Policy Submitted' },
   application_submitted: { color: '#8B5CF6', icon: 'paper-plane', label: 'Application Submitted' },
   underwriting_review: { color: '#F59E0B', icon: 'hourglass', label: 'Underwriting' },
