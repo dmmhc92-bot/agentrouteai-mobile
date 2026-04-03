@@ -46,9 +46,9 @@ const FEATURES = [
     description: 'Personalized AI coaching for better results',
   },
   {
-    icon: 'document-text-outline' as const,
-    title: 'Digital SOA Forms',
-    description: 'Create and manage scope of appointment forms',
+    icon: 'git-branch-outline' as const,
+    title: 'Sales Pipeline',
+    description: 'Track leads through every stage of your pipeline',
   },
   {
     icon: 'calendar-outline' as const,

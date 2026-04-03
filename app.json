@@ -11,10 +11,13 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "app.emergent.agentrouteai2dd9b4e9",
-      "buildNumber": "36",
+      "buildNumber": "37",
       "entitlements": {
         "com.apple.developer.associated-domains": [
           "applinks:app.agentrouteai.com"
+        ],
+        "com.apple.developer.in-app-payments": [
+          "merchant.app.emergent.agentrouteai"
         ]
       },
       "infoPlist": {

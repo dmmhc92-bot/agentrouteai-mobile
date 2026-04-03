@@ -83,23 +83,6 @@ interface Appointment {
   notes: string;
 }
 
-interface Scope {
-  id: string;
-  typed_name: string;
-  created_date: string;
-  signature?: string;
-  pdf_base64?: string;
-}
-
-interface ComplianceStatus {
-  compliance_status: string;
-  compliance_message: string;
-  has_appointment: boolean;
-  has_soa: boolean;
-  has_signed_soa: boolean;
-  has_pdf: boolean;
-}
-
 export default function LeadDetailScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -107,8 +90,6 @@ export default function LeadDetailScreen() {
 
   const [lead, setLead] = useState<Lead | null>(null);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [scopes, setScopes] = useState<Scope[]>([]);
-  const [compliance, setCompliance] = useState<ComplianceStatus | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   
   // Stage update modal state
@@ -119,30 +100,30 @@ export default function LeadDetailScreen() {
 
   const loadData = async () => {
     if (!id || id === 'new') return;
+    
+    setIsLoading(true);
+    
+    // Load lead data first - this is critical
     try {
-      const [leadData, appointmentsData, scopesData] = await Promise.all([
-        api.getLead(id),
-        api.getLeadAppointments(id),
-        api.getLeadScopes(id),
-      ]);
+      const leadData = await api.getLead(id);
       setLead(leadData);
-      setAppointments(appointmentsData);
-      setScopes(scopesData);
-      
-      // Also fetch compliance status
-      try {
-        const complianceData = await api.getLeadComplianceStatus(id);
-        setCompliance(complianceData);
-      } catch (e) {
-        // Non-critical, compliance may not be available
-        console.log('Compliance status not available');
-      }
     } catch (error) {
       console.log('Error loading lead:', error);
       Alert.alert('Error', 'Failed to load lead details');
-    } finally {
       setIsLoading(false);
+      return;
     }
+    
+    // Load appointments separately - non-critical
+    try {
+      const appointmentsData = await api.getLeadAppointments(id);
+      setAppointments(Array.isArray(appointmentsData) ? appointmentsData : []);
+    } catch (e) {
+      console.log('Appointments not available');
+      setAppointments([]);
+    }
+    
+    setIsLoading(false);
   };
 
   useFocusEffect(
@@ -319,15 +300,6 @@ export default function LeadDetailScreen() {
             </View>
             <Text style={styles.quickActionText}>Schedule</Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.quickAction}
-            onPress={() => router.push(`/scope/new?leadId=${id}`)}
-          >
-            <View style={[styles.quickActionIcon, { backgroundColor: '#8B5CF620' }]}>
-              <Ionicons name="document-text" size={22} color="#8B5CF6" />
-            </View>
-            <Text style={styles.quickActionText}>Scope</Text>
-          </TouchableOpacity>
         </View>
 
         {/* Contact Info */}
@@ -486,43 +458,6 @@ export default function LeadDetailScreen() {
         )}
 
         {/* Scope Documents */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Scope of Appointment</Text>
-            <TouchableOpacity onPress={() => router.push(`/scope/new?leadId=${id}`)}>
-              <Ionicons name="add-circle" size={24} color="#3B82F6" />
-            </TouchableOpacity>
-          </View>
-          {scopes.length === 0 ? (
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyText}>No scope documents</Text>
-            </View>
-          ) : (
-            scopes.map((scope) => (
-              <TouchableOpacity
-                key={scope.id}
-                style={styles.scopeCard}
-                onPress={() => router.push(`/scope/${scope.id}`)}
-              >
-                <View style={styles.scopeIconWrap}>
-                  <Ionicons name="document-text" size={24} color="#8B5CF6" />
-                  {scope.signature && (
-                    <View style={styles.signedBadge}>
-                      <Ionicons name="checkmark" size={10} color="#FFFFFF" />
-                    </View>
-                  )}
-                </View>
-                <View style={styles.scopeInfo}>
-                  <Text style={styles.scopeName}>Signed by: {scope.typed_name}</Text>
-                  <Text style={styles.scopeDate}>
-                    {format(new Date(scope.created_date), 'MMM d, yyyy')}
-                  </Text>
-                </View>
-                <Ionicons name="chevron-forward" size={20} color="#64748B" />
-              </TouchableOpacity>
-            ))
-          )}
-        </View>
       </ScrollView>
 
       {/* Stage Update Modal */}

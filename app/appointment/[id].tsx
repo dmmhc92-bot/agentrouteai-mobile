@@ -198,19 +198,6 @@ export default function AppointmentDetailScreen() {
             </View>
           </View>
         )}
-
-        {/* Quick Actions */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Quick Actions</Text>
-          <TouchableOpacity
-            style={styles.actionButton}
-            onPress={() => router.push(`/scope/new?leadId=${appointment.lead_id}`)}
-          >
-            <Ionicons name="document-text" size={24} color="#8B5CF6" />
-            <Text style={styles.actionButtonText}>Create Scope of Appointment</Text>
-            <Ionicons name="chevron-forward" size={20} color="#64748B" />
-          </TouchableOpacity>
-        </View>
       </ScrollView>
     </View>
   );

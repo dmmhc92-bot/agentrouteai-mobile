@@ -317,12 +317,6 @@ export default function ScannerScreen() {
     }
   };
 
-  const handleStartSOA = () => {
-    if (savedLead) {
-      router.push(`/scope/new?leadId=${savedLead.id}`);
-    }
-  };
-
   // Permission screens
   if (!permission) {
     return (
@@ -405,13 +399,6 @@ export default function ScannerScreen() {
                 <Ionicons name="calendar" size={28} color="#F59E0B" />
               </View>
               <Text style={styles.quickActionLabel}>Schedule Appt</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.quickActionCard} onPress={handleStartSOA}>
-              <View style={[styles.quickActionIcon, { backgroundColor: '#10B98120' }]}>
-                <Ionicons name="document-text" size={28} color="#10B981" />
-              </View>
-              <Text style={styles.quickActionLabel}>Start SOA</Text>
             </TouchableOpacity>
           </View>
 

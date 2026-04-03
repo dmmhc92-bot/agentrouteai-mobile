@@ -301,43 +301,27 @@ export default function DashboardScreen() {
         {isAdminOrManager && complianceCards && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Medicare Compliance</Text>
-              <TouchableOpacity onPress={() => router.push('/compliance')}>
-                <Text style={styles.seeAll}>View Details</Text>
+              <Text style={styles.sectionTitle}>Pipeline Overview</Text>
+              <TouchableOpacity onPress={() => router.push('/pipeline')}>
+                <Text style={styles.seeAll}>View Pipeline</Text>
               </TouchableOpacity>
             </View>
             <View style={styles.complianceGrid}>
               <TouchableOpacity 
-                style={[styles.complianceCard, { borderLeftColor: '#EF4444' }]}
-                onPress={() => router.push('/compliance')}
+                style={[styles.complianceCard, { borderLeftColor: '#3B82F6' }]}
+                onPress={() => router.push('/pipeline')}
               >
-                <Ionicons name="alert-circle" size={24} color="#EF4444" />
-                <Text style={styles.complianceValue}>{complianceCards.missing_soa.count}</Text>
-                <Text style={styles.complianceLabel}>Missing SOA</Text>
+                <Ionicons name="people" size={24} color="#3B82F6" />
+                <Text style={styles.complianceValue}>{complianceCards.total_leads || 0}</Text>
+                <Text style={styles.complianceLabel}>Total Leads</Text>
               </TouchableOpacity>
               <TouchableOpacity 
                 style={[styles.complianceCard, { borderLeftColor: '#22C55E' }]}
-                onPress={() => router.push('/compliance')}
+                onPress={() => router.push('/pipeline')}
               >
                 <Ionicons name="checkmark-circle" size={24} color="#22C55E" />
-                <Text style={styles.complianceValue}>{complianceCards.signed_soa.count}</Text>
-                <Text style={styles.complianceLabel}>Signed SOA</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.complianceCard, { borderLeftColor: '#F59E0B' }]}
-                onPress={() => router.push('/compliance')}
-              >
-                <Ionicons name="warning" size={24} color="#F59E0B" />
-                <Text style={styles.complianceValue}>{complianceCards.pending_no_soa.count}</Text>
-                <Text style={styles.complianceLabel}>Pending</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.complianceCard, { borderLeftColor: '#3B82F6' }]}
-                onPress={() => router.push('/compliance')}
-              >
-                <Ionicons name="shield-checkmark" size={24} color="#3B82F6" />
-                <Text style={styles.complianceValue}>{complianceCards.compliant_appointments.count}</Text>
-                <Text style={styles.complianceLabel}>Compliant</Text>
+                <Text style={styles.complianceValue}>{complianceCards.compliant_appointments?.count || 0}</Text>
+                <Text style={styles.complianceLabel}>Appointments</Text>
               </TouchableOpacity>
             </View>
           </View>
