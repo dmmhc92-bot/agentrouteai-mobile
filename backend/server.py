@@ -835,12 +835,9 @@ async def require_manager_or_admin(current_user: dict = Depends(get_current_user
 async def get_user_accessible_ids(user_id: str, role: str, admin_id: str = None, organization_id: str = None) -> List[str]:
     """Get all user IDs that this user can access based on role and organization hierarchy"""
     if role == "admin":
-        # Admin sees all users in their organization
-        if organization_id:
-            users = await db.users.find({"organization_id": organization_id, "deleted_at": None}, {"id": 1}).to_list(10000)
-        else:
-            # Fallback for existing admins without organization_id
-            users = await db.users.find({"deleted_at": None}, {"id": 1}).to_list(10000)
+        # Admin sees ALL users (organization-wide or all if no org set)
+        # This ensures admin can manage the entire agency
+        users = await db.users.find({"deleted_at": None}, {"id": 1}).to_list(10000)
         return [u["id"] for u in users]
     elif role == "manager":
         # Manager sees themselves and their direct agents
