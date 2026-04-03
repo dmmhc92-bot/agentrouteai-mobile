@@ -73,15 +73,30 @@ export default function SubscriptionScreen() {
 
   const [isPurchasing, setIsPurchasing] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
+  const [initAttempted, setInitAttempted] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
 
   // Refresh subscription data when screen loads
   useEffect(() => {
-    initializeRevenueCat();
-  }, []);
+    const init = async () => {
+      await initializeRevenueCat();
+      setInitAttempted(true);
+    };
+    init();
+  }, [retryCount]);
 
   // Get price from package or show default
   const priceString = monthlyPackage?.product?.priceString || '$29.99';
   const productTitle = monthlyPackage?.product?.title || 'AgentRoute Premium';
+  
+  // Determine if products loaded successfully
+  const productsLoaded = monthlyPackage !== null;
+  const showRetry = initAttempted && !isLoading && !productsLoaded && !isPremium;
+
+  const handleRetry = () => {
+    setRetryCount(prev => prev + 1);
+    setInitAttempted(false);
+  };
 
   const handlePurchase = async () => {
     setIsPurchasing(true);
@@ -203,6 +218,21 @@ export default function SubscriptionScreen() {
           <View style={styles.errorContainer}>
             <Ionicons name="alert-circle" size={20} color="#EF4444" />
             <Text style={styles.errorText}>{error}</Text>
+          </View>
+        )}
+
+        {/* Retry Section - shown when products fail to load */}
+        {showRetry && (
+          <View style={styles.retryContainer}>
+            <Ionicons name="cloud-offline-outline" size={48} color="#64748B" />
+            <Text style={styles.retryTitle}>Unable to Load Products</Text>
+            <Text style={styles.retryText}>
+              We couldn't connect to the App Store. Please check your internet connection and try again.
+            </Text>
+            <TouchableOpacity style={styles.retryButton} onPress={handleRetry}>
+              <Ionicons name="refresh-outline" size={20} color="#FFFFFF" />
+              <Text style={styles.retryButtonText}>Try Again</Text>
+            </TouchableOpacity>
           </View>
         )}
 
@@ -513,5 +543,40 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 18,
     fontWeight: '600',
+  },
+  retryContainer: {
+    backgroundColor: '#1E293B',
+    borderRadius: 16,
+    padding: 24,
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  retryTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  retryText: {
+    fontSize: 14,
+    color: '#94A3B8',
+    textAlign: 'center',
+    marginBottom: 16,
+    lineHeight: 20,
+  },
+  retryButton: {
+    flexDirection: 'row',
+    backgroundColor: '#3B82F6',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
   },
 });

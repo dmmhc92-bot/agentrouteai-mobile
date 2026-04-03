@@ -1872,22 +1872,22 @@
   dependencies:
     nanoid "^3.3.11"
 
-"@revenuecat/purchases-js-hybrid-mappings@17.52.0":
-  version "17.52.0"
-  resolved "https://registry.yarnpkg.com/@revenuecat/purchases-js-hybrid-mappings/-/purchases-js-hybrid-mappings-17.52.0.tgz#c5d577768b55aa838d12fbc4bd02f8ca615ccf05"
-  integrity sha512-gkl7vZE6J6Jn8dG/FsKCpXWWHKBUe/X3VcLg3zd3ii4kHoaNrX22AAin4DaoL8FwclZkS2Khc/tEw9Hpq9sYuQ==
+"@revenuecat/purchases-js-hybrid-mappings@17.54.0":
+  version "17.54.0"
+  resolved "https://registry.yarnpkg.com/@revenuecat/purchases-js-hybrid-mappings/-/purchases-js-hybrid-mappings-17.54.0.tgz#c0b5fc965bb4d67108d78a5b398a150871228657"
+  integrity sha512-pY0HHDmBf/4inOH4X7SRRkORrk0/F1wmbbfwhXFpMoxwH7lcjX/ArCyzUtR/68b6QtUwz5wqvOsh4dld4ZuZUA==
   dependencies:
-    "@revenuecat/purchases-js" "1.28.0"
+    "@revenuecat/purchases-js" "1.30.0"
 
-"@revenuecat/purchases-js@1.28.0":
-  version "1.28.0"
-  resolved "https://registry.yarnpkg.com/@revenuecat/purchases-js/-/purchases-js-1.28.0.tgz#dd65d4b440cf9b7281257257326dc00610689643"
-  integrity sha512-FtmOsoc4JNWueFnMtT+fIBAhTLxT1Uu7e0zTEg0WaUTvMWS8GOSxsKiT4h07qDdPiqUQw4Eh+GdhueSrXMjUpw==
+"@revenuecat/purchases-js@1.30.0":
+  version "1.30.0"
+  resolved "https://registry.yarnpkg.com/@revenuecat/purchases-js/-/purchases-js-1.30.0.tgz#7ea4f5f2376197990ed1f62817b06adae20513ad"
+  integrity sha512-aNlk6lPWrJ1DncPnw0WZh8nZKbd5S++EcsQxlLnv3HX/jOnMO54zr0SKsz3GJyFa6zh04N6b3qHAgWWm51EWpg==
 
-"@revenuecat/purchases-typescript-internal@17.52.0":
-  version "17.52.0"
-  resolved "https://registry.yarnpkg.com/@revenuecat/purchases-typescript-internal/-/purchases-typescript-internal-17.52.0.tgz#23c34e12a9821aff276c6ca6ba5f9bcee15d46d7"
-  integrity sha512-HtaWhZkny1TsmGnQ7XK4nN/Pw7Mwaay/1hEcvo4Y+EWNgyPuGUVbeM3dILV2q8nYLW48FBbP7cPnDqXxQTRvLA==
+"@revenuecat/purchases-typescript-internal@17.54.0":
+  version "17.54.0"
+  resolved "https://registry.yarnpkg.com/@revenuecat/purchases-typescript-internal/-/purchases-typescript-internal-17.54.0.tgz#db5ce60169bb933ff0139c0c444086bb5ac9b1e3"
+  integrity sha512-qEtoLal9L8T4kVX/5nEfNJcd4qPgfjHQuEA67CDMmLt11w0iirWRk9D/gwkfh8qKUfXqZPI6mJY8DXvK+BYzAg==
 
 "@rtsao/scc@^1.1.0":
   version "1.1.0"
@@ -6421,13 +6421,13 @@ react-native-maps@1.20.1:
   dependencies:
     "@types/geojson" "^7946.0.13"
 
-react-native-purchases@^9.14.0:
-  version "9.14.0"
-  resolved "https://registry.yarnpkg.com/react-native-purchases/-/react-native-purchases-9.14.0.tgz#a3d5f2b0bcae3231d44f7b74cd44952221e1f0ed"
-  integrity sha512-wfTI5D54lQPUYP06t5Re0o+sAJXUpZ8s3BrPwpDtyChppJaSH2l7MlSeolY4BT3ij/rdpFjzaOsjIHQxTCDQWA==
+react-native-purchases@^9.15.1:
+  version "9.15.1"
+  resolved "https://registry.yarnpkg.com/react-native-purchases/-/react-native-purchases-9.15.1.tgz#e36a767cb6f14e7f422701e074421bb0f576659b"
+  integrity sha512-uxXkCdCnRkbc6DgECZ961CxR2iTqbj/2BBxzV0YvlVKmYjIRaypVdFPNcNFQxu6N4gzqVZ0lSsPoBvA7aWiYxg==
   dependencies:
-    "@revenuecat/purchases-js-hybrid-mappings" "17.52.0"
-    "@revenuecat/purchases-typescript-internal" "17.52.0"
+    "@revenuecat/purchases-js-hybrid-mappings" "17.54.0"
+    "@revenuecat/purchases-typescript-internal" "17.54.0"
 
 react-native-reanimated@~4.1.1:
   version "4.1.7"
