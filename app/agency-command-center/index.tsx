@@ -15,155 +15,49 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../../src/services/api';
 import { useAuth } from '../../src/contexts/AuthContext';
-import { format, formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow } from 'date-fns';
 
-// Type Definitions
-interface SummaryData {
-  total_active_agents: number;
-  leads_this_week: number;
+interface AgentData {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  phone?: string;
+  leads_count: number;
   appointments_today: number;
-  applications_submitted: number;
   policies_issued: number;
-  pending_commissions: number;
-  paid_commissions: number;
-}
-
-interface AgentPerformance {
-  id: string;
-  name: string;
-  email: string;
-  role: string;
-  total_premium?: number;
-  total_commission?: number;
-  policies?: number;
-  team_size?: number;
-  team_premium?: number;
-  override_earned?: number;
+  total_premium: number;
   last_login: string | null;
-  days_since_login?: number;
-  leads_last_7_days?: number;
+  scorecard_grade?: string;
 }
 
-interface OverdueFollowup {
-  id: string;
-  title: string;
-  task_type: string;
-  due_date: string;
-  days_overdue: number;
-  agent_id: string;
-  agent_name: string;
-  lead_id: string | null;
-  lead_name: string | null;
+interface TeamSummary {
+  total_agents: number;
+  active_today: number;
+  total_leads: number;
+  total_appointments: number;
+  total_policies: number;
+  total_premium: number;
 }
 
-interface PipelineLead {
-  id: string;
-  name: string;
-  phone: string;
-  email: string;
-  stage: string;
-  created_date: string;
-  last_contact_date: string | null;
-  agent_id: string;
-  agent_name: string;
-  is_stalled: boolean;
-  days_in_stage: number;
-  days_stalled?: number;
-}
-
-interface ActivityUser {
-  id: string;
-  name: string;
-  email: string;
-  role: string;
-  last_login: string | null;
-  days_since_login?: number;
-  leads_count?: number;
-  appointments_today?: number;
-  appointment_count?: number;
-  appointments?: Array<{
-    id: string;
-    lead_id: string;
-    lead_name: string;
-    time: string;
-    status: string;
-  }>;
-  overdue_count?: number;
-  leads?: Array<{
-    id: string;
-    name: string;
-    phone: string;
-    stage: string;
-    days_overdue: number;
-  }>;
-}
-
-interface TeamPerformance {
-  top_producers: AgentPerformance[];
-  top_managers: AgentPerformance[];
-  lowest_activity: AgentPerformance[];
-  overdue_followups: OverdueFollowup[];
-}
-
-interface PipelineHealth {
-  underwriting_review: PipelineLead[];
-  additional_requirements: PipelineLead[];
-  approved_cases: PipelineLead[];
-  issued_policies: PipelineLead[];
-  stalled_cases: PipelineLead[];
-}
-
-interface ActivityTracking {
-  logged_in_today: ActivityUser[];
-  not_logged_recently: ActivityUser[];
-  appointments_today: ActivityUser[];
-  overdue_lead_activity: ActivityUser[];
-}
-
-type SectionType = 'summary' | 'team' | 'pipeline' | 'activity';
-type DrilldownType = 
-  | 'top_producers' | 'top_managers' | 'lowest_activity' | 'overdue_followups'
-  | 'underwriting' | 'additional_req' | 'approved' | 'issued' | 'stalled'
-  | 'logged_today' | 'not_logged' | 'apt_today' | 'overdue_activity'
-  | null;
-
-const STAGE_LABELS: Record<string, string> = {
-  new_lead: 'New',
-  new: 'New',
-  contacted: 'Contacted',
-  follow_up: 'Follow Up',
-  appointment_set: 'Appointment Set',
-  appointment_scheduled: 'Appointment Set',
-  qualified: 'Qualified',
-  policy_submitted: 'Policy Submitted',
-  application_submitted: 'Policy Submitted',
-  underwriting_review: 'Underwriting Review',
-  additional_requirements: 'Additional Requirements',
-  approved: 'Approved',
-  closed_won: 'Closed Won',
-  policy_issued: 'Policy Issued',
-  policy_placed: 'Policy Placed',
-  commission_pending: 'Commission Pending',
-  commission_paid: 'Commission Paid',
-  closed_lost: 'Closed Lost',
+const GRADE_COLORS: Record<string, { bg: string; text: string }> = {
+  'A': { bg: '#DCFCE7', text: '#166534' },
+  'B': { bg: '#DBEAFE', text: '#1E40AF' },
+  'C': { bg: '#FEF9C3', text: '#A16207' },
+  'D': { bg: '#FEE2E2', text: '#B91C1C' },
+  'F': { bg: '#FEE2E2', text: '#991B1B' },
 };
 
 export default function AgencyCommandCenterScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { user, isLoading: authLoading } = useAuth();
-  
+  const { user } = useAuth();
+
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [activeSection, setActiveSection] = useState<SectionType>('summary');
-  const [drilldownType, setDrilldownType] = useState<DrilldownType>(null);
-  const [showDrilldown, setShowDrilldown] = useState(false);
-  
-  // Data states
-  const [summary, setSummary] = useState<SummaryData | null>(null);
-  const [teamPerformance, setTeamPerformance] = useState<TeamPerformance | null>(null);
-  const [pipelineHealth, setPipelineHealth] = useState<PipelineHealth | null>(null);
-  const [activityTracking, setActivityTracking] = useState<ActivityTracking | null>(null);
+  const [agents, setAgents] = useState<AgentData[]>([]);
+  const [summary, setSummary] = useState<TeamSummary | null>(null);
+  const [activeFilter, setActiveFilter] = useState<'all' | 'active' | 'inactive'>('all');
 
   const isManagerOrAdmin = user?.role === 'admin' || user?.role === 'manager';
 
@@ -172,21 +66,33 @@ export default function AgencyCommandCenterScreen() {
       setIsLoading(false);
       return;
     }
-    
+
     try {
-      const fullData = await api.getAgencyCommandCenterFull();
-      setSummary(fullData.summary);
-      setTeamPerformance(fullData.team_performance);
-      setPipelineHealth(fullData.pipeline_health);
-      setActivityTracking(fullData.activity_tracking);
-    } catch (error: any) {
-      console.error('Error loading agency command center:', error);
-      if (error.response?.status === 403) {
-        Alert.alert('Access Denied', 'You do not have permission to view the Agency Command Center');
-        router.back();
-      } else {
-        Alert.alert('Error', 'Failed to load agency data');
-      }
+      const [agentsResponse, snapshotResponse] = await Promise.all([
+        api.getTeamAgents().catch(() => []),
+        api.getTeamSnapshot().catch(() => null),
+      ]);
+
+      const agentsList = Array.isArray(agentsResponse) ? agentsResponse : [];
+      setAgents(agentsList);
+
+      // Calculate summary
+      const activeTodayCount = agentsList.filter(a => {
+        if (!a.last_login) return false;
+        const hours = (Date.now() - new Date(a.last_login).getTime()) / (1000 * 60 * 60);
+        return hours < 24;
+      }).length;
+
+      setSummary({
+        total_agents: agentsList.length,
+        active_today: activeTodayCount,
+        total_leads: agentsList.reduce((sum, a) => sum + (a.leads_count || 0), 0),
+        total_appointments: agentsList.reduce((sum, a) => sum + (a.appointments_today || 0), 0),
+        total_policies: agentsList.reduce((sum, a) => sum + (a.policies_issued || 0), 0),
+        total_premium: agentsList.reduce((sum, a) => sum + (a.total_premium || 0), 0),
+      });
+    } catch (error) {
+      console.error('Error loading command center:', error);
     } finally {
       setIsLoading(false);
       setRefreshing(false);
@@ -195,12 +101,8 @@ export default function AgencyCommandCenterScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      if (!authLoading && isManagerOrAdmin) {
-        loadData();
-      } else if (!authLoading) {
-        setIsLoading(false);
-      }
-    }, [authLoading, isManagerOrAdmin])
+      loadData();
+    }, [])
   );
 
   const onRefresh = () => {
@@ -208,51 +110,46 @@ export default function AgencyCommandCenterScreen() {
     loadData();
   };
 
+  const getActivityStatus = (lastLogin: string | null) => {
+    if (!lastLogin) return { label: 'Never', color: '#9CA3AF', dotColor: '#D1D5DB' };
+    const hours = (Date.now() - new Date(lastLogin).getTime()) / (1000 * 60 * 60);
+    if (hours < 1) return { label: 'Online', color: '#059669', dotColor: '#10B981' };
+    if (hours < 24) return { label: 'Today', color: '#059669', dotColor: '#10B981' };
+    if (hours < 72) return { label: '2-3 days', color: '#D97706', dotColor: '#F59E0B' };
+    return { label: 'Inactive', color: '#DC2626', dotColor: '#EF4444' };
+  };
+
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(amount);
+    if (amount >= 1000000) return `$${(amount / 1000000).toFixed(1)}M`;
+    if (amount >= 1000) return `$${(amount / 1000).toFixed(0)}K`;
+    return `$${amount.toFixed(0)}`;
   };
 
-  const openDrilldown = (type: DrilldownType) => {
-    setDrilldownType(type);
-    setShowDrilldown(true);
-  };
+  const filteredAgents = agents.filter(agent => {
+    if (activeFilter === 'all') return true;
+    const status = getActivityStatus(agent.last_login);
+    if (activeFilter === 'active') return status.label === 'Online' || status.label === 'Today';
+    return status.label === 'Inactive' || status.label === 'Never';
+  });
 
-  const navigateToLead = (leadId: string) => {
-    setShowDrilldown(false);
-    router.push(`/lead/${leadId}`);
-  };
+  const sortedAgents = [...filteredAgents].sort((a, b) => {
+    // Sort by last_login (most recent first), then by leads_count
+    const aTime = a.last_login ? new Date(a.last_login).getTime() : 0;
+    const bTime = b.last_login ? new Date(b.last_login).getTime() : 0;
+    if (bTime !== aTime) return bTime - aTime;
+    return (b.leads_count || 0) - (a.leads_count || 0);
+  });
 
-  const navigateToAgent = (agentId: string) => {
-    setShowDrilldown(false);
-    router.push(`/command-center/${agentId}`);
-  };
-
-  // Loading state
-  if (authLoading) {
-    return (
-      <View style={[styles.container, { paddingTop: insets.top }]}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#3B82F6" />
-          <Text style={styles.loadingText}>Loading...</Text>
-        </View>
-      </View>
-    );
-  }
-
-  // Access denied for non-admin/manager
   if (!isManagerOrAdmin) {
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
         <View style={styles.accessDenied}>
-          <Ionicons name="lock-closed" size={64} color="#EF4444" />
+          <View style={styles.accessDeniedIcon}>
+            <Ionicons name="lock-closed" size={48} color="#DC2626" />
+          </View>
           <Text style={styles.accessDeniedTitle}>Access Restricted</Text>
           <Text style={styles.accessDeniedText}>
-            The Agency Command Center is only available to Administrators and Managers.
+            Command Center is only available for Managers and Administrators.
           </Text>
           <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
             <Text style={styles.backButtonText}>Go Back</Text>
@@ -266,600 +163,229 @@ export default function AgencyCommandCenterScreen() {
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#3B82F6" />
-          <Text style={styles.loadingText}>Loading Agency Data...</Text>
+          <ActivityIndicator size="large" color="#2563EB" />
+          <Text style={styles.loadingText}>Loading Team Data...</Text>
         </View>
       </View>
     );
   }
 
-  // Summary Cards Component
-  const renderSummaryCards = () => (
-    <View style={styles.summaryGrid}>
-      <TouchableOpacity style={styles.summaryCard} onPress={() => openDrilldown('logged_today')}>
-        <View style={styles.summaryIconContainer}>
-          <Ionicons name="people" size={24} color="#3B82F6" />
-        </View>
-        <Text style={styles.summaryValue}>{summary?.total_active_agents || 0}</Text>
-        <Text style={styles.summaryLabel}>Active Agents</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity style={styles.summaryCard} onPress={() => setActiveSection('pipeline')}>
-        <View style={[styles.summaryIconContainer, { backgroundColor: '#DCFCE7' }]}>
-          <Ionicons name="person-add" size={24} color="#22C55E" />
-        </View>
-        <Text style={styles.summaryValue}>{summary?.leads_this_week || 0}</Text>
-        <Text style={styles.summaryLabel}>Leads This Week</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity style={styles.summaryCard} onPress={() => openDrilldown('apt_today')}>
-        <View style={[styles.summaryIconContainer, { backgroundColor: '#FEF3C7' }]}>
-          <Ionicons name="calendar" size={24} color="#F59E0B" />
-        </View>
-        <Text style={styles.summaryValue}>{summary?.appointments_today || 0}</Text>
-        <Text style={styles.summaryLabel}>Appointments Today</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity style={styles.summaryCard} onPress={() => openDrilldown('underwriting')}>
-        <View style={[styles.summaryIconContainer, { backgroundColor: '#E0E7FF' }]}>
-          <Ionicons name="document-text" size={24} color="#6366F1" />
-        </View>
-        <Text style={styles.summaryValue}>{summary?.applications_submitted || 0}</Text>
-        <Text style={styles.summaryLabel}>Applications</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity style={styles.summaryCard} onPress={() => openDrilldown('issued')}>
-        <View style={[styles.summaryIconContainer, { backgroundColor: '#D1FAE5' }]}>
-          <Ionicons name="shield-checkmark" size={24} color="#10B981" />
-        </View>
-        <Text style={styles.summaryValue}>{summary?.policies_issued || 0}</Text>
-        <Text style={styles.summaryLabel}>Policies Issued</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity style={styles.summaryCard} onPress={() => router.push('/commissions')}>
-        <View style={[styles.summaryIconContainer, { backgroundColor: '#FEE2E2' }]}>
-          <Ionicons name="time" size={24} color="#EF4444" />
-        </View>
-        <Text style={styles.summaryValue}>{formatCurrency(summary?.pending_commissions || 0)}</Text>
-        <Text style={styles.summaryLabel}>Pending Comm.</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity style={[styles.summaryCard, styles.wideCard]} onPress={() => router.push('/commissions')}>
-        <View style={[styles.summaryIconContainer, { backgroundColor: '#D1FAE5' }]}>
-          <Ionicons name="checkmark-circle" size={24} color="#22C55E" />
-        </View>
-        <Text style={styles.summaryValue}>{formatCurrency(summary?.paid_commissions || 0)}</Text>
-        <Text style={styles.summaryLabel}>Paid Commissions</Text>
-      </TouchableOpacity>
-    </View>
-  );
-
-  // Team Performance Section
-  const renderTeamPerformance = () => (
-    <View style={styles.sectionContent}>
-      {/* Top Producers */}
-      <TouchableOpacity style={styles.performanceCard} onPress={() => openDrilldown('top_producers')}>
-        <View style={styles.performanceHeader}>
-          <View style={styles.performanceIconContainer}>
-            <Ionicons name="trophy" size={20} color="#F59E0B" />
-          </View>
-          <Text style={styles.performanceTitle}>Top Producers</Text>
-          <Ionicons name="chevron-forward" size={20} color="#64748B" />
-        </View>
-        <View style={styles.performancePreview}>
-          {teamPerformance?.top_producers?.slice(0, 3).map((agent, index) => (
-            <View key={agent.id} style={styles.previewItem}>
-              <Text style={styles.previewRank}>#{index + 1}</Text>
-              <Text style={styles.previewName} numberOfLines={1}>{agent.name}</Text>
-              <Text style={styles.previewValue}>{formatCurrency(agent.total_premium || 0)}</Text>
-            </View>
-          ))}
-          {(!teamPerformance?.top_producers || teamPerformance.top_producers.length === 0) && (
-            <Text style={styles.emptyText}>No production data this month</Text>
-          )}
-        </View>
-      </TouchableOpacity>
-
-      {/* Top Managers */}
-      <TouchableOpacity style={styles.performanceCard} onPress={() => openDrilldown('top_managers')}>
-        <View style={styles.performanceHeader}>
-          <View style={[styles.performanceIconContainer, { backgroundColor: '#E0E7FF' }]}>
-            <Ionicons name="star" size={20} color="#6366F1" />
-          </View>
-          <Text style={styles.performanceTitle}>Top Managers/Uplines</Text>
-          <Ionicons name="chevron-forward" size={20} color="#64748B" />
-        </View>
-        <View style={styles.performancePreview}>
-          {teamPerformance?.top_managers?.slice(0, 3).map((mgr, index) => (
-            <View key={mgr.id} style={styles.previewItem}>
-              <Text style={styles.previewRank}>#{index + 1}</Text>
-              <Text style={styles.previewName} numberOfLines={1}>{mgr.name}</Text>
-              <Text style={styles.previewValue}>{formatCurrency(mgr.team_premium || 0)}</Text>
-            </View>
-          ))}
-          {(!teamPerformance?.top_managers || teamPerformance.top_managers.length === 0) && (
-            <Text style={styles.emptyText}>No manager data</Text>
-          )}
-        </View>
-      </TouchableOpacity>
-
-      {/* Lowest Activity */}
-      <TouchableOpacity style={styles.performanceCard} onPress={() => openDrilldown('lowest_activity')}>
-        <View style={styles.performanceHeader}>
-          <View style={[styles.performanceIconContainer, { backgroundColor: '#FEE2E2' }]}>
-            <Ionicons name="alert-circle" size={20} color="#EF4444" />
-          </View>
-          <Text style={styles.performanceTitle}>Lowest Activity Agents</Text>
-          <View style={styles.alertBadge}>
-            <Text style={styles.alertBadgeText}>{teamPerformance?.lowest_activity?.length || 0}</Text>
-          </View>
-        </View>
-        <View style={styles.performancePreview}>
-          {teamPerformance?.lowest_activity?.slice(0, 3).map((agent) => (
-            <View key={agent.id} style={styles.previewItem}>
-              <Ionicons name="ellipse" size={8} color="#EF4444" style={{ marginRight: 8 }} />
-              <Text style={styles.previewName} numberOfLines={1}>{agent.name}</Text>
-              <Text style={styles.previewAlert}>{agent.days_since_login}d ago</Text>
-            </View>
-          ))}
-          {(!teamPerformance?.lowest_activity || teamPerformance.lowest_activity.length === 0) && (
-            <Text style={styles.emptyTextGood}>✓ All agents active!</Text>
-          )}
-        </View>
-      </TouchableOpacity>
-
-      {/* Overdue Follow-ups */}
-      <TouchableOpacity style={styles.performanceCard} onPress={() => openDrilldown('overdue_followups')}>
-        <View style={styles.performanceHeader}>
-          <View style={[styles.performanceIconContainer, { backgroundColor: '#FEF3C7' }]}>
-            <Ionicons name="time" size={20} color="#F59E0B" />
-          </View>
-          <Text style={styles.performanceTitle}>Overdue Follow-ups</Text>
-          <View style={[styles.alertBadge, { backgroundColor: '#FEF3C7' }]}>
-            <Text style={[styles.alertBadgeText, { color: '#B45309' }]}>{teamPerformance?.overdue_followups?.length || 0}</Text>
-          </View>
-        </View>
-        <View style={styles.performancePreview}>
-          {teamPerformance?.overdue_followups?.slice(0, 3).map((task) => (
-            <View key={task.id} style={styles.previewItem}>
-              <Ionicons name="ellipse" size={8} color="#F59E0B" style={{ marginRight: 8 }} />
-              <Text style={styles.previewName} numberOfLines={1}>{task.lead_name || task.title}</Text>
-              <Text style={styles.previewAlert}>{task.days_overdue}d overdue</Text>
-            </View>
-          ))}
-          {(!teamPerformance?.overdue_followups || teamPerformance.overdue_followups.length === 0) && (
-            <Text style={styles.emptyTextGood}>✓ No overdue tasks!</Text>
-          )}
-        </View>
-      </TouchableOpacity>
-    </View>
-  );
-
-  // Pipeline Health Section
-  const renderPipelineHealth = () => (
-    <View style={styles.sectionContent}>
-      <TouchableOpacity style={styles.pipelineCard} onPress={() => openDrilldown('underwriting')}>
-        <View style={styles.pipelineHeader}>
-          <View style={[styles.pipelineIndicator, { backgroundColor: '#6366F1' }]} />
-          <Text style={styles.pipelineTitle}>Underwriting Review</Text>
-          <View style={styles.pipelineCount}>
-            <Text style={styles.pipelineCountText}>{pipelineHealth?.underwriting_review?.length || 0}</Text>
-          </View>
-        </View>
-      </TouchableOpacity>
-
-      <TouchableOpacity style={styles.pipelineCard} onPress={() => openDrilldown('additional_req')}>
-        <View style={styles.pipelineHeader}>
-          <View style={[styles.pipelineIndicator, { backgroundColor: '#F59E0B' }]} />
-          <Text style={styles.pipelineTitle}>Additional Requirements</Text>
-          <View style={[styles.pipelineCount, { backgroundColor: '#FEF3C7' }]}>
-            <Text style={[styles.pipelineCountText, { color: '#B45309' }]}>{pipelineHealth?.additional_requirements?.length || 0}</Text>
-          </View>
-        </View>
-      </TouchableOpacity>
-
-      <TouchableOpacity style={styles.pipelineCard} onPress={() => openDrilldown('approved')}>
-        <View style={styles.pipelineHeader}>
-          <View style={[styles.pipelineIndicator, { backgroundColor: '#22C55E' }]} />
-          <Text style={styles.pipelineTitle}>Approved Cases</Text>
-          <View style={[styles.pipelineCount, { backgroundColor: '#DCFCE7' }]}>
-            <Text style={[styles.pipelineCountText, { color: '#15803D' }]}>{pipelineHealth?.approved_cases?.length || 0}</Text>
-          </View>
-        </View>
-      </TouchableOpacity>
-
-      <TouchableOpacity style={styles.pipelineCard} onPress={() => openDrilldown('issued')}>
-        <View style={styles.pipelineHeader}>
-          <View style={[styles.pipelineIndicator, { backgroundColor: '#10B981' }]} />
-          <Text style={styles.pipelineTitle}>Issued Policies</Text>
-          <View style={[styles.pipelineCount, { backgroundColor: '#D1FAE5' }]}>
-            <Text style={[styles.pipelineCountText, { color: '#047857' }]}>{pipelineHealth?.issued_policies?.length || 0}</Text>
-          </View>
-        </View>
-      </TouchableOpacity>
-
-      <TouchableOpacity style={[styles.pipelineCard, styles.stalledCard]} onPress={() => openDrilldown('stalled')}>
-        <View style={styles.pipelineHeader}>
-          <View style={[styles.pipelineIndicator, { backgroundColor: '#EF4444' }]} />
-          <Text style={styles.pipelineTitle}>Stalled Cases (7+ Days)</Text>
-          <View style={[styles.pipelineCount, { backgroundColor: '#FEE2E2' }]}>
-            <Text style={[styles.pipelineCountText, { color: '#DC2626' }]}>{pipelineHealth?.stalled_cases?.length || 0}</Text>
-          </View>
-        </View>
-        {(pipelineHealth?.stalled_cases?.length || 0) > 0 && (
-          <Text style={styles.stalledWarning}>⚠️ Requires attention</Text>
-        )}
-      </TouchableOpacity>
-    </View>
-  );
-
-  // Activity Tracking Section
-  const renderActivityTracking = () => (
-    <View style={styles.sectionContent}>
-      <TouchableOpacity style={styles.activityCard} onPress={() => openDrilldown('logged_today')}>
-        <View style={styles.activityHeader}>
-          <Ionicons name="checkmark-circle" size={24} color="#22C55E" />
-          <Text style={styles.activityTitle}>Logged In Today</Text>
-          <Text style={styles.activityCount}>{activityTracking?.logged_in_today?.length || 0}</Text>
-        </View>
-        <View style={styles.activityAvatars}>
-          {activityTracking?.logged_in_today?.slice(0, 5).map((user) => (
-            <View key={user.id} style={styles.activityAvatar}>
-              <Text style={styles.avatarText}>{user.name.charAt(0)}</Text>
-            </View>
-          ))}
-          {(activityTracking?.logged_in_today?.length || 0) > 5 && (
-            <View style={[styles.activityAvatar, styles.avatarMore]}>
-              <Text style={styles.avatarMoreText}>+{(activityTracking?.logged_in_today?.length || 0) - 5}</Text>
-            </View>
-          )}
-        </View>
-      </TouchableOpacity>
-
-      <TouchableOpacity style={styles.activityCard} onPress={() => openDrilldown('not_logged')}>
-        <View style={styles.activityHeader}>
-          <Ionicons name="alert-circle" size={24} color="#EF4444" />
-          <Text style={styles.activityTitle}>Not Logged In (3+ Days)</Text>
-          <Text style={[styles.activityCount, { color: '#EF4444' }]}>{activityTracking?.not_logged_recently?.length || 0}</Text>
-        </View>
-        <View style={styles.activityAvatars}>
-          {activityTracking?.not_logged_recently?.slice(0, 5).map((user) => (
-            <View key={user.id} style={[styles.activityAvatar, { backgroundColor: '#FEE2E2' }]}>
-              <Text style={[styles.avatarText, { color: '#EF4444' }]}>{user.name.charAt(0)}</Text>
-            </View>
-          ))}
-        </View>
-      </TouchableOpacity>
-
-      <TouchableOpacity style={styles.activityCard} onPress={() => openDrilldown('apt_today')}>
-        <View style={styles.activityHeader}>
-          <Ionicons name="calendar" size={24} color="#3B82F6" />
-          <Text style={styles.activityTitle}>Appointments Today</Text>
-          <Text style={[styles.activityCount, { color: '#3B82F6' }]}>{activityTracking?.appointments_today?.length || 0}</Text>
-        </View>
-        {activityTracking?.appointments_today?.slice(0, 3).map((user) => (
-          <View key={user.id} style={styles.appointmentPreview}>
-            <Text style={styles.appointmentAgent}>{user.name}</Text>
-            <Text style={styles.appointmentCount}>{user.appointment_count} appt{(user.appointment_count || 0) > 1 ? 's' : ''}</Text>
-          </View>
-        ))}
-      </TouchableOpacity>
-
-      <TouchableOpacity style={styles.activityCard} onPress={() => openDrilldown('overdue_activity')}>
-        <View style={styles.activityHeader}>
-          <Ionicons name="warning" size={24} color="#F59E0B" />
-          <Text style={styles.activityTitle}>Overdue Lead Activity</Text>
-          <Text style={[styles.activityCount, { color: '#F59E0B' }]}>{activityTracking?.overdue_lead_activity?.length || 0}</Text>
-        </View>
-        {activityTracking?.overdue_lead_activity?.slice(0, 3).map((user) => (
-          <View key={user.id} style={styles.appointmentPreview}>
-            <Text style={styles.appointmentAgent}>{user.name}</Text>
-            <Text style={[styles.appointmentCount, { color: '#F59E0B' }]}>{user.overdue_count} overdue</Text>
-          </View>
-        ))}
-      </TouchableOpacity>
-    </View>
-  );
-
-  // Drilldown Modal Content
-  const renderDrilldownContent = () => {
-    const getDrilldownTitle = () => {
-      switch (drilldownType) {
-        case 'top_producers': return 'Top Producers';
-        case 'top_managers': return 'Top Managers/Uplines';
-        case 'lowest_activity': return 'Low Activity Agents';
-        case 'overdue_followups': return 'Overdue Follow-ups';
-        case 'underwriting': return 'Underwriting Review';
-        case 'additional_req': return 'Additional Requirements';
-        case 'approved': return 'Approved Cases';
-        case 'issued': return 'Issued Policies';
-        case 'stalled': return 'Stalled Cases';
-        case 'logged_today': return 'Logged In Today';
-        case 'not_logged': return 'Not Logged Recently';
-        case 'apt_today': return 'Appointments Today';
-        case 'overdue_activity': return 'Overdue Lead Activity';
-        default: return 'Details';
-      }
-    };
-
-    const renderAgentList = (agents: AgentPerformance[], showPremium = true) => (
-      <ScrollView style={styles.drilldownScroll}>
-        {agents.map((agent, index) => (
-          <TouchableOpacity key={agent.id} style={styles.drilldownItem} onPress={() => navigateToAgent(agent.id)}>
-            <View style={styles.drilldownRank}>
-              <Text style={styles.drilldownRankText}>{index + 1}</Text>
-            </View>
-            <View style={styles.drilldownInfo}>
-              <Text style={styles.drilldownName}>{agent.name}</Text>
-              <Text style={styles.drilldownEmail}>{agent.email}</Text>
-            </View>
-            {showPremium && (
-              <View style={styles.drilldownMetric}>
-                <Text style={styles.drilldownValue}>{formatCurrency(agent.total_premium || agent.team_premium || 0)}</Text>
-                <Text style={styles.drilldownLabel}>Premium</Text>
-              </View>
-            )}
-            {agent.days_since_login !== undefined && (
-              <View style={styles.drilldownMetric}>
-                <Text style={[styles.drilldownValue, { color: '#EF4444' }]}>{agent.days_since_login}d</Text>
-                <Text style={styles.drilldownLabel}>Inactive</Text>
-              </View>
-            )}
-            <Ionicons name="chevron-forward" size={20} color="#64748B" />
-          </TouchableOpacity>
-        ))}
-        {agents.length === 0 && (
-          <View style={styles.emptyDrilldown}>
-            <Ionicons name="checkmark-circle" size={48} color="#22C55E" />
-            <Text style={styles.emptyDrilldownText}>No records found</Text>
-          </View>
-        )}
-      </ScrollView>
-    );
-
-    const renderLeadList = (leads: PipelineLead[]) => (
-      <ScrollView style={styles.drilldownScroll}>
-        {leads.map((lead) => (
-          <TouchableOpacity key={lead.id} style={styles.drilldownItem} onPress={() => navigateToLead(lead.id)}>
-            <View style={styles.drilldownInfo}>
-              <Text style={styles.drilldownName}>{lead.name}</Text>
-              <Text style={styles.drilldownEmail}>{lead.agent_name} • {STAGE_LABELS[lead.stage] || lead.stage}</Text>
-              {lead.phone && <Text style={styles.drilldownPhone}>{lead.phone}</Text>}
-            </View>
-            <View style={styles.drilldownMetric}>
-              <Text style={[styles.drilldownValue, lead.is_stalled ? { color: '#EF4444' } : {}]}>
-                {lead.days_stalled !== undefined ? `${lead.days_stalled}d` : `${lead.days_in_stage}d`}
-              </Text>
-              <Text style={styles.drilldownLabel}>{lead.is_stalled ? 'Stalled' : 'In Stage'}</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="#64748B" />
-          </TouchableOpacity>
-        ))}
-        {leads.length === 0 && (
-          <View style={styles.emptyDrilldown}>
-            <Ionicons name="checkmark-circle" size={48} color="#22C55E" />
-            <Text style={styles.emptyDrilldownText}>No cases in this stage</Text>
-          </View>
-        )}
-      </ScrollView>
-    );
-
-    const renderActivityList = (users: ActivityUser[], showOverdue = false) => (
-      <ScrollView style={styles.drilldownScroll}>
-        {users.map((user) => (
-          <TouchableOpacity key={user.id} style={styles.drilldownItem} onPress={() => navigateToAgent(user.id)}>
-            <View style={styles.drilldownAvatar}>
-              <Text style={styles.drilldownAvatarText}>{user.name.charAt(0)}</Text>
-            </View>
-            <View style={styles.drilldownInfo}>
-              <Text style={styles.drilldownName}>{user.name}</Text>
-              <Text style={styles.drilldownEmail}>{user.role} • {user.email}</Text>
-              {user.appointments && user.appointments.length > 0 && (
-                <View style={styles.appointmentList}>
-                  {user.appointments.slice(0, 3).map((apt) => (
-                    <Text key={apt.id} style={styles.appointmentItem}>
-                      {apt.time} - {apt.lead_name}
-                    </Text>
-                  ))}
-                </View>
-              )}
-            </View>
-            {user.days_since_login !== undefined && (
-              <View style={styles.drilldownMetric}>
-                <Text style={[styles.drilldownValue, { color: '#EF4444' }]}>{user.days_since_login}d</Text>
-                <Text style={styles.drilldownLabel}>Ago</Text>
-              </View>
-            )}
-            {user.appointment_count !== undefined && (
-              <View style={styles.drilldownMetric}>
-                <Text style={styles.drilldownValue}>{user.appointment_count}</Text>
-                <Text style={styles.drilldownLabel}>Appts</Text>
-              </View>
-            )}
-            {showOverdue && user.overdue_count !== undefined && (
-              <View style={styles.drilldownMetric}>
-                <Text style={[styles.drilldownValue, { color: '#F59E0B' }]}>{user.overdue_count}</Text>
-                <Text style={styles.drilldownLabel}>Overdue</Text>
-              </View>
-            )}
-            <Ionicons name="chevron-forward" size={20} color="#64748B" />
-          </TouchableOpacity>
-        ))}
-        {users.length === 0 && (
-          <View style={styles.emptyDrilldown}>
-            <Ionicons name="people" size={48} color="#64748B" />
-            <Text style={styles.emptyDrilldownText}>No users found</Text>
-          </View>
-        )}
-      </ScrollView>
-    );
-
-    const renderOverdueFollowups = () => (
-      <ScrollView style={styles.drilldownScroll}>
-        {teamPerformance?.overdue_followups?.map((task) => (
-          <TouchableOpacity 
-            key={task.id} 
-            style={styles.drilldownItem} 
-            onPress={() => task.lead_id ? navigateToLead(task.lead_id) : null}
-          >
-            <View style={[styles.drilldownRank, { backgroundColor: '#FEF3C7' }]}>
-              <Ionicons name="time" size={16} color="#F59E0B" />
-            </View>
-            <View style={styles.drilldownInfo}>
-              <Text style={styles.drilldownName}>{task.title}</Text>
-              <Text style={styles.drilldownEmail}>{task.agent_name} • {task.lead_name || 'No lead'}</Text>
-              <Text style={styles.drilldownPhone}>Due: {task.due_date}</Text>
-            </View>
-            <View style={styles.drilldownMetric}>
-              <Text style={[styles.drilldownValue, { color: '#F59E0B' }]}>{task.days_overdue}d</Text>
-              <Text style={styles.drilldownLabel}>Overdue</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="#64748B" />
-          </TouchableOpacity>
-        ))}
-        {(!teamPerformance?.overdue_followups || teamPerformance.overdue_followups.length === 0) && (
-          <View style={styles.emptyDrilldown}>
-            <Ionicons name="checkmark-circle" size={48} color="#22C55E" />
-            <Text style={styles.emptyDrilldownText}>No overdue follow-ups!</Text>
-          </View>
-        )}
-      </ScrollView>
-    );
-
-    switch (drilldownType) {
-      case 'top_producers':
-        return renderAgentList(teamPerformance?.top_producers || []);
-      case 'top_managers':
-        return renderAgentList(teamPerformance?.top_managers || []);
-      case 'lowest_activity':
-        return renderAgentList(teamPerformance?.lowest_activity || [], false);
-      case 'overdue_followups':
-        return renderOverdueFollowups();
-      case 'underwriting':
-        return renderLeadList(pipelineHealth?.underwriting_review || []);
-      case 'additional_req':
-        return renderLeadList(pipelineHealth?.additional_requirements || []);
-      case 'approved':
-        return renderLeadList(pipelineHealth?.approved_cases || []);
-      case 'issued':
-        return renderLeadList(pipelineHealth?.issued_policies || []);
-      case 'stalled':
-        return renderLeadList(pipelineHealth?.stalled_cases || []);
-      case 'logged_today':
-        return renderActivityList(activityTracking?.logged_in_today || []);
-      case 'not_logged':
-        return renderActivityList(activityTracking?.not_logged_recently || []);
-      case 'apt_today':
-        return renderActivityList(activityTracking?.appointments_today || []);
-      case 'overdue_activity':
-        return renderActivityList(activityTracking?.overdue_lead_activity || [], true);
-      default:
-        return null;
-    }
-  };
-
-  // Section Tabs
-  const renderSectionTabs = () => (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsContainer}>
-      <TouchableOpacity
-        style={[styles.tab, activeSection === 'summary' && styles.tabActive]}
-        onPress={() => setActiveSection('summary')}
-      >
-        <Ionicons name="grid" size={18} color={activeSection === 'summary' ? '#3B82F6' : '#64748B'} />
-        <Text style={[styles.tabText, activeSection === 'summary' && styles.tabTextActive]}>Summary</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={[styles.tab, activeSection === 'team' && styles.tabActive]}
-        onPress={() => setActiveSection('team')}
-      >
-        <Ionicons name="people" size={18} color={activeSection === 'team' ? '#3B82F6' : '#64748B'} />
-        <Text style={[styles.tabText, activeSection === 'team' && styles.tabTextActive]}>Team</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={[styles.tab, activeSection === 'pipeline' && styles.tabActive]}
-        onPress={() => setActiveSection('pipeline')}
-      >
-        <Ionicons name="git-branch" size={18} color={activeSection === 'pipeline' ? '#3B82F6' : '#64748B'} />
-        <Text style={[styles.tabText, activeSection === 'pipeline' && styles.tabTextActive]}>Pipeline</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={[styles.tab, activeSection === 'activity' && styles.tabActive]}
-        onPress={() => setActiveSection('activity')}
-      >
-        <Ionicons name="pulse" size={18} color={activeSection === 'activity' ? '#3B82F6' : '#64748B'} />
-        <Text style={[styles.tabText, activeSection === 'activity' && styles.tabTextActive]}>Activity</Text>
-      </TouchableOpacity>
-    </ScrollView>
-  );
-
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.headerBack}>
           <Ionicons name="arrow-back" size={24} color="#1F2937" />
         </TouchableOpacity>
-        <View style={styles.headerTitleContainer}>
-          <Text style={styles.headerTitle}>Agency Command Center</Text>
-          <View style={styles.roleBadge}>
-            <Text style={styles.roleBadgeText}>{user?.role?.toUpperCase()}</Text>
+        <View style={styles.headerCenter}>
+          <Text style={styles.headerTitle}>Command Center</Text>
+          <View style={[styles.roleBadge, { backgroundColor: user?.role === 'admin' ? '#DBEAFE' : '#E0E7FF' }]}>
+            <Text style={[styles.roleBadgeText, { color: user?.role === 'admin' ? '#1E40AF' : '#4338CA' }]}>
+              {user?.role === 'admin' ? 'ADMIN' : 'MANAGER'}
+            </Text>
           </View>
         </View>
-        <TouchableOpacity onPress={onRefresh} style={styles.refreshBtn}>
-          <Ionicons name="refresh" size={24} color="#3B82F6" />
+        <TouchableOpacity onPress={onRefresh} style={styles.headerRefresh}>
+          <Ionicons name="refresh" size={22} color="#6B7280" />
         </TouchableOpacity>
       </View>
 
-      {/* Section Tabs */}
-      {renderSectionTabs()}
+      {/* Summary Stats */}
+      <View style={styles.summaryContainer}>
+        <View style={styles.summaryRow}>
+          <View style={styles.summaryCard}>
+            <View style={[styles.summaryIcon, { backgroundColor: '#DBEAFE' }]}>
+              <Ionicons name="people" size={20} color="#2563EB" />
+            </View>
+            <Text style={styles.summaryValue}>{summary?.total_agents || 0}</Text>
+            <Text style={styles.summaryLabel}>Agents</Text>
+          </View>
+          <View style={styles.summaryCard}>
+            <View style={[styles.summaryIcon, { backgroundColor: '#D1FAE5' }]}>
+              <Ionicons name="pulse" size={20} color="#059669" />
+            </View>
+            <Text style={[styles.summaryValue, { color: '#059669' }]}>{summary?.active_today || 0}</Text>
+            <Text style={styles.summaryLabel}>Active Today</Text>
+          </View>
+          <View style={styles.summaryCard}>
+            <View style={[styles.summaryIcon, { backgroundColor: '#FEF3C7' }]}>
+              <Ionicons name="person-add" size={20} color="#D97706" />
+            </View>
+            <Text style={styles.summaryValue}>{summary?.total_leads || 0}</Text>
+            <Text style={styles.summaryLabel}>Total Leads</Text>
+          </View>
+          <View style={styles.summaryCard}>
+            <View style={[styles.summaryIcon, { backgroundColor: '#DCFCE7' }]}>
+              <Ionicons name="cash" size={20} color="#16A34A" />
+            </View>
+            <Text style={[styles.summaryValue, { color: '#16A34A' }]}>{formatCurrency(summary?.total_premium || 0)}</Text>
+            <Text style={styles.summaryLabel}>Production</Text>
+          </View>
+        </View>
+      </View>
 
-      {/* Main Content */}
+      {/* Filter Tabs */}
+      <View style={styles.filterContainer}>
+        <Text style={styles.sectionTitle}>Team Members</Text>
+        <View style={styles.filterTabs}>
+          {[
+            { key: 'all', label: 'All' },
+            { key: 'active', label: 'Active' },
+            { key: 'inactive', label: 'Inactive' },
+          ].map((filter) => (
+            <TouchableOpacity
+              key={filter.key}
+              style={[styles.filterTab, activeFilter === filter.key && styles.filterTabActive]}
+              onPress={() => setActiveFilter(filter.key as any)}
+            >
+              <Text style={[styles.filterTabText, activeFilter === filter.key && styles.filterTabTextActive]}>
+                {filter.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+
+      {/* Agent List */}
       <ScrollView
-        style={styles.content}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#2563EB" />
+        }
         showsVerticalScrollIndicator={false}
       >
-        {activeSection === 'summary' && renderSummaryCards()}
-        {activeSection === 'team' && renderTeamPerformance()}
-        {activeSection === 'pipeline' && renderPipelineHealth()}
-        {activeSection === 'activity' && renderActivityTracking()}
-        
-        <View style={{ height: 100 }} />
-      </ScrollView>
-
-      {/* Drilldown Modal */}
-      <Modal
-        visible={showDrilldown}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => setShowDrilldown(false)}
-      >
-        <View style={[styles.modalContainer, { paddingTop: insets.top }]}>
-          <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={() => setShowDrilldown(false)}>
-              <Ionicons name="close" size={28} color="#1F2937" />
-            </TouchableOpacity>
-            <Text style={styles.modalTitle}>
-              {drilldownType === 'top_producers' ? 'Top Producers' :
-               drilldownType === 'top_managers' ? 'Top Managers/Uplines' :
-               drilldownType === 'lowest_activity' ? 'Low Activity Agents' :
-               drilldownType === 'overdue_followups' ? 'Overdue Follow-ups' :
-               drilldownType === 'underwriting' ? 'Underwriting Review' :
-               drilldownType === 'additional_req' ? 'Additional Requirements' :
-               drilldownType === 'approved' ? 'Approved Cases' :
-               drilldownType === 'issued' ? 'Issued Policies' :
-               drilldownType === 'stalled' ? 'Stalled Cases' :
-               drilldownType === 'logged_today' ? 'Logged In Today' :
-               drilldownType === 'not_logged' ? 'Not Logged Recently' :
-               drilldownType === 'apt_today' ? 'Appointments Today' :
-               drilldownType === 'overdue_activity' ? 'Overdue Lead Activity' :
-               'Details'}
+        {sortedAgents.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Ionicons name="people-outline" size={56} color="#D1D5DB" />
+            <Text style={styles.emptyTitle}>No Agents Found</Text>
+            <Text style={styles.emptyText}>
+              {activeFilter !== 'all' ? 'Try changing your filter' : 'Add team members to get started'}
             </Text>
-            <View style={{ width: 28 }} />
           </View>
-          {renderDrilldownContent()}
-        </View>
-      </Modal>
+        ) : (
+          sortedAgents.map((agent) => {
+            const activity = getActivityStatus(agent.last_login);
+            const gradeColors = GRADE_COLORS[agent.scorecard_grade || 'C'] || GRADE_COLORS['C'];
+
+            return (
+              <TouchableOpacity
+                key={agent.id}
+                style={styles.agentCard}
+                onPress={() => router.push(`/command-center/${agent.id}`)}
+                activeOpacity={0.7}
+              >
+                {/* Agent Header */}
+                <View style={styles.agentHeader}>
+                  <View style={styles.agentAvatarSection}>
+                    <View style={styles.agentAvatar}>
+                      <Text style={styles.agentAvatarText}>
+                        {agent.name.charAt(0).toUpperCase()}
+                      </Text>
+                      <View style={[styles.activityDot, { backgroundColor: activity.dotColor }]} />
+                    </View>
+                    <View style={styles.agentInfo}>
+                      <View style={styles.agentNameRow}>
+                        <Text style={styles.agentName} numberOfLines={1}>{agent.name}</Text>
+                        {agent.scorecard_grade && (
+                          <View style={[styles.gradeBadge, { backgroundColor: gradeColors.bg }]}>
+                            <Text style={[styles.gradeText, { color: gradeColors.text }]}>
+                              {agent.scorecard_grade}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                      <Text style={styles.agentEmail} numberOfLines={1}>{agent.email}</Text>
+                      <View style={styles.activityRow}>
+                        <View style={[styles.activityBadge, { backgroundColor: activity.dotColor + '20' }]}>
+                          <View style={[styles.activityDotSmall, { backgroundColor: activity.dotColor }]} />
+                          <Text style={[styles.activityLabel, { color: activity.color }]}>{activity.label}</Text>
+                        </View>
+                        {agent.role !== 'agent' && (
+                          <View style={styles.rolePill}>
+                            <Text style={styles.rolePillText}>{agent.role}</Text>
+                          </View>
+                        )}
+                      </View>
+                    </View>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+                </View>
+
+                {/* Agent Metrics */}
+                <View style={styles.metricsRow}>
+                  <View style={styles.metricItem}>
+                    <Ionicons name="people-outline" size={16} color="#6B7280" />
+                    <Text style={styles.metricValue}>{agent.leads_count || 0}</Text>
+                    <Text style={styles.metricLabel}>Leads</Text>
+                  </View>
+                  <View style={styles.metricDivider} />
+                  <View style={styles.metricItem}>
+                    <Ionicons name="calendar-outline" size={16} color="#6B7280" />
+                    <Text style={styles.metricValue}>{agent.appointments_today || 0}</Text>
+                    <Text style={styles.metricLabel}>Appts</Text>
+                  </View>
+                  <View style={styles.metricDivider} />
+                  <View style={styles.metricItem}>
+                    <Ionicons name="document-text-outline" size={16} color="#6B7280" />
+                    <Text style={styles.metricValue}>{agent.policies_issued || 0}</Text>
+                    <Text style={styles.metricLabel}>Policies</Text>
+                  </View>
+                  <View style={styles.metricDivider} />
+                  <View style={styles.metricItem}>
+                    <Ionicons name="trending-up" size={16} color="#16A34A" />
+                    <Text style={[styles.metricValue, { color: '#16A34A' }]}>
+                      {formatCurrency(agent.total_premium || 0)}
+                    </Text>
+                    <Text style={styles.metricLabel}>Production</Text>
+                  </View>
+                </View>
+
+                {/* Quick Actions */}
+                <View style={styles.quickActionsRow}>
+                  <TouchableOpacity 
+                    style={styles.quickActionBtn}
+                    onPress={() => router.push(`/command-center/${agent.id}`)}
+                  >
+                    <Ionicons name="bar-chart-outline" size={14} color="#2563EB" />
+                    <Text style={styles.quickActionText}>View Details</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={styles.quickActionBtn}
+                    onPress={() => router.push('/pipeline')}
+                  >
+                    <Ionicons name="git-branch-outline" size={14} color="#7C3AED" />
+                    <Text style={[styles.quickActionText, { color: '#7C3AED' }]}>Pipeline</Text>
+                  </TouchableOpacity>
+                </View>
+              </TouchableOpacity>
+            );
+          })
+        )}
+
+        {/* Team Total Card */}
+        {sortedAgents.length > 0 && (
+          <View style={styles.teamTotalCard}>
+            <Text style={styles.teamTotalTitle}>Team Totals</Text>
+            <View style={styles.teamTotalGrid}>
+              <View style={styles.teamTotalItem}>
+                <Text style={styles.teamTotalValue}>{summary?.total_leads || 0}</Text>
+                <Text style={styles.teamTotalLabel}>Leads</Text>
+              </View>
+              <View style={styles.teamTotalItem}>
+                <Text style={styles.teamTotalValue}>{summary?.total_policies || 0}</Text>
+                <Text style={styles.teamTotalLabel}>Policies</Text>
+              </View>
+              <View style={styles.teamTotalItem}>
+                <Text style={[styles.teamTotalValue, { color: '#16A34A' }]}>
+                  {formatCurrency(summary?.total_premium || 0)}
+                </Text>
+                <Text style={styles.teamTotalLabel}>Production</Text>
+              </View>
+            </View>
+          </View>
+        )}
+      </ScrollView>
     </View>
   );
 }
@@ -867,42 +393,53 @@ export default function AgencyCommandCenterScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#F9FAFB',
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: '#F9FAFB',
   },
   loadingText: {
+    color: '#6B7280',
     marginTop: 12,
-    fontSize: 16,
-    color: '#64748B',
+    fontSize: 14,
   },
   accessDenied: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 24,
+    padding: 32,
+    backgroundColor: '#F9FAFB',
+  },
+  accessDeniedIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#FEE2E2',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
   },
   accessDeniedTitle: {
-    fontSize: 24,
-    fontWeight: '700',
     color: '#1F2937',
-    marginTop: 16,
+    fontSize: 22,
+    fontWeight: '700',
+    marginBottom: 8,
   },
   accessDeniedText: {
-    fontSize: 16,
-    color: '#64748B',
+    color: '#6B7280',
+    fontSize: 15,
     textAlign: 'center',
-    marginTop: 8,
+    lineHeight: 22,
   },
   backButton: {
+    backgroundColor: '#2563EB',
+    paddingHorizontal: 28,
+    paddingVertical: 14,
+    borderRadius: 12,
     marginTop: 24,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    backgroundColor: '#3B82F6',
-    borderRadius: 8,
   },
   backButtonText: {
     color: '#FFFFFF',
@@ -914,434 +451,330 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 14,
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
-    borderBottomColor: '#E2E8F0',
+    borderBottomColor: '#E5E7EB',
   },
-  backBtn: {
-    padding: 4,
-  },
-  headerTitleContainer: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
+  headerBack: {
+    width: 40,
+    height: 40,
     justifyContent: 'center',
-    gap: 8,
+    alignItems: 'center',
+  },
+  headerCenter: {
+    alignItems: 'center',
   },
   headerTitle: {
+    color: '#1F2937',
     fontSize: 18,
     fontWeight: '700',
-    color: '#1F2937',
   },
   roleBadge: {
-    backgroundColor: '#3B82F6',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 6,
+    marginTop: 4,
   },
   roleBadgeText: {
     fontSize: 10,
     fontWeight: '700',
-    color: '#FFFFFF',
+    letterSpacing: 0.5,
   },
-  refreshBtn: {
-    padding: 4,
-  },
-  tabsContainer: {
-    backgroundColor: '#FFFFFF',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E2E8F0',
-  },
-  tab: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    marginRight: 8,
-    borderRadius: 20,
-    backgroundColor: '#F1F5F9',
-    gap: 6,
-  },
-  tabActive: {
-    backgroundColor: '#DBEAFE',
-  },
-  tabText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#64748B',
-  },
-  tabTextActive: {
-    color: '#3B82F6',
-  },
-  content: {
-    flex: 1,
-  },
-  sectionContent: {
-    padding: 16,
-  },
-  
-  // Summary Cards
-  summaryGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    padding: 12,
-    gap: 12,
-  },
-  summaryCard: {
-    width: '47%',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  wideCard: {
-    width: '97%',
-  },
-  summaryIconContainer: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: '#DBEAFE',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  summaryValue: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#1F2937',
-  },
-  summaryLabel: {
-    fontSize: 13,
-    color: '#64748B',
-    marginTop: 4,
-  },
-
-  // Performance Cards
-  performanceCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  performanceHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  performanceIconContainer: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: '#FEF3C7',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  performanceTitle: {
-    flex: 1,
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1F2937',
-  },
-  alertBadge: {
-    backgroundColor: '#FEE2E2',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  alertBadgeText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#DC2626',
-  },
-  performancePreview: {
-    gap: 8,
-  },
-  previewItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  previewRank: {
-    width: 28,
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#3B82F6',
-  },
-  previewName: {
-    flex: 1,
-    fontSize: 14,
-    color: '#1F2937',
-  },
-  previewValue: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#22C55E',
-  },
-  previewAlert: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: '#EF4444',
-  },
-  emptyText: {
-    fontSize: 14,
-    color: '#64748B',
-    fontStyle: 'italic',
-  },
-  emptyTextGood: {
-    fontSize: 14,
-    color: '#22C55E',
-    fontWeight: '500',
-  },
-
-  // Pipeline Cards
-  pipelineCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  stalledCard: {
-    borderWidth: 1,
-    borderColor: '#FEE2E2',
-  },
-  pipelineHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  pipelineIndicator: {
-    width: 4,
-    height: 24,
-    borderRadius: 2,
-    marginRight: 12,
-  },
-  pipelineTitle: {
-    flex: 1,
-    fontSize: 15,
-    fontWeight: '500',
-    color: '#1F2937',
-  },
-  pipelineCount: {
-    backgroundColor: '#E0E7FF',
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  pipelineCountText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#4338CA',
-  },
-  stalledWarning: {
-    fontSize: 13,
-    color: '#EF4444',
-    marginTop: 8,
-    marginLeft: 16,
-  },
-
-  // Activity Cards
-  activityCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  activityHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 12,
-  },
-  activityTitle: {
-    flex: 1,
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#1F2937',
-  },
-  activityCount: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#22C55E',
-  },
-  activityAvatars: {
-    flexDirection: 'row',
-    gap: -8,
-  },
-  activityAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#DBEAFE',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
-  },
-  avatarText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#3B82F6',
-  },
-  avatarMore: {
-    backgroundColor: '#64748B',
-  },
-  avatarMoreText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  appointmentPreview: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 6,
-    borderTopWidth: 1,
-    borderTopColor: '#F1F5F9',
-  },
-  appointmentAgent: {
-    fontSize: 14,
-    color: '#1F2937',
-  },
-  appointmentCount: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#3B82F6',
-  },
-
-  // Modal / Drilldown
-  modalContainer: {
-    flex: 1,
-    backgroundColor: '#F8FAFC',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E2E8F0',
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1F2937',
-  },
-  drilldownScroll: {
-    flex: 1,
-    padding: 16,
-  },
-  drilldownItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  drilldownRank: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#DBEAFE',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  drilldownRankText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#3B82F6',
-  },
-  drilldownAvatar: {
+  headerRefresh: {
     width: 40,
     height: 40,
-    borderRadius: 20,
-    backgroundColor: '#3B82F6',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
   },
-  drilldownAvatarText: {
-    fontSize: 16,
+  summaryContainer: {
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 16,
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  summaryCard: {
+    flex: 1,
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  summaryIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  summaryValue: {
+    color: '#1F2937',
+    fontSize: 18,
     fontWeight: '700',
-    color: '#FFFFFF',
   },
-  drilldownInfo: {
+  summaryLabel: {
+    color: '#6B7280',
+    fontSize: 11,
+    marginTop: 2,
+  },
+  filterContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  sectionTitle: {
+    color: '#1F2937',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  filterTabs: {
+    flexDirection: 'row',
+    backgroundColor: '#F3F4F6',
+    borderRadius: 8,
+    padding: 2,
+  },
+  filterTab: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  filterTabActive: {
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  filterTabText: {
+    color: '#6B7280',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  filterTabTextActive: {
+    color: '#1F2937',
+    fontWeight: '600',
+  },
+  scrollView: {
     flex: 1,
   },
-  drilldownName: {
-    fontSize: 15,
-    fontWeight: '600',
+  scrollContent: {
+    padding: 16,
+    paddingBottom: 100,
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 60,
+  },
+  emptyTitle: {
     color: '#1F2937',
+    fontSize: 18,
+    fontWeight: '600',
+    marginTop: 16,
   },
-  drilldownEmail: {
-    fontSize: 13,
-    color: '#64748B',
-    marginTop: 2,
-  },
-  drilldownPhone: {
-    fontSize: 13,
-    color: '#3B82F6',
-    marginTop: 2,
-  },
-  drilldownMetric: {
-    alignItems: 'flex-end',
-    marginRight: 8,
-  },
-  drilldownValue: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#22C55E',
-  },
-  drilldownLabel: {
-    fontSize: 11,
-    color: '#64748B',
-  },
-  appointmentList: {
+  emptyText: {
+    color: '#6B7280',
+    fontSize: 14,
     marginTop: 8,
   },
-  appointmentItem: {
-    fontSize: 12,
-    color: '#3B82F6',
-    marginTop: 2,
+  agentCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    overflow: 'hidden',
   },
-  emptyDrilldown: {
+  agentHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+  },
+  agentAvatarSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
     flex: 1,
+  },
+  agentAvatar: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: '#EEF2FF',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 48,
+    marginRight: 14,
+    position: 'relative',
   },
-  emptyDrilldownText: {
+  agentAvatarText: {
+    color: '#4F46E5',
+    fontSize: 20,
+    fontWeight: '700',
+  },
+  activityDot: {
+    position: 'absolute',
+    bottom: 2,
+    right: 2,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 3,
+    borderColor: '#FFFFFF',
+  },
+  agentInfo: {
+    flex: 1,
+  },
+  agentNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  agentName: {
+    color: '#1F2937',
     fontSize: 16,
-    color: '#64748B',
-    marginTop: 12,
+    fontWeight: '600',
+    flex: 1,
+  },
+  gradeBadge: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  gradeText: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  agentEmail: {
+    color: '#6B7280',
+    fontSize: 13,
+    marginTop: 2,
+  },
+  activityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 6,
+    gap: 8,
+  },
+  activityBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
+    gap: 4,
+  },
+  activityDotSmall: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  activityLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  rolePill: {
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  rolePillText: {
+    color: '#6B7280',
+    fontSize: 10,
+    fontWeight: '600',
+    textTransform: 'capitalize',
+  },
+  metricsRow: {
+    flexDirection: 'row',
+    backgroundColor: '#F9FAFB',
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+  },
+  metricItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  metricValue: {
+    color: '#1F2937',
+    fontSize: 15,
+    fontWeight: '700',
+    marginTop: 4,
+  },
+  metricLabel: {
+    color: '#9CA3AF',
+    fontSize: 10,
+    marginTop: 2,
+  },
+  metricDivider: {
+    width: 1,
+    backgroundColor: '#E5E7EB',
+    marginVertical: 4,
+  },
+  quickActionsRow: {
+    flexDirection: 'row',
+    padding: 12,
+    gap: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+  },
+  quickActionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#EEF2FF',
+    paddingVertical: 10,
+    borderRadius: 8,
+    gap: 6,
+  },
+  quickActionText: {
+    color: '#2563EB',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  teamTotalCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 20,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  teamTotalTitle: {
+    color: '#1F2937',
+    fontSize: 16,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  teamTotalGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  teamTotalItem: {
+    alignItems: 'center',
+  },
+  teamTotalValue: {
+    color: '#1F2937',
+    fontSize: 22,
+    fontWeight: '700',
+  },
+  teamTotalLabel: {
+    color: '#6B7280',
+    fontSize: 12,
+    marginTop: 4,
   },
 });
