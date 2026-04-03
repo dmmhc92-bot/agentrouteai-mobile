@@ -8,14 +8,12 @@ import {
   Alert,
   ActivityIndicator,
   RefreshControl,
-  Modal,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../../src/services/api';
 import { useAuth } from '../../src/contexts/AuthContext';
-import { formatDistanceToNow } from 'date-fns';
 
 interface AgentData {
   id: string;
@@ -40,12 +38,12 @@ interface TeamSummary {
   total_premium: number;
 }
 
-const GRADE_COLORS: Record<string, { bg: string; text: string }> = {
-  'A': { bg: '#DCFCE7', text: '#166534' },
-  'B': { bg: '#DBEAFE', text: '#1E40AF' },
-  'C': { bg: '#FEF9C3', text: '#A16207' },
-  'D': { bg: '#FEE2E2', text: '#B91C1C' },
-  'F': { bg: '#FEE2E2', text: '#991B1B' },
+const GRADE_CONFIG: Record<string, { bg: string; text: string; glow: string }> = {
+  'A': { bg: '#10B981', text: '#FFFFFF', glow: '#10B98140' },
+  'B': { bg: '#3B82F6', text: '#FFFFFF', glow: '#3B82F640' },
+  'C': { bg: '#F59E0B', text: '#FFFFFF', glow: '#F59E0B40' },
+  'D': { bg: '#EF4444', text: '#FFFFFF', glow: '#EF444440' },
+  'F': { bg: '#DC2626', text: '#FFFFFF', glow: '#DC262640' },
 };
 
 export default function AgencyCommandCenterScreen() {
@@ -57,7 +55,7 @@ export default function AgencyCommandCenterScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [agents, setAgents] = useState<AgentData[]>([]);
   const [summary, setSummary] = useState<TeamSummary | null>(null);
-  const [activeFilter, setActiveFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [activeFilter, setActiveFilter] = useState<'all' | 'active' | 'attention'>('all');
 
   const isManagerOrAdmin = user?.role === 'admin' || user?.role === 'manager';
 
@@ -68,15 +66,13 @@ export default function AgencyCommandCenterScreen() {
     }
 
     try {
-      const [agentsResponse, snapshotResponse] = await Promise.all([
+      const [agentsResponse] = await Promise.all([
         api.getTeamAgents().catch(() => []),
-        api.getTeamSnapshot().catch(() => null),
       ]);
 
       const agentsList = Array.isArray(agentsResponse) ? agentsResponse : [];
       setAgents(agentsList);
 
-      // Calculate summary
       const activeTodayCount = agentsList.filter(a => {
         if (!a.last_login) return false;
         const hours = (Date.now() - new Date(a.last_login).getTime()) / (1000 * 60 * 60);
@@ -111,12 +107,12 @@ export default function AgencyCommandCenterScreen() {
   };
 
   const getActivityStatus = (lastLogin: string | null) => {
-    if (!lastLogin) return { label: 'Never', color: '#9CA3AF', dotColor: '#D1D5DB' };
+    if (!lastLogin) return { label: 'Offline', color: '#94A3B8', dotColor: '#CBD5E1', isActive: false };
     const hours = (Date.now() - new Date(lastLogin).getTime()) / (1000 * 60 * 60);
-    if (hours < 1) return { label: 'Online', color: '#059669', dotColor: '#10B981' };
-    if (hours < 24) return { label: 'Today', color: '#059669', dotColor: '#10B981' };
-    if (hours < 72) return { label: '2-3 days', color: '#D97706', dotColor: '#F59E0B' };
-    return { label: 'Inactive', color: '#DC2626', dotColor: '#EF4444' };
+    if (hours < 1) return { label: 'Online', color: '#10B981', dotColor: '#10B981', isActive: true };
+    if (hours < 24) return { label: 'Today', color: '#10B981', dotColor: '#10B981', isActive: true };
+    if (hours < 72) return { label: '2-3 days', color: '#F59E0B', dotColor: '#F59E0B', isActive: false };
+    return { label: 'Inactive', color: '#EF4444', dotColor: '#EF4444', isActive: false };
   };
 
   const formatCurrency = (amount: number) => {
@@ -128,12 +124,14 @@ export default function AgencyCommandCenterScreen() {
   const filteredAgents = agents.filter(agent => {
     if (activeFilter === 'all') return true;
     const status = getActivityStatus(agent.last_login);
-    if (activeFilter === 'active') return status.label === 'Online' || status.label === 'Today';
-    return status.label === 'Inactive' || status.label === 'Never';
+    if (activeFilter === 'active') return status.isActive;
+    if (activeFilter === 'attention') {
+      return agent.scorecard_grade === 'D' || agent.scorecard_grade === 'F' || !status.isActive;
+    }
+    return true;
   });
 
   const sortedAgents = [...filteredAgents].sort((a, b) => {
-    // Sort by last_login (most recent first), then by leads_count
     const aTime = a.last_login ? new Date(a.last_login).getTime() : 0;
     const bTime = b.last_login ? new Date(b.last_login).getTime() : 0;
     if (bTime !== aTime) return bTime - aTime;
@@ -145,14 +143,14 @@ export default function AgencyCommandCenterScreen() {
       <View style={[styles.container, { paddingTop: insets.top }]}>
         <View style={styles.accessDenied}>
           <View style={styles.accessDeniedIcon}>
-            <Ionicons name="lock-closed" size={48} color="#DC2626" />
+            <Ionicons name="shield" size={48} color="#3B82F6" />
           </View>
           <Text style={styles.accessDeniedTitle}>Access Restricted</Text>
           <Text style={styles.accessDeniedText}>
-            Command Center is only available for Managers and Administrators.
+            Command Center is available for Managers and Administrators only.
           </Text>
-          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-            <Text style={styles.backButtonText}>Go Back</Text>
+          <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+            <Text style={styles.backBtnText}>Return to Dashboard</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -163,82 +161,116 @@ export default function AgencyCommandCenterScreen() {
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#2563EB" />
+          <ActivityIndicator size="large" color="#3B82F6" />
           <Text style={styles.loadingText}>Loading Team Data...</Text>
         </View>
       </View>
     );
   }
 
+  const attentionCount = agents.filter(a => 
+    a.scorecard_grade === 'D' || a.scorecard_grade === 'F' || !getActivityStatus(a.last_login).isActive
+  ).length;
+
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.headerBack}>
-          <Ionicons name="arrow-back" size={24} color="#1F2937" />
+          <Ionicons name="arrow-back" size={24} color="#1E3A5F" />
         </TouchableOpacity>
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>Command Center</Text>
-          <View style={[styles.roleBadge, { backgroundColor: user?.role === 'admin' ? '#DBEAFE' : '#E0E7FF' }]}>
-            <Text style={[styles.roleBadgeText, { color: user?.role === 'admin' ? '#1E40AF' : '#4338CA' }]}>
-              {user?.role === 'admin' ? 'ADMIN' : 'MANAGER'}
+          <View style={styles.roleBadge}>
+            <Ionicons 
+              name={user?.role === 'admin' ? 'shield-checkmark' : 'people'} 
+              size={12} 
+              color="#3B82F6" 
+            />
+            <Text style={styles.roleBadgeText}>
+              {user?.role === 'admin' ? 'ADMINISTRATOR' : 'MANAGER'}
             </Text>
           </View>
         </View>
         <TouchableOpacity onPress={onRefresh} style={styles.headerRefresh}>
-          <Ionicons name="refresh" size={22} color="#6B7280" />
+          <Ionicons name="refresh" size={22} color="#64748B" />
         </TouchableOpacity>
       </View>
 
-      {/* Summary Stats */}
-      <View style={styles.summaryContainer}>
-        <View style={styles.summaryRow}>
-          <View style={styles.summaryCard}>
-            <View style={[styles.summaryIcon, { backgroundColor: '#DBEAFE' }]}>
-              <Ionicons name="people" size={20} color="#2563EB" />
+      {/* Hero Stats */}
+      <View style={styles.heroSection}>
+        <View style={styles.heroStatsRow}>
+          <View style={styles.heroStatMain}>
+            <View style={styles.heroStatIconWrap}>
+              <Ionicons name="people" size={28} color="#FFFFFF" />
             </View>
-            <Text style={styles.summaryValue}>{summary?.total_agents || 0}</Text>
-            <Text style={styles.summaryLabel}>Agents</Text>
+            <Text style={styles.heroStatNumber}>{summary?.total_agents || 0}</Text>
+            <Text style={styles.heroStatLabel}>Total Agents</Text>
           </View>
-          <View style={styles.summaryCard}>
-            <View style={[styles.summaryIcon, { backgroundColor: '#D1FAE5' }]}>
-              <Ionicons name="pulse" size={20} color="#059669" />
+          
+          <View style={styles.heroStatDivider} />
+          
+          <View style={styles.heroStatSecondary}>
+            <View style={[styles.heroMiniStat, styles.heroMiniStatGreen]}>
+              <Ionicons name="pulse" size={16} color="#10B981" />
+              <Text style={[styles.heroMiniNumber, { color: '#10B981' }]}>{summary?.active_today || 0}</Text>
+              <Text style={styles.heroMiniLabel}>Active</Text>
             </View>
-            <Text style={[styles.summaryValue, { color: '#059669' }]}>{summary?.active_today || 0}</Text>
-            <Text style={styles.summaryLabel}>Active Today</Text>
+            <View style={[styles.heroMiniStat, styles.heroMiniStatOrange]}>
+              <Ionicons name="alert-circle" size={16} color="#F59E0B" />
+              <Text style={[styles.heroMiniNumber, { color: '#F59E0B' }]}>{attentionCount}</Text>
+              <Text style={styles.heroMiniLabel}>Attention</Text>
+            </View>
           </View>
-          <View style={styles.summaryCard}>
-            <View style={[styles.summaryIcon, { backgroundColor: '#FEF3C7' }]}>
-              <Ionicons name="person-add" size={20} color="#D97706" />
-            </View>
-            <Text style={styles.summaryValue}>{summary?.total_leads || 0}</Text>
-            <Text style={styles.summaryLabel}>Total Leads</Text>
+        </View>
+
+        {/* Quick Metrics */}
+        <View style={styles.quickMetricsRow}>
+          <View style={styles.quickMetric}>
+            <Ionicons name="person-add" size={18} color="#60A5FA" />
+            <Text style={styles.quickMetricValue}>{summary?.total_leads || 0}</Text>
+            <Text style={styles.quickMetricLabel}>Leads</Text>
           </View>
-          <View style={styles.summaryCard}>
-            <View style={[styles.summaryIcon, { backgroundColor: '#DCFCE7' }]}>
-              <Ionicons name="cash" size={20} color="#16A34A" />
-            </View>
-            <Text style={[styles.summaryValue, { color: '#16A34A' }]}>{formatCurrency(summary?.total_premium || 0)}</Text>
-            <Text style={styles.summaryLabel}>Production</Text>
+          <View style={styles.quickMetric}>
+            <Ionicons name="calendar" size={18} color="#A78BFA" />
+            <Text style={styles.quickMetricValue}>{summary?.total_appointments || 0}</Text>
+            <Text style={styles.quickMetricLabel}>Appts</Text>
+          </View>
+          <View style={styles.quickMetric}>
+            <Ionicons name="document-text" size={18} color="#F472B6" />
+            <Text style={styles.quickMetricValue}>{summary?.total_policies || 0}</Text>
+            <Text style={styles.quickMetricLabel}>Policies</Text>
+          </View>
+          <View style={styles.quickMetric}>
+            <Ionicons name="trending-up" size={18} color="#34D399" />
+            <Text style={[styles.quickMetricValue, { color: '#10B981' }]}>
+              {formatCurrency(summary?.total_premium || 0)}
+            </Text>
+            <Text style={styles.quickMetricLabel}>Production</Text>
           </View>
         </View>
       </View>
 
-      {/* Filter Tabs */}
-      <View style={styles.filterContainer}>
+      {/* Filter Section */}
+      <View style={styles.filterSection}>
         <Text style={styles.sectionTitle}>Team Members</Text>
-        <View style={styles.filterTabs}>
+        <View style={styles.filterPills}>
           {[
-            { key: 'all', label: 'All' },
-            { key: 'active', label: 'Active' },
-            { key: 'inactive', label: 'Inactive' },
+            { key: 'all', label: `All (${agents.length})`, icon: 'grid' },
+            { key: 'active', label: 'Active', icon: 'checkmark-circle' },
+            { key: 'attention', label: 'Attention', icon: 'warning' },
           ].map((filter) => (
             <TouchableOpacity
               key={filter.key}
-              style={[styles.filterTab, activeFilter === filter.key && styles.filterTabActive]}
+              style={[styles.filterPill, activeFilter === filter.key && styles.filterPillActive]}
               onPress={() => setActiveFilter(filter.key as any)}
             >
-              <Text style={[styles.filterTabText, activeFilter === filter.key && styles.filterTabTextActive]}>
+              <Ionicons 
+                name={filter.icon as any} 
+                size={14} 
+                color={activeFilter === filter.key ? '#FFFFFF' : '#64748B'} 
+              />
+              <Text style={[styles.filterPillText, activeFilter === filter.key && styles.filterPillTextActive]}>
                 {filter.label}
               </Text>
             </TouchableOpacity>
@@ -251,55 +283,54 @@ export default function AgencyCommandCenterScreen() {
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#2563EB" />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#3B82F6" />
         }
         showsVerticalScrollIndicator={false}
       >
         {sortedAgents.length === 0 ? (
           <View style={styles.emptyState}>
-            <Ionicons name="people-outline" size={56} color="#D1D5DB" />
+            <Ionicons name="people-outline" size={64} color="#94A3B8" />
             <Text style={styles.emptyTitle}>No Agents Found</Text>
             <Text style={styles.emptyText}>
-              {activeFilter !== 'all' ? 'Try changing your filter' : 'Add team members to get started'}
+              {activeFilter !== 'all' ? 'Try a different filter' : 'Add team members to get started'}
             </Text>
           </View>
         ) : (
           sortedAgents.map((agent) => {
             const activity = getActivityStatus(agent.last_login);
-            const gradeColors = GRADE_COLORS[agent.scorecard_grade || 'C'] || GRADE_COLORS['C'];
+            const gradeConfig = GRADE_CONFIG[agent.scorecard_grade || 'C'] || GRADE_CONFIG['C'];
+            const needsAttention = agent.scorecard_grade === 'D' || agent.scorecard_grade === 'F';
 
             return (
               <TouchableOpacity
                 key={agent.id}
-                style={styles.agentCard}
+                style={[styles.agentCard, needsAttention && styles.agentCardAttention]}
                 onPress={() => router.push(`/command-center/${agent.id}`)}
                 activeOpacity={0.7}
               >
-                {/* Agent Header */}
-                <View style={styles.agentHeader}>
-                  <View style={styles.agentAvatarSection}>
-                    <View style={styles.agentAvatar}>
-                      <Text style={styles.agentAvatarText}>
-                        {agent.name.charAt(0).toUpperCase()}
-                      </Text>
-                      <View style={[styles.activityDot, { backgroundColor: activity.dotColor }]} />
+                {/* Card Header */}
+                <View style={styles.cardHeader}>
+                  <View style={styles.agentIdentity}>
+                    <View style={styles.avatarContainer}>
+                      <View style={[styles.avatar, { backgroundColor: '#E0E7FF' }]}>
+                        <Text style={styles.avatarText}>{agent.name.charAt(0).toUpperCase()}</Text>
+                      </View>
+                      <View style={[styles.statusDot, { backgroundColor: activity.dotColor }]} />
                     </View>
-                    <View style={styles.agentInfo}>
-                      <View style={styles.agentNameRow}>
+                    <View style={styles.agentDetails}>
+                      <View style={styles.nameRow}>
                         <Text style={styles.agentName} numberOfLines={1}>{agent.name}</Text>
                         {agent.scorecard_grade && (
-                          <View style={[styles.gradeBadge, { backgroundColor: gradeColors.bg }]}>
-                            <Text style={[styles.gradeText, { color: gradeColors.text }]}>
-                              {agent.scorecard_grade}
-                            </Text>
+                          <View style={[styles.gradeBadge, { backgroundColor: gradeConfig.bg }]}>
+                            <Text style={styles.gradeText}>{agent.scorecard_grade}</Text>
                           </View>
                         )}
                       </View>
                       <Text style={styles.agentEmail} numberOfLines={1}>{agent.email}</Text>
-                      <View style={styles.activityRow}>
-                        <View style={[styles.activityBadge, { backgroundColor: activity.dotColor + '20' }]}>
-                          <View style={[styles.activityDotSmall, { backgroundColor: activity.dotColor }]} />
-                          <Text style={[styles.activityLabel, { color: activity.color }]}>{activity.label}</Text>
+                      <View style={styles.statusRow}>
+                        <View style={[styles.statusPill, { backgroundColor: activity.dotColor + '20' }]}>
+                          <View style={[styles.statusPillDot, { backgroundColor: activity.dotColor }]} />
+                          <Text style={[styles.statusPillText, { color: activity.color }]}>{activity.label}</Text>
                         </View>
                         {agent.role !== 'agent' && (
                           <View style={styles.rolePill}>
@@ -309,32 +340,28 @@ export default function AgencyCommandCenterScreen() {
                       </View>
                     </View>
                   </View>
-                  <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+                  <Ionicons name="chevron-forward" size={20} color="#94A3B8" />
                 </View>
 
-                {/* Agent Metrics */}
+                {/* Metrics Row */}
                 <View style={styles.metricsRow}>
-                  <View style={styles.metricItem}>
-                    <Ionicons name="people-outline" size={16} color="#6B7280" />
-                    <Text style={styles.metricValue}>{agent.leads_count || 0}</Text>
+                  <View style={styles.metricBox}>
+                    <Text style={styles.metricNumber}>{agent.leads_count || 0}</Text>
                     <Text style={styles.metricLabel}>Leads</Text>
                   </View>
                   <View style={styles.metricDivider} />
-                  <View style={styles.metricItem}>
-                    <Ionicons name="calendar-outline" size={16} color="#6B7280" />
-                    <Text style={styles.metricValue}>{agent.appointments_today || 0}</Text>
+                  <View style={styles.metricBox}>
+                    <Text style={styles.metricNumber}>{agent.appointments_today || 0}</Text>
                     <Text style={styles.metricLabel}>Appts</Text>
                   </View>
                   <View style={styles.metricDivider} />
-                  <View style={styles.metricItem}>
-                    <Ionicons name="document-text-outline" size={16} color="#6B7280" />
-                    <Text style={styles.metricValue}>{agent.policies_issued || 0}</Text>
+                  <View style={styles.metricBox}>
+                    <Text style={styles.metricNumber}>{agent.policies_issued || 0}</Text>
                     <Text style={styles.metricLabel}>Policies</Text>
                   </View>
                   <View style={styles.metricDivider} />
-                  <View style={styles.metricItem}>
-                    <Ionicons name="trending-up" size={16} color="#16A34A" />
-                    <Text style={[styles.metricValue, { color: '#16A34A' }]}>
+                  <View style={styles.metricBox}>
+                    <Text style={[styles.metricNumber, { color: '#10B981' }]}>
                       {formatCurrency(agent.total_premium || 0)}
                     </Text>
                     <Text style={styles.metricLabel}>Production</Text>
@@ -342,20 +369,20 @@ export default function AgencyCommandCenterScreen() {
                 </View>
 
                 {/* Quick Actions */}
-                <View style={styles.quickActionsRow}>
+                <View style={styles.actionsRow}>
                   <TouchableOpacity 
-                    style={styles.quickActionBtn}
+                    style={styles.actionBtn}
                     onPress={() => router.push(`/command-center/${agent.id}`)}
                   >
-                    <Ionicons name="bar-chart-outline" size={14} color="#2563EB" />
-                    <Text style={styles.quickActionText}>View Details</Text>
+                    <Ionicons name="stats-chart" size={14} color="#3B82F6" />
+                    <Text style={styles.actionBtnText}>Performance</Text>
                   </TouchableOpacity>
                   <TouchableOpacity 
-                    style={styles.quickActionBtn}
+                    style={[styles.actionBtn, styles.actionBtnSecondary]}
                     onPress={() => router.push('/pipeline')}
                   >
-                    <Ionicons name="git-branch-outline" size={14} color="#7C3AED" />
-                    <Text style={[styles.quickActionText, { color: '#7C3AED' }]}>Pipeline</Text>
+                    <Ionicons name="git-branch" size={14} color="#8B5CF6" />
+                    <Text style={[styles.actionBtnText, { color: '#8B5CF6' }]}>Pipeline</Text>
                   </TouchableOpacity>
                 </View>
               </TouchableOpacity>
@@ -363,28 +390,8 @@ export default function AgencyCommandCenterScreen() {
           })
         )}
 
-        {/* Team Total Card */}
-        {sortedAgents.length > 0 && (
-          <View style={styles.teamTotalCard}>
-            <Text style={styles.teamTotalTitle}>Team Totals</Text>
-            <View style={styles.teamTotalGrid}>
-              <View style={styles.teamTotalItem}>
-                <Text style={styles.teamTotalValue}>{summary?.total_leads || 0}</Text>
-                <Text style={styles.teamTotalLabel}>Leads</Text>
-              </View>
-              <View style={styles.teamTotalItem}>
-                <Text style={styles.teamTotalValue}>{summary?.total_policies || 0}</Text>
-                <Text style={styles.teamTotalLabel}>Policies</Text>
-              </View>
-              <View style={styles.teamTotalItem}>
-                <Text style={[styles.teamTotalValue, { color: '#16A34A' }]}>
-                  {formatCurrency(summary?.total_premium || 0)}
-                </Text>
-                <Text style={styles.teamTotalLabel}>Production</Text>
-              </View>
-            </View>
-          </View>
-        )}
+        {/* Bottom spacing */}
+        <View style={{ height: 40 }} />
       </ScrollView>
     </View>
   );
@@ -393,16 +400,15 @@ export default function AgencyCommandCenterScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: '#EFF6FF', // Soft blue background
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F9FAFB',
   },
   loadingText: {
-    color: '#6B7280',
+    color: '#475569',
     marginTop: 12,
     fontSize: 14,
   },
@@ -411,37 +417,36 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 32,
-    backgroundColor: '#F9FAFB',
   },
   accessDeniedIcon: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#FEE2E2',
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    backgroundColor: '#DBEAFE',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 20,
   },
   accessDeniedTitle: {
-    color: '#1F2937',
+    color: '#1E3A5F',
     fontSize: 22,
     fontWeight: '700',
     marginBottom: 8,
   },
   accessDeniedText: {
-    color: '#6B7280',
+    color: '#64748B',
     fontSize: 15,
     textAlign: 'center',
     lineHeight: 22,
   },
-  backButton: {
-    backgroundColor: '#2563EB',
+  backBtn: {
+    backgroundColor: '#3B82F6',
     paddingHorizontal: 28,
     paddingVertical: 14,
     borderRadius: 12,
     marginTop: 24,
   },
-  backButtonText: {
+  backBtnText: {
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
@@ -451,10 +456,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingVertical: 12,
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    borderBottomColor: '#E2E8F0',
   },
   headerBack: {
     width: 40,
@@ -466,17 +471,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   headerTitle: {
-    color: '#1F2937',
+    color: '#1E3A5F',
     fontSize: 18,
     fontWeight: '700',
   },
   roleBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EFF6FF',
     paddingHorizontal: 10,
-    paddingVertical: 3,
+    paddingVertical: 4,
     borderRadius: 6,
     marginTop: 4,
+    gap: 4,
   },
   roleBadgeText: {
+    color: '#3B82F6',
     fontSize: 10,
     fontWeight: '700',
     letterSpacing: 0.5,
@@ -487,102 +497,152 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  summaryContainer: {
-    backgroundColor: '#FFFFFF',
-    paddingVertical: 16,
-    paddingHorizontal: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+  heroSection: {
+    backgroundColor: '#1E40AF', // Deep blue hero
+    paddingVertical: 20,
+    paddingHorizontal: 16,
   },
-  summaryRow: {
+  heroStatsRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    alignItems: 'center',
   },
-  summaryCard: {
+  heroStatMain: {
     flex: 1,
     alignItems: 'center',
-    paddingHorizontal: 4,
   },
-  summaryIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+  heroStatIconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: 'rgba(255,255,255,0.2)',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 8,
   },
-  summaryValue: {
-    color: '#1F2937',
-    fontSize: 18,
-    fontWeight: '700',
+  heroStatNumber: {
+    color: '#FFFFFF',
+    fontSize: 36,
+    fontWeight: '800',
   },
-  summaryLabel: {
-    color: '#6B7280',
-    fontSize: 11,
+  heroStatLabel: {
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 13,
     marginTop: 2,
   },
-  filterContainer: {
+  heroStatDivider: {
+    width: 1,
+    height: 80,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    marginHorizontal: 20,
+  },
+  heroStatSecondary: {
+    flex: 1,
+    gap: 12,
+  },
+  heroMiniStat: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    gap: 10,
+  },
+  heroMiniStatGreen: {
+    borderLeftWidth: 3,
+    borderLeftColor: '#10B981',
+  },
+  heroMiniStatOrange: {
+    borderLeftWidth: 3,
+    borderLeftColor: '#F59E0B',
+  },
+  heroMiniNumber: {
+    fontSize: 20,
+    fontWeight: '800',
+  },
+  heroMiniLabel: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 12,
+  },
+  quickMetricsRow: {
+    flexDirection: 'row',
+    marginTop: 16,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 12,
+    paddingVertical: 12,
+  },
+  quickMetric: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  quickMetricValue: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '700',
+    marginTop: 4,
+  },
+  quickMetricLabel: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 10,
+    marginTop: 2,
+  },
+  filterSection: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 14,
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    borderBottomColor: '#E2E8F0',
   },
   sectionTitle: {
-    color: '#1F2937',
+    color: '#1E3A5F',
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
   },
-  filterTabs: {
+  filterPills: {
     flexDirection: 'row',
-    backgroundColor: '#F3F4F6',
-    borderRadius: 8,
-    padding: 2,
+    gap: 8,
   },
-  filterTab: {
+  filterPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F1F5F9',
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 6,
+    borderRadius: 20,
+    gap: 4,
   },
-  filterTabActive: {
-    backgroundColor: '#FFFFFF',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
+  filterPillActive: {
+    backgroundColor: '#3B82F6',
   },
-  filterTabText: {
-    color: '#6B7280',
+  filterPillText: {
+    color: '#64748B',
     fontSize: 12,
     fontWeight: '500',
   },
-  filterTabTextActive: {
-    color: '#1F2937',
-    fontWeight: '600',
+  filterPillTextActive: {
+    color: '#FFFFFF',
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
     padding: 16,
-    paddingBottom: 100,
   },
   emptyState: {
     alignItems: 'center',
     paddingVertical: 60,
   },
   emptyTitle: {
-    color: '#1F2937',
+    color: '#1E3A5F',
     fontSize: 18,
     fontWeight: '600',
     marginTop: 16,
   },
   emptyText: {
-    color: '#6B7280',
+    color: '#64748B',
     fontSize: 14,
     marginTop: 8,
   },
@@ -590,37 +650,45 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
     marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
+    shadowColor: '#1E40AF',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 3,
     overflow: 'hidden',
   },
-  agentHeader: {
+  agentCardAttention: {
+    borderLeftWidth: 4,
+    borderLeftColor: '#F59E0B',
+  },
+  cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: 16,
   },
-  agentAvatarSection: {
+  agentIdentity: {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
   },
-  agentAvatar: {
+  avatarContainer: {
+    position: 'relative',
+    marginRight: 14,
+  },
+  avatar: {
     width: 52,
     height: 52,
     borderRadius: 26,
-    backgroundColor: '#EEF2FF',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 14,
-    position: 'relative',
   },
-  agentAvatarText: {
-    color: '#4F46E5',
+  avatarText: {
+    color: '#3B82F6',
     fontSize: 20,
     fontWeight: '700',
   },
-  activityDot: {
+  statusDot: {
     position: 'absolute',
     bottom: 2,
     right: 2,
@@ -630,43 +698,44 @@ const styles = StyleSheet.create({
     borderWidth: 3,
     borderColor: '#FFFFFF',
   },
-  agentInfo: {
+  agentDetails: {
     flex: 1,
   },
-  agentNameRow: {
+  nameRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
   agentName: {
-    color: '#1F2937',
+    color: '#1E3A5F',
     fontSize: 16,
     fontWeight: '600',
     flex: 1,
   },
   gradeBadge: {
-    width: 24,
-    height: 24,
-    borderRadius: 6,
+    width: 26,
+    height: 26,
+    borderRadius: 8,
     justifyContent: 'center',
     alignItems: 'center',
   },
   gradeText: {
+    color: '#FFFFFF',
     fontSize: 12,
     fontWeight: '800',
   },
   agentEmail: {
-    color: '#6B7280',
+    color: '#64748B',
     fontSize: 13,
     marginTop: 2,
   },
-  activityRow: {
+  statusRow: {
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: 6,
     gap: 8,
   },
-  activityBadge: {
+  statusPill: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 8,
@@ -674,107 +743,75 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     gap: 4,
   },
-  activityDotSmall: {
+  statusPillDot: {
     width: 6,
     height: 6,
     borderRadius: 3,
   },
-  activityLabel: {
+  statusPillText: {
     fontSize: 11,
     fontWeight: '600',
   },
   rolePill: {
-    backgroundColor: '#F3F4F6',
+    backgroundColor: '#F1F5F9',
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 4,
   },
   rolePillText: {
-    color: '#6B7280',
+    color: '#64748B',
     fontSize: 10,
     fontWeight: '600',
     textTransform: 'capitalize',
   },
   metricsRow: {
     flexDirection: 'row',
-    backgroundColor: '#F9FAFB',
-    paddingVertical: 12,
-    paddingHorizontal: 8,
+    backgroundColor: '#F8FAFC',
+    paddingVertical: 14,
     borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
+    borderTopColor: '#E2E8F0',
   },
-  metricItem: {
+  metricBox: {
     flex: 1,
     alignItems: 'center',
   },
-  metricValue: {
-    color: '#1F2937',
-    fontSize: 15,
+  metricNumber: {
+    color: '#1E3A5F',
+    fontSize: 18,
     fontWeight: '700',
-    marginTop: 4,
   },
   metricLabel: {
-    color: '#9CA3AF',
+    color: '#94A3B8',
     fontSize: 10,
     marginTop: 2,
   },
   metricDivider: {
     width: 1,
-    backgroundColor: '#E5E7EB',
-    marginVertical: 4,
+    backgroundColor: '#E2E8F0',
   },
-  quickActionsRow: {
+  actionsRow: {
     flexDirection: 'row',
     padding: 12,
-    gap: 8,
+    gap: 10,
     borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
+    borderTopColor: '#E2E8F0',
   },
-  quickActionBtn: {
+  actionBtn: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#EEF2FF',
+    backgroundColor: '#EFF6FF',
     paddingVertical: 10,
     borderRadius: 8,
     gap: 6,
   },
-  quickActionText: {
-    color: '#2563EB',
+  actionBtnSecondary: {
+    backgroundColor: '#F5F3FF',
+  },
+  actionBtnText: {
+    color: '#3B82F6',
     fontSize: 12,
     fontWeight: '600',
-  },
-  teamTotalCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 20,
-    marginTop: 8,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  teamTotalTitle: {
-    color: '#1F2937',
-    fontSize: 16,
-    fontWeight: '700',
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  teamTotalGrid: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-  },
-  teamTotalItem: {
-    alignItems: 'center',
-  },
-  teamTotalValue: {
-    color: '#1F2937',
-    fontSize: 22,
-    fontWeight: '700',
-  },
-  teamTotalLabel: {
-    color: '#6B7280',
-    fontSize: 12,
-    marginTop: 4,
   },
 });
