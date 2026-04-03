@@ -8,19 +8,24 @@ import {
   Alert,
   ActivityIndicator,
   RefreshControl,
+  Dimensions,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../../src/services/api';
 import { useAuth } from '../../src/contexts/AuthContext';
-import { format, formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow } from 'date-fns';
+
+const { width } = Dimensions.get('window');
 
 interface AgentStats {
   id: string;
   name: string;
   email: string;
   role: string;
+  phone?: string;
+  territory?: string;
   leads_count: number;
   appointments_scheduled: number;
   appointments_completed: number;
@@ -31,6 +36,8 @@ interface AgentStats {
   last_login: string | null;
   is_active: boolean;
   scorecard_grade: string;
+  overdue_tasks?: number;
+  pending_follow_ups?: number;
 }
 
 interface TeamSnapshot {
@@ -41,22 +48,12 @@ interface TeamSnapshot {
   top_producers: { id: string; name: string; total: number }[];
 }
 
-interface LeaderboardEntry {
-  rank: number;
-  id: string;
-  name: string;
-  premium: number;
-  commission: number;
-  policies: number;
-  appointments_completed: number;
-}
-
-const GRADE_COLORS: Record<string, string> = {
-  'A': '#22C55E',
-  'B': '#3B82F6',
-  'C': '#F59E0B',
-  'D': '#EF4444',
-  'F': '#DC2626',
+const GRADE_CONFIG: Record<string, { color: string; bg: string; label: string }> = {
+  'A': { color: '#22C55E', bg: '#22C55E20', label: 'Top Performer' },
+  'B': { color: '#3B82F6', bg: '#3B82F620', label: 'Strong' },
+  'C': { color: '#F59E0B', bg: '#F59E0B20', label: 'Average' },
+  'D': { color: '#EF4444', bg: '#EF444420', label: 'Needs Coaching' },
+  'F': { color: '#DC2626', bg: '#DC262620', label: 'At Risk' },
 };
 
 export default function CommandCenterScreen() {
@@ -68,9 +65,8 @@ export default function CommandCenterScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [agents, setAgents] = useState<AgentStats[]>([]);
   const [snapshot, setSnapshot] = useState<TeamSnapshot | null>(null);
-  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
-  const [leaderboardPeriod, setLeaderboardPeriod] = useState<'day' | 'week' | 'month'>('month');
-  const [activeTab, setActiveTab] = useState<'overview' | 'agents' | 'leaderboard'>('overview');
+  const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'inactive' | 'attention'>('all');
+  const [sortBy, setSortBy] = useState<'name' | 'production' | 'grade' | 'activity'>('production');
 
   const isManagerOrAdmin = user?.role === 'admin' || user?.role === 'manager';
 
@@ -81,21 +77,17 @@ export default function CommandCenterScreen() {
     }
     
     try {
-      const [agentsData, snapshotData, leaderboardData] = await Promise.all([
+      const [agentsData, snapshotData] = await Promise.all([
         api.getTeamAgents().catch(() => []),
         api.getTeamSnapshot().catch(() => null),
-        api.getTeamLeaderboard(leaderboardPeriod).catch(() => []),
       ]);
       setAgents(Array.isArray(agentsData) ? agentsData : []);
       setSnapshot(snapshotData);
-      setLeaderboard(Array.isArray(leaderboardData) ? leaderboardData : []);
     } catch (error: any) {
       console.error('Error loading command center:', error);
       if (error.response?.status === 403) {
         Alert.alert('Access Denied', 'You do not have permission to view the Command Center');
         router.back();
-      } else {
-        Alert.alert('Error', 'Failed to load team data');
       }
     } finally {
       setIsLoading(false);
@@ -106,7 +98,7 @@ export default function CommandCenterScreen() {
   useFocusEffect(
     useCallback(() => {
       loadData();
-    }, [leaderboardPeriod])
+    }, [])
   );
 
   const onRefresh = () => {
@@ -115,44 +107,63 @@ export default function CommandCenterScreen() {
   };
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(amount);
-  };
-
-  const getLastLoginText = (lastLogin: string | null) => {
-    if (!lastLogin) return 'Never';
-    try {
-      return formatDistanceToNow(new Date(lastLogin), { addSuffix: true });
-    } catch {
-      return 'Unknown';
+    if (amount >= 1000000) {
+      return `$${(amount / 1000000).toFixed(1)}M`;
     }
+    if (amount >= 1000) {
+      return `$${(amount / 1000).toFixed(0)}K`;
+    }
+    return `$${amount.toFixed(0)}`;
   };
 
   const getActivityStatus = (lastLogin: string | null) => {
-    if (!lastLogin) return { status: 'inactive', color: '#64748B', icon: 'ellipse' };
-    const diff = Date.now() - new Date(lastLogin).getTime();
-    const hours = diff / (1000 * 60 * 60);
-    if (hours < 1) return { status: 'online', color: '#22C55E', icon: 'ellipse' };
-    if (hours < 24) return { status: 'today', color: '#3B82F6', icon: 'ellipse' };
-    if (hours < 72) return { status: 'recent', color: '#F59E0B', icon: 'ellipse' };
-    return { status: 'inactive', color: '#EF4444', icon: 'ellipse' };
+    if (!lastLogin) return { status: 'Never Active', color: '#64748B', dot: '#475569' };
+    const hours = (Date.now() - new Date(lastLogin).getTime()) / (1000 * 60 * 60);
+    if (hours < 1) return { status: 'Online Now', color: '#22C55E', dot: '#22C55E' };
+    if (hours < 8) return { status: 'Active Today', color: '#3B82F6', dot: '#3B82F6' };
+    if (hours < 24) return { status: 'Today', color: '#22C55E', dot: '#22C55E' };
+    if (hours < 72) return { status: '2-3 Days Ago', color: '#F59E0B', dot: '#F59E0B' };
+    return { status: 'Inactive', color: '#EF4444', dot: '#EF4444' };
   };
+
+  const filteredAgents = agents.filter(agent => {
+    if (filterStatus === 'all') return true;
+    const activity = getActivityStatus(agent.last_login);
+    if (filterStatus === 'active') return activity.status === 'Online Now' || activity.status === 'Active Today' || activity.status === 'Today';
+    if (filterStatus === 'inactive') return activity.status === 'Inactive' || activity.status === 'Never Active';
+    if (filterStatus === 'attention') return agent.scorecard_grade === 'D' || agent.scorecard_grade === 'F' || (agent.overdue_tasks || 0) > 0;
+    return true;
+  });
+
+  const sortedAgents = [...filteredAgents].sort((a, b) => {
+    switch (sortBy) {
+      case 'production': return b.total_premium - a.total_premium;
+      case 'grade': {
+        const gradeOrder: Record<string, number> = { 'A': 0, 'B': 1, 'C': 2, 'D': 3, 'F': 4 };
+        return (gradeOrder[a.scorecard_grade] ?? 5) - (gradeOrder[b.scorecard_grade] ?? 5);
+      }
+      case 'activity': {
+        const aTime = a.last_login ? new Date(a.last_login).getTime() : 0;
+        const bTime = b.last_login ? new Date(b.last_login).getTime() : 0;
+        return bTime - aTime;
+      }
+      default: return a.name.localeCompare(b.name);
+    }
+  });
 
   if (!isManagerOrAdmin) {
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
         <View style={styles.accessDenied}>
-          <Ionicons name="lock-closed" size={64} color="#EF4444" />
-          <Text style={styles.accessDeniedTitle}>Access Restricted</Text>
+          <View style={styles.accessDeniedIcon}>
+            <Ionicons name="shield" size={48} color="#EF4444" />
+          </View>
+          <Text style={styles.accessDeniedTitle}>Command Center</Text>
           <Text style={styles.accessDeniedText}>
-            The Command Center is only available to Managers and Admins.
+            This area is restricted to Managers and Admins only.
           </Text>
           <TouchableOpacity style={styles.goBackButton} onPress={() => router.back()}>
-            <Text style={styles.goBackButtonText}>Go Back</Text>
+            <Text style={styles.goBackButtonText}>Return to Dashboard</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -164,11 +175,23 @@ export default function CommandCenterScreen() {
       <View style={[styles.container, { paddingTop: insets.top }]}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#3B82F6" />
-          <Text style={styles.loadingText}>Loading Command Center...</Text>
+          <Text style={styles.loadingText}>Loading Team Data...</Text>
         </View>
       </View>
     );
   }
+
+  const activeCount = agents.filter(a => {
+    const activity = getActivityStatus(a.last_login);
+    return activity.status !== 'Inactive' && activity.status !== 'Never Active';
+  }).length;
+
+  const attentionCount = agents.filter(a => 
+    a.scorecard_grade === 'D' || a.scorecard_grade === 'F' || (a.overdue_tasks || 0) > 0
+  ).length;
+
+  const totalProduction = agents.reduce((sum, a) => sum + a.total_premium, 0);
+  const totalCommission = agents.reduce((sum, a) => sum + a.total_commission, 0);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -180,267 +203,304 @@ export default function CommandCenterScreen() {
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>Command Center</Text>
           <View style={styles.roleBadge}>
-            <Ionicons name={user?.role === 'admin' ? 'shield' : 'people'} size={12} color="#FFFFFF" />
-            <Text style={styles.roleBadgeText}>{user?.role?.toUpperCase()}</Text>
+            <Ionicons 
+              name={user?.role === 'admin' ? 'shield-checkmark' : 'people-circle'} 
+              size={14} 
+              color="#3B82F6" 
+            />
+            <Text style={styles.roleBadgeText}>
+              {user?.role === 'admin' ? 'ADMINISTRATOR' : 'MANAGER'}
+            </Text>
           </View>
         </View>
-        <View style={styles.headerRight} />
+        <TouchableOpacity style={styles.headerAction} onPress={onRefresh}>
+          <Ionicons name="refresh" size={22} color="#94A3B8" />
+        </TouchableOpacity>
       </View>
 
-      {/* Tabs */}
-      <View style={styles.tabBar}>
-        {['overview', 'agents', 'leaderboard'].map((tab) => (
-          <TouchableOpacity
-            key={tab}
-            style={[styles.tab, activeTab === tab && styles.tabActive]}
-            onPress={() => setActiveTab(tab as any)}
+      {/* Quick Stats Bar */}
+      <View style={styles.quickStatsBar}>
+        <View style={styles.quickStat}>
+          <Text style={styles.quickStatValue}>{agents.length}</Text>
+          <Text style={styles.quickStatLabel}>Agents</Text>
+        </View>
+        <View style={styles.quickStatDivider} />
+        <View style={styles.quickStat}>
+          <Text style={[styles.quickStatValue, { color: '#22C55E' }]}>{activeCount}</Text>
+          <Text style={styles.quickStatLabel}>Active</Text>
+        </View>
+        <View style={styles.quickStatDivider} />
+        <View style={styles.quickStat}>
+          <Text style={[styles.quickStatValue, { color: '#F59E0B' }]}>{attentionCount}</Text>
+          <Text style={styles.quickStatLabel}>Attention</Text>
+        </View>
+        <View style={styles.quickStatDivider} />
+        <View style={styles.quickStat}>
+          <Text style={[styles.quickStatValue, { color: '#22C55E' }]}>{formatCurrency(totalProduction)}</Text>
+          <Text style={styles.quickStatLabel}>Production</Text>
+        </View>
+      </View>
+
+      {/* Filter & Sort Bar */}
+      <View style={styles.filterBar}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
+          <TouchableOpacity 
+            style={[styles.filterChip, filterStatus === 'all' && styles.filterChipActive]}
+            onPress={() => setFilterStatus('all')}
           >
-            <Ionicons
-              name={
-                tab === 'overview' ? 'grid' :
-                tab === 'agents' ? 'people' : 'trophy'
-              }
-              size={18}
-              color={activeTab === tab ? '#3B82F6' : '#64748B'}
-            />
-            <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>
-              {tab.charAt(0).toUpperCase() + tab.slice(1)}
+            <Text style={[styles.filterChipText, filterStatus === 'all' && styles.filterChipTextActive]}>
+              All ({agents.length})
             </Text>
           </TouchableOpacity>
-        ))}
+          <TouchableOpacity 
+            style={[styles.filterChip, filterStatus === 'active' && styles.filterChipActive]}
+            onPress={() => setFilterStatus('active')}
+          >
+            <View style={[styles.filterDot, { backgroundColor: '#22C55E' }]} />
+            <Text style={[styles.filterChipText, filterStatus === 'active' && styles.filterChipTextActive]}>
+              Active
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.filterChip, filterStatus === 'attention' && styles.filterChipActive]}
+            onPress={() => setFilterStatus('attention')}
+          >
+            <View style={[styles.filterDot, { backgroundColor: '#F59E0B' }]} />
+            <Text style={[styles.filterChipText, filterStatus === 'attention' && styles.filterChipTextActive]}>
+              Needs Attention
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.filterChip, filterStatus === 'inactive' && styles.filterChipActive]}
+            onPress={() => setFilterStatus('inactive')}
+          >
+            <View style={[styles.filterDot, { backgroundColor: '#EF4444' }]} />
+            <Text style={[styles.filterChipText, filterStatus === 'inactive' && styles.filterChipTextActive]}>
+              Inactive
+            </Text>
+          </TouchableOpacity>
+        </ScrollView>
+        
+        <TouchableOpacity 
+          style={styles.sortButton}
+          onPress={() => {
+            const sorts: ('name' | 'production' | 'grade' | 'activity')[] = ['production', 'grade', 'activity', 'name'];
+            const currentIndex = sorts.indexOf(sortBy);
+            setSortBy(sorts[(currentIndex + 1) % sorts.length]);
+          }}
+        >
+          <Ionicons name="swap-vertical" size={16} color="#94A3B8" />
+          <Text style={styles.sortButtonText}>{sortBy}</Text>
+        </TouchableOpacity>
       </View>
 
+      {/* Agent List */}
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#3B82F6" />
         }
+        showsVerticalScrollIndicator={false}
       >
-        {activeTab === 'overview' && snapshot && (
-          <>
-            {/* Quick Stats */}
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Team Snapshot</Text>
-              <View style={styles.statsGrid}>
-                <View style={styles.statCard}>
-                  <Ionicons name="people" size={24} color="#3B82F6" />
-                  <Text style={styles.statValue}>{snapshot.total_agents}</Text>
-                  <Text style={styles.statLabel}>Total Agents</Text>
-                </View>
-                <View style={styles.statCard}>
-                  <Ionicons name="pulse" size={24} color="#22C55E" />
-                  <Text style={styles.statValue}>{snapshot.active_today}</Text>
-                  <Text style={styles.statLabel}>Active Today</Text>
-                </View>
-                <View style={styles.statCard}>
-                  <Ionicons name="school" size={24} color="#F59E0B" />
-                  <Text style={styles.statValue}>{snapshot.needs_coaching}</Text>
-                  <Text style={styles.statLabel}>Need Coaching</Text>
-                </View>
-                <View style={styles.statCard}>
-                  <Ionicons name="alert-circle" size={24} color="#EF4444" />
-                  <Text style={styles.statValue}>{snapshot.overdue_leads}</Text>
-                  <Text style={styles.statLabel}>Overdue Tasks</Text>
-                </View>
-              </View>
-            </View>
-
-            {/* Top Producers */}
-            {snapshot.top_producers && snapshot.top_producers.length > 0 && (
-              <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Top Producers This Month</Text>
-                {snapshot.top_producers.map((producer, index) => (
-                  <TouchableOpacity
-                    key={producer.id}
-                    style={styles.topProducerCard}
-                    onPress={() => router.push(`/command-center/${producer.id}`)}
-                  >
-                    <View style={[styles.rankBadge, index === 0 && styles.rankBadgeGold]}>
-                      <Text style={styles.rankText}>{index + 1}</Text>
-                    </View>
-                    <View style={styles.topProducerInfo}>
-                      <Text style={styles.topProducerName}>{producer.name}</Text>
-                      <Text style={styles.topProducerAmount}>
-                        {formatCurrency(producer.total)} production
-                      </Text>
-                    </View>
-                    <Ionicons name="chevron-forward" size={20} color="#64748B" />
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
-
-            {/* Team Totals */}
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Team Performance</Text>
-              <View style={styles.teamTotalsCard}>
-                <View style={styles.teamTotalRow}>
-                  <View style={styles.teamTotalItem}>
-                    <Text style={styles.teamTotalLabel}>Total Leads</Text>
-                    <Text style={styles.teamTotalValue}>
-                      {agents.reduce((sum, a) => sum + a.leads_count, 0)}
-                    </Text>
-                  </View>
-                  <View style={styles.teamTotalItem}>
-                    <Text style={styles.teamTotalLabel}>Total Appointments</Text>
-                    <Text style={styles.teamTotalValue}>
-                      {agents.reduce((sum, a) => sum + a.appointments_scheduled + a.appointments_completed, 0)}
-                    </Text>
-                  </View>
-                </View>
-                <View style={styles.teamTotalRow}>
-                  <View style={styles.teamTotalItem}>
-                    <Text style={styles.teamTotalLabel}>Policies Issued</Text>
-                    <Text style={styles.teamTotalValue}>
-                      {agents.reduce((sum, a) => sum + a.policies_issued, 0)}
-                    </Text>
-                  </View>
-                  <View style={styles.teamTotalItem}>
-                    <Text style={styles.teamTotalLabel}>Total Production</Text>
-                    <Text style={[styles.teamTotalValue, { color: '#22C55E' }]}>
-                      {formatCurrency(agents.reduce((sum, a) => sum + a.total_premium, 0))}
-                    </Text>
-                  </View>
-                </View>
-              </View>
-            </View>
-          </>
-        )}
-
-        {activeTab === 'agents' && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Team Members ({agents.length})</Text>
-            {agents.length === 0 ? (
-              <View style={styles.emptyState}>
-                <Ionicons name="people-outline" size={48} color="#64748B" />
-                <Text style={styles.emptyText}>No agents found</Text>
-              </View>
-            ) : (
-              agents.map((agent) => {
-                const activity = getActivityStatus(agent.last_login);
-                return (
-                  <TouchableOpacity
-                    key={agent.id}
-                    style={styles.agentCard}
-                    onPress={() => router.push(`/command-center/${agent.id}`)}
-                  >
-                    <View style={styles.agentHeader}>
-                      <View style={styles.agentInfo}>
-                        <View style={styles.agentAvatar}>
-                          <Text style={styles.agentAvatarText}>
-                            {agent.name.charAt(0).toUpperCase()}
-                          </Text>
-                          <View style={[styles.activityDot, { backgroundColor: activity.color }]} />
-                        </View>
-                        <View>
-                          <View style={styles.agentNameRow}>
-                            <Text style={styles.agentName}>{agent.name}</Text>
-                            {agent.scorecard_grade && (
-                              <View style={[styles.gradeBadge, { backgroundColor: GRADE_COLORS[agent.scorecard_grade] || '#64748B' }]}>
-                                <Text style={styles.gradeText}>{agent.scorecard_grade}</Text>
-                              </View>
-                            )}
-                          </View>
-                          <Text style={styles.agentEmail}>{agent.email}</Text>
-                          <Text style={styles.agentLastLogin}>
-                            Last active: {getLastLoginText(agent.last_login)}
-                          </Text>
-                        </View>
-                      </View>
-                      <Ionicons name="chevron-forward" size={20} color="#64748B" />
-                    </View>
-                    
-                    <View style={styles.agentStats}>
-                      <View style={styles.agentStatItem}>
-                        <Text style={styles.agentStatValue}>{agent.leads_count}</Text>
-                        <Text style={styles.agentStatLabel}>Leads</Text>
-                      </View>
-                      <View style={styles.agentStatDivider} />
-                      <View style={styles.agentStatItem}>
-                        <Text style={styles.agentStatValue}>{agent.appointments_completed}</Text>
-                        <Text style={styles.agentStatLabel}>Completed</Text>
-                      </View>
-                      <View style={styles.agentStatDivider} />
-                      <View style={styles.agentStatItem}>
-                        <Text style={styles.agentStatValue}>{agent.policies_issued}</Text>
-                        <Text style={styles.agentStatLabel}>Policies</Text>
-                      </View>
-                      <View style={styles.agentStatDivider} />
-                      <View style={styles.agentStatItem}>
-                        <Text style={[styles.agentStatValue, { color: '#22C55E' }]}>
-                          {formatCurrency(agent.total_premium)}
-                        </Text>
-                        <Text style={styles.agentStatLabel}>Production</Text>
-                      </View>
-                    </View>
-                  </TouchableOpacity>
-                );
-              })
-            )}
+        {sortedAgents.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Ionicons name="people-outline" size={64} color="#334155" />
+            <Text style={styles.emptyTitle}>No Agents Found</Text>
+            <Text style={styles.emptyText}>
+              {filterStatus !== 'all' ? 'Try changing your filter' : 'Invite team members to get started'}
+            </Text>
           </View>
-        )}
-
-        {activeTab === 'leaderboard' && (
-          <View style={styles.section}>
-            <View style={styles.leaderboardHeader}>
-              <Text style={styles.sectionTitle}>Leaderboard</Text>
-              <View style={styles.periodSelector}>
-                {(['day', 'week', 'month'] as const).map((period) => (
-                  <TouchableOpacity
-                    key={period}
-                    style={[styles.periodButton, leaderboardPeriod === period && styles.periodButtonActive]}
-                    onPress={() => setLeaderboardPeriod(period)}
-                  >
-                    <Text style={[styles.periodButtonText, leaderboardPeriod === period && styles.periodButtonTextActive]}>
-                      {period.charAt(0).toUpperCase() + period.slice(1)}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
+        ) : (
+          sortedAgents.map((agent, index) => {
+            const activity = getActivityStatus(agent.last_login);
+            const gradeConfig = GRADE_CONFIG[agent.scorecard_grade] || GRADE_CONFIG['C'];
+            const hasIssues = agent.scorecard_grade === 'D' || agent.scorecard_grade === 'F' || (agent.overdue_tasks || 0) > 0;
             
-            {leaderboard.length === 0 ? (
-              <View style={styles.emptyState}>
-                <Ionicons name="trophy-outline" size={48} color="#64748B" />
-                <Text style={styles.emptyText}>No production data for this period</Text>
-              </View>
-            ) : (
-              leaderboard.map((entry, index) => (
-                <TouchableOpacity
-                  key={entry.id}
-                  style={styles.leaderboardCard}
-                  onPress={() => router.push(`/command-center/${entry.id}`)}
-                >
-                  <View style={[
-                    styles.leaderboardRank,
-                    index === 0 && styles.leaderboardRankGold,
-                    index === 1 && styles.leaderboardRankSilver,
-                    index === 2 && styles.leaderboardRankBronze,
-                  ]}>
-                    {index < 3 ? (
-                      <Ionicons name="trophy" size={16} color="#FFFFFF" />
-                    ) : (
-                      <Text style={styles.leaderboardRankText}>{entry.rank}</Text>
+            return (
+              <TouchableOpacity
+                key={agent.id}
+                style={[styles.agentCard, hasIssues && styles.agentCardAttention]}
+                onPress={() => router.push(`/command-center/${agent.id}`)}
+                activeOpacity={0.7}
+              >
+                {/* Agent Header */}
+                <View style={styles.agentHeader}>
+                  <View style={styles.agentIdentity}>
+                    <View style={styles.agentAvatarContainer}>
+                      <View style={[styles.agentAvatar, { backgroundColor: gradeConfig.bg }]}>
+                        <Text style={[styles.agentAvatarText, { color: gradeConfig.color }]}>
+                          {agent.name.charAt(0).toUpperCase()}
+                        </Text>
+                      </View>
+                      <View style={[styles.activityDot, { backgroundColor: activity.dot }]} />
+                    </View>
+                    <View style={styles.agentInfo}>
+                      <View style={styles.agentNameRow}>
+                        <Text style={styles.agentName} numberOfLines={1}>{agent.name}</Text>
+                        {agent.scorecard_grade && (
+                          <View style={[styles.gradeBadge, { backgroundColor: gradeConfig.bg }]}>
+                            <Text style={[styles.gradeText, { color: gradeConfig.color }]}>
+                              {agent.scorecard_grade}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                      <Text style={styles.agentEmail} numberOfLines={1}>{agent.email}</Text>
+                      <View style={styles.agentStatusRow}>
+                        <Text style={[styles.activityText, { color: activity.color }]}>
+                          {activity.status}
+                        </Text>
+                        {agent.territory && (
+                          <>
+                            <Text style={styles.statusDot}>•</Text>
+                            <Text style={styles.territoryText}>{agent.territory}</Text>
+                          </>
+                        )}
+                      </View>
+                    </View>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color="#475569" />
+                </View>
+
+                {/* Metrics Grid */}
+                <View style={styles.metricsGrid}>
+                  <View style={styles.metricItem}>
+                    <View style={styles.metricIconContainer}>
+                      <Ionicons name="people" size={16} color="#3B82F6" />
+                    </View>
+                    <View style={styles.metricContent}>
+                      <Text style={styles.metricValue}>{agent.leads_count}</Text>
+                      <Text style={styles.metricLabel}>Leads</Text>
+                    </View>
+                  </View>
+                  
+                  <View style={styles.metricItem}>
+                    <View style={styles.metricIconContainer}>
+                      <Ionicons name="calendar" size={16} color="#8B5CF6" />
+                    </View>
+                    <View style={styles.metricContent}>
+                      <Text style={styles.metricValue}>
+                        {agent.appointments_completed}/{agent.appointments_scheduled}
+                      </Text>
+                      <Text style={styles.metricLabel}>Appts</Text>
+                    </View>
+                  </View>
+                  
+                  <View style={styles.metricItem}>
+                    <View style={styles.metricIconContainer}>
+                      <Ionicons name="document-text" size={16} color="#F59E0B" />
+                    </View>
+                    <View style={styles.metricContent}>
+                      <Text style={styles.metricValue}>{agent.policies_issued}</Text>
+                      <Text style={styles.metricLabel}>Policies</Text>
+                    </View>
+                  </View>
+                  
+                  <View style={styles.metricItem}>
+                    <View style={styles.metricIconContainer}>
+                      <Ionicons name="trending-up" size={16} color="#22C55E" />
+                    </View>
+                    <View style={styles.metricContent}>
+                      <Text style={[styles.metricValue, { color: '#22C55E' }]}>
+                        {formatCurrency(agent.total_premium)}
+                      </Text>
+                      <Text style={styles.metricLabel}>Production</Text>
+                    </View>
+                  </View>
+                </View>
+
+                {/* Alerts Row */}
+                {hasIssues && (
+                  <View style={styles.alertsRow}>
+                    {(agent.overdue_tasks || 0) > 0 && (
+                      <View style={styles.alertBadge}>
+                        <Ionicons name="alert-circle" size={12} color="#EF4444" />
+                        <Text style={styles.alertBadgeText}>{agent.overdue_tasks} Overdue</Text>
+                      </View>
+                    )}
+                    {(agent.pending_follow_ups || 0) > 0 && (
+                      <View style={[styles.alertBadge, { backgroundColor: '#F59E0B20' }]}>
+                        <Ionicons name="time" size={12} color="#F59E0B" />
+                        <Text style={[styles.alertBadgeText, { color: '#F59E0B' }]}>
+                          {agent.pending_follow_ups} Follow-ups
+                        </Text>
+                      </View>
+                    )}
+                    {(agent.scorecard_grade === 'D' || agent.scorecard_grade === 'F') && (
+                      <View style={[styles.alertBadge, { backgroundColor: '#EF444420' }]}>
+                        <Ionicons name="school" size={12} color="#EF4444" />
+                        <Text style={[styles.alertBadgeText, { color: '#EF4444' }]}>
+                          {gradeConfig.label}
+                        </Text>
+                      </View>
                     )}
                   </View>
-                  <View style={styles.leaderboardInfo}>
-                    <Text style={styles.leaderboardName}>{entry.name}</Text>
-                    <View style={styles.leaderboardMeta}>
-                      <Text style={styles.leaderboardMetaText}>
-                        {entry.policies} policies • {entry.appointments_completed} appts
-                      </Text>
-                    </View>
-                  </View>
-                  <View style={styles.leaderboardAmount}>
-                    <Text style={styles.leaderboardPremium}>{formatCurrency(entry.premium)}</Text>
-                    <Text style={styles.leaderboardCommission}>
-                      {formatCurrency(entry.commission)} comm
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              ))
-            )}
+                )}
+
+                {/* Quick Actions */}
+                <View style={styles.quickActions}>
+                  <TouchableOpacity 
+                    style={styles.quickActionButton}
+                    onPress={() => router.push(`/command-center/${agent.id}`)}
+                  >
+                    <Ionicons name="stats-chart" size={14} color="#3B82F6" />
+                    <Text style={styles.quickActionText}>Performance</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={styles.quickActionButton}
+                    onPress={() => router.push(`/command-center/${agent.id}`)}
+                  >
+                    <Ionicons name="git-branch" size={14} color="#8B5CF6" />
+                    <Text style={styles.quickActionText}>Pipeline</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={styles.quickActionButton}
+                    onPress={() => router.push(`/command-center/${agent.id}`)}
+                  >
+                    <Ionicons name="time" size={14} color="#F59E0B" />
+                    <Text style={styles.quickActionText}>Activity</Text>
+                  </TouchableOpacity>
+                </View>
+              </TouchableOpacity>
+            );
+          })
+        )}
+        
+        {/* Team Summary Footer */}
+        {sortedAgents.length > 0 && (
+          <View style={styles.teamSummary}>
+            <Text style={styles.teamSummaryTitle}>Team Summary</Text>
+            <View style={styles.teamSummaryGrid}>
+              <View style={styles.teamSummaryItem}>
+                <Ionicons name="people" size={20} color="#3B82F6" />
+                <Text style={styles.teamSummaryValue}>
+                  {agents.reduce((sum, a) => sum + a.leads_count, 0)}
+                </Text>
+                <Text style={styles.teamSummaryLabel}>Total Leads</Text>
+              </View>
+              <View style={styles.teamSummaryItem}>
+                <Ionicons name="checkmark-circle" size={20} color="#22C55E" />
+                <Text style={styles.teamSummaryValue}>
+                  {agents.reduce((sum, a) => sum + a.appointments_completed, 0)}
+                </Text>
+                <Text style={styles.teamSummaryLabel}>Appts Done</Text>
+              </View>
+              <View style={styles.teamSummaryItem}>
+                <Ionicons name="document" size={20} color="#8B5CF6" />
+                <Text style={styles.teamSummaryValue}>
+                  {agents.reduce((sum, a) => sum + a.policies_issued, 0)}
+                </Text>
+                <Text style={styles.teamSummaryLabel}>Policies</Text>
+              </View>
+              <View style={styles.teamSummaryItem}>
+                <Ionicons name="wallet" size={20} color="#22C55E" />
+                <Text style={[styles.teamSummaryValue, { color: '#22C55E' }]}>
+                  {formatCurrency(totalCommission)}
+                </Text>
+                <Text style={styles.teamSummaryLabel}>Commission</Text>
+              </View>
+            </View>
           </View>
         )}
       </ScrollView>
@@ -451,7 +511,7 @@ export default function CommandCenterScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0F172A',
+    backgroundColor: '#0A0A0F',
   },
   loadingContainer: {
     flex: 1,
@@ -460,31 +520,39 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     color: '#94A3B8',
-    marginTop: 12,
+    marginTop: 16,
     fontSize: 14,
   },
   accessDenied: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 24,
+    padding: 32,
+  },
+  accessDeniedIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#EF444420',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
   },
   accessDeniedTitle: {
     color: '#FFFFFF',
-    fontSize: 20,
-    fontWeight: '600',
-    marginTop: 16,
+    fontSize: 24,
+    fontWeight: '700',
+    marginBottom: 8,
   },
   accessDeniedText: {
     color: '#94A3B8',
-    fontSize: 14,
+    fontSize: 15,
     textAlign: 'center',
-    marginTop: 8,
   },
   goBackButton: {
     backgroundColor: '#3B82F6',
     paddingHorizontal: 24,
-    paddingVertical: 12,
+    paddingVertical: 14,
     borderRadius: 12,
     marginTop: 24,
   },
@@ -498,12 +566,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 14,
+    backgroundColor: '#0F172A',
     borderBottomWidth: 1,
     borderBottomColor: '#1E293B',
   },
   backButton: {
-    padding: 8,
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   headerCenter: {
     alignItems: 'center',
@@ -511,53 +583,111 @@ const styles = StyleSheet.create({
   headerTitle: {
     color: '#FFFFFF',
     fontSize: 18,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   roleBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#3B82F620',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
+    backgroundColor: '#3B82F615',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
     marginTop: 4,
     gap: 4,
   },
   roleBadgeText: {
     color: '#3B82F6',
     fontSize: 10,
-    fontWeight: '600',
+    fontWeight: '700',
+    letterSpacing: 0.5,
   },
-  headerRight: {
+  headerAction: {
     width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  tabBar: {
+  quickStatsBar: {
     flexDirection: 'row',
+    backgroundColor: '#0F172A',
+    paddingVertical: 14,
     paddingHorizontal: 16,
-    paddingVertical: 8,
     borderBottomWidth: 1,
     borderBottomColor: '#1E293B',
-    gap: 8,
   },
-  tab: {
+  quickStat: {
     flex: 1,
+    alignItems: 'center',
+  },
+  quickStatValue: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontWeight: '700',
+  },
+  quickStatLabel: {
+    color: '#64748B',
+    fontSize: 11,
+    marginTop: 2,
+  },
+  quickStatDivider: {
+    width: 1,
+    backgroundColor: '#1E293B',
+    marginHorizontal: 8,
+  },
+  filterBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
     paddingVertical: 10,
-    borderRadius: 8,
+    paddingHorizontal: 16,
+    backgroundColor: '#0F172A',
+    borderBottomWidth: 1,
+    borderBottomColor: '#1E293B',
+  },
+  filterScroll: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingRight: 16,
+  },
+  filterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1E293B',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
     gap: 6,
   },
-  tabActive: {
-    backgroundColor: '#3B82F620',
+  filterChipActive: {
+    backgroundColor: '#3B82F6',
   },
-  tabText: {
-    color: '#64748B',
-    fontSize: 13,
+  filterChipText: {
+    color: '#94A3B8',
+    fontSize: 12,
     fontWeight: '500',
   },
-  tabTextActive: {
-    color: '#3B82F6',
+  filterChipTextActive: {
+    color: '#FFFFFF',
+  },
+  filterDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  sortButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1E293B',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    gap: 4,
+    marginLeft: 'auto',
+  },
+  sortButtonText: {
+    color: '#94A3B8',
+    fontSize: 11,
+    fontWeight: '500',
+    textTransform: 'capitalize',
   },
   scrollView: {
     flex: 1,
@@ -566,148 +696,74 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingBottom: 100,
   },
-  section: {
-    marginBottom: 24,
-  },
-  sectionTitle: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 12,
-  },
-  statsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  statCard: {
-    width: '48%',
-    backgroundColor: '#1E293B',
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
-  },
-  statValue: {
-    color: '#FFFFFF',
-    fontSize: 28,
-    fontWeight: '700',
-    marginTop: 8,
-  },
-  statLabel: {
-    color: '#94A3B8',
-    fontSize: 12,
-    marginTop: 4,
-  },
-  topProducerCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#1E293B',
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 8,
-  },
-  rankBadge: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#334155',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  rankBadgeGold: {
-    backgroundColor: '#F59E0B',
-  },
-  rankText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  topProducerInfo: {
-    flex: 1,
-  },
-  topProducerName: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '500',
-  },
-  topProducerAmount: {
-    color: '#22C55E',
-    fontSize: 13,
-    marginTop: 2,
-  },
-  teamTotalsCard: {
-    backgroundColor: '#1E293B',
-    borderRadius: 12,
-    padding: 16,
-  },
-  teamTotalRow: {
-    flexDirection: 'row',
-    marginBottom: 16,
-  },
-  teamTotalItem: {
-    flex: 1,
-  },
-  teamTotalLabel: {
-    color: '#94A3B8',
-    fontSize: 12,
-  },
-  teamTotalValue: {
-    color: '#FFFFFF',
-    fontSize: 20,
-    fontWeight: '600',
-    marginTop: 4,
-  },
   emptyState: {
     alignItems: 'center',
-    paddingVertical: 40,
+    paddingVertical: 60,
+  },
+  emptyTitle: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '600',
+    marginTop: 16,
   },
   emptyText: {
-    color: '#94A3B8',
+    color: '#64748B',
     fontSize: 14,
-    marginTop: 12,
+    marginTop: 8,
+    textAlign: 'center',
   },
   agentCard: {
-    backgroundColor: '#1E293B',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
+    backgroundColor: '#111827',
+    borderRadius: 16,
+    marginBottom: 14,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#1E293B',
+  },
+  agentCardAttention: {
+    borderColor: '#F59E0B40',
+    borderLeftWidth: 3,
+    borderLeftColor: '#F59E0B',
   },
   agentHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 14,
+    padding: 16,
+    paddingBottom: 12,
   },
-  agentInfo: {
+  agentIdentity: {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
   },
+  agentAvatarContainer: {
+    position: 'relative',
+    marginRight: 12,
+  },
   agentAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#3B82F6',
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
-    position: 'relative',
   },
   agentAvatarText: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: 20,
+    fontWeight: '700',
   },
   activityDot: {
     position: 'absolute',
     bottom: 2,
     right: 2,
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    borderWidth: 2,
-    borderColor: '#1E293B',
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 3,
+    borderColor: '#111827',
+  },
+  agentInfo: {
+    flex: 1,
   },
   agentNameRow: {
     flexDirection: 'row',
@@ -717,136 +773,157 @@ const styles = StyleSheet.create({
   agentName: {
     color: '#FFFFFF',
     fontSize: 16,
-    fontWeight: '500',
+    fontWeight: '600',
+    flex: 1,
   },
   gradeBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
+    width: 26,
+    height: 26,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   gradeText: {
-    color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: '700',
+    fontSize: 13,
+    fontWeight: '800',
   },
   agentEmail: {
-    color: '#94A3B8',
+    color: '#64748B',
     fontSize: 13,
-  },
-  agentLastLogin: {
-    color: '#64748B',
-    fontSize: 11,
     marginTop: 2,
   },
-  agentStats: {
-    flexDirection: 'row',
-    backgroundColor: '#0F172A',
-    borderRadius: 8,
-    padding: 12,
-  },
-  agentStatItem: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  agentStatValue: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  agentStatLabel: {
-    color: '#64748B',
-    fontSize: 10,
-    marginTop: 2,
-  },
-  agentStatDivider: {
-    width: 1,
-    backgroundColor: '#334155',
-    marginHorizontal: 8,
-  },
-  leaderboardHeader: {
+  agentStatusRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
+    marginTop: 4,
   },
-  periodSelector: {
-    flexDirection: 'row',
-    backgroundColor: '#1E293B',
-    borderRadius: 8,
-    padding: 4,
-  },
-  periodButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6,
-  },
-  periodButtonActive: {
-    backgroundColor: '#3B82F6',
-  },
-  periodButtonText: {
-    color: '#94A3B8',
+  activityText: {
     fontSize: 12,
     fontWeight: '500',
   },
-  periodButtonTextActive: {
-    color: '#FFFFFF',
+  statusDot: {
+    color: '#475569',
+    marginHorizontal: 6,
+    fontSize: 8,
   },
-  leaderboardCard: {
+  territoryText: {
+    color: '#64748B',
+    fontSize: 12,
+  },
+  metricsGrid: {
+    flexDirection: 'row',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: '#0F172A80',
+    gap: 4,
+  },
+  metricItem: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#1E293B',
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 8,
+    backgroundColor: '#0F172A',
+    borderRadius: 10,
+    padding: 10,
+    gap: 8,
   },
-  leaderboardRank: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#334155',
+  metricIconContainer: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: '#1E293B',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
   },
-  leaderboardRankGold: {
-    backgroundColor: '#F59E0B',
+  metricContent: {
+    flex: 1,
   },
-  leaderboardRankSilver: {
-    backgroundColor: '#94A3B8',
-  },
-  leaderboardRankBronze: {
-    backgroundColor: '#CD7F32',
-  },
-  leaderboardRankText: {
+  metricValue: {
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '700',
   },
-  leaderboardInfo: {
-    flex: 1,
-  },
-  leaderboardName: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '500',
-  },
-  leaderboardMeta: {
-    marginTop: 2,
-  },
-  leaderboardMetaText: {
+  metricLabel: {
     color: '#64748B',
-    fontSize: 12,
+    fontSize: 10,
+    marginTop: 1,
   },
-  leaderboardAmount: {
-    alignItems: 'flex-end',
+  alertsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    gap: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#1E293B',
+    backgroundColor: '#0F172A50',
   },
-  leaderboardPremium: {
-    color: '#22C55E',
-    fontSize: 16,
+  alertBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EF444420',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
+    gap: 4,
+  },
+  alertBadgeText: {
+    color: '#EF4444',
+    fontSize: 11,
     fontWeight: '600',
   },
-  leaderboardCommission: {
+  quickActions: {
+    flexDirection: 'row',
+    padding: 12,
+    gap: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#1E293B',
+  },
+  quickActionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#1E293B',
+    paddingVertical: 10,
+    borderRadius: 8,
+    gap: 6,
+  },
+  quickActionText: {
     color: '#94A3B8',
     fontSize: 12,
+    fontWeight: '500',
+  },
+  teamSummary: {
+    backgroundColor: '#111827',
+    borderRadius: 16,
+    padding: 20,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: '#1E293B',
+  },
+  teamSummaryTitle: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  teamSummaryGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  teamSummaryItem: {
+    alignItems: 'center',
+  },
+  teamSummaryValue: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontWeight: '700',
+    marginTop: 8,
+  },
+  teamSummaryLabel: {
+    color: '#64748B',
+    fontSize: 11,
+    marginTop: 4,
   },
 });
