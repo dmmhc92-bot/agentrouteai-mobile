@@ -48,7 +48,7 @@ export default function TermsOfServicePage() {
         <View style={styles.bulletList}>
           <Text style={styles.bulletItem}>• Manage leads and customer relationships</Text>
           <Text style={styles.bulletItem}>• Schedule and track appointments</Text>
-          <Text style={styles.bulletItem}>• Generate and manage Scope of Appointment documents</Text>
+          <Text style={styles.bulletItem}>• Track sales pipeline and progress</Text>
           <Text style={styles.bulletItem}>• Optimize sales routes and planning</Text>
           <Text style={styles.bulletItem}>• Access AI-powered sales coaching and assistance</Text>
           <Text style={styles.bulletItem}>• Track commissions and sales performance</Text>
@@ -90,7 +90,7 @@ export default function TermsOfServicePage() {
           <Text style={styles.bulletItem}>• Lead and customer contact information</Text>
           <Text style={styles.bulletItem}>• Appointment details and scheduling information</Text>
           <Text style={styles.bulletItem}>• Notes, comments, and communication records</Text>
-          <Text style={styles.bulletItem}>• Scope of Appointment document information</Text>
+          <Text style={styles.bulletItem}>• Pipeline and sales stage information</Text>
           <Text style={styles.bulletItem}>• Any other data entered through the Service</Text>
         </View>
         <Text style={styles.paragraph}>AgentRoute AI does not verify the accuracy of user-entered data and is not liable for any consequences arising from inaccurate or incomplete information.</Text>

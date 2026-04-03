@@ -442,62 +442,16 @@ class ApiService {
     return response.data;
   }
 
-  // Scope of Appointment
-  async createScope(data: { 
-    lead_id: string; 
-    form_fields: Record<string, any>; 
-    typed_name: string; 
-    signature: string;
-    agent_typed_name?: string;
-    agent_signature?: string;
-  }) {
-    const response = await apiClient.post('/scope', data);
-    return response.data;
-  }
-
-  async getScope(scopeId: string) {
-    const response = await apiClient.get(`/scope/${scopeId}`);
-    return response.data;
-  }
-
-  async getLeadScopes(leadId: string) {
-    const response = await apiClient.get(`/scope/lead/${leadId}`);
-    return response.data;
-  }
-
-  async getScopePdf(scopeId: string) {
-    const response = await apiClient.get(`/scope/${scopeId}/pdf`);
-    return response.data;
-  }
-
-  async generateScopePdf(scopeId: string) {
-    // Generate the stamped PDF using the EXACT original PDF form on the backend
-    // This fills form fields and stamps signatures onto the original document
-    const response = await apiClient.post(`/scope/${scopeId}/generate-pdf`);
-    return response.data;
-  }
-
-  async getAllScopes(skip: number = 0, limit: number = 50) {
-    const response = await apiClient.get(`/scope/admin/all?skip=${skip}&limit=${limit}`);
-    return response.data;
-  }
-
-  async logScopeDelivery(scopeId: string, data: {
-    delivery_method: string;
-    recipient_contact?: string;
-    notes?: string;
-  }) {
-    const response = await apiClient.post(`/scope/${scopeId}/log-delivery`, {
-      scope_id: scopeId,
-      ...data
-    });
-    return response.data;
-  }
-
-  async getScopeDeliveryHistory(scopeId: string) {
-    const response = await apiClient.get(`/scope/${scopeId}/delivery-history`);
-    return response.data;
-  }
+  // NOTE: Scope of Appointment (SOA) functionality has been removed from the app
+  // These methods are deprecated and kept for reference only
+  // async createScope(...) - REMOVED
+  // async getScope(...) - REMOVED
+  // async getLeadScopes(...) - REMOVED
+  // async getScopePdf(...) - REMOVED
+  // async generateScopePdf(...) - REMOVED
+  // async getAllScopes(...) - REMOVED
+  // async logScopeDelivery(...) - REMOVED
+  // async getScopeDeliveryHistory(...) - REMOVED
 
   // Production
   async createProduction(data: { lead_id?: string; policy_type: string; premium: number; commission: number; carrier: string; policy_number?: string; status?: string; notes?: string }) {

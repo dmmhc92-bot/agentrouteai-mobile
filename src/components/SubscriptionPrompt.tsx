@@ -86,7 +86,7 @@ export default function SubscriptionPrompt({ visible, onDismiss }: SubscriptionP
           {/* Features */}
           <View style={styles.features}>
             <FeatureItem icon="infinite" text="Unlimited lead management" />
-            <FeatureItem icon="document-text" text="Unlimited SOA forms" />
+            <FeatureItem icon="analytics" text="Advanced pipeline analytics" />
             <FeatureItem icon="chatbubbles" text="AI Sales Coach" />
             <FeatureItem icon="people" text="Team collaboration" />
           </View>
