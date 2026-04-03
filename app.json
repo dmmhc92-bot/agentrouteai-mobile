@@ -15,9 +15,6 @@
       "entitlements": {
         "com.apple.developer.associated-domains": [
           "applinks:app.agentrouteai.com"
-        ],
-        "com.apple.developer.in-app-payments": [
-          "merchant.app.emergent.agentrouteai"
         ]
       },
       "infoPlist": {
